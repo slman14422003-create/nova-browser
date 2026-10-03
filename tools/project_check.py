@@ -33,6 +33,15 @@ for name in re.findall(r'android:name="\.(\w+)"', mf):
     if not (SRC / f"{name}.kt").exists() and not (SRC / f"{name}.java").exists():
         errors.append(f"Manifest يشير إلى .{name} ولا يوجد ملف له")
 
+# 2.5) تدقيق أمني للـ Manifest
+if 'android:allowBackup="false"' not in mf: warnings.append("أمان: allowBackup غير معطّل (قد تُسرَّب بيانات عبر النسخ الاحتياطي)")
+if 'android:debuggable="true"' in mf: errors.append("أمان: debuggable=true في Manifest")
+if "EnableSafeBrowsing" not in mf: warnings.append("أمان: لم يُفعَّل Safe Browsing في Manifest")
+for m in re.finditer(r"<(?:service|receiver|provider)[^>]*android:exported=\"true\"", mf):
+    errors.append("أمان: مكوّن مكشوف exported=true: " + m.group(0)[:60])
+if re.search(r"setJavaScriptEnabled|addJavascriptInterface", "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt"))) and "addJavascriptInterface" in "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt")):
+    warnings.append("أمان: addJavascriptInterface مستخدم — تأكد من حصره بمصادر موثوقة")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s+by\s+mutable|fun\s+(\w+)\(", prefs))

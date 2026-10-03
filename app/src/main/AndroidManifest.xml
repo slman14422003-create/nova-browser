@@ -15,11 +15,13 @@
     <application
         android:label="Nova Browser"
         android:supportsRtl="true"
+        android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Nova">
+        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
         <activity
             android:name=".MainActivity"
             android:theme="@style/Theme.Nova.Splash"

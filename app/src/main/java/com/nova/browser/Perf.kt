@@ -31,13 +31,15 @@ object Perf {
 
     /** يُستدعى من shouldInterceptRequest؛ يعيد null للسماح بالطلب. */
     fun intercept(url: android.net.Uri, isMainFrame: Boolean): WebResourceResponse? =
-        if (Prefs.blockAds && !isMainFrame && isBlocked(url.host)) empty else null
+        if (Prefs.blockAds && !isMainFrame && isBlocked(url.host)) { Security.countBlocked(); empty } else null
 
     /** يضبط إعدادات الأداء لكل WebView جديد. */
     fun tune(wv: WebView) {
         val s = wv.settings
         s.cacheMode = WebSettings.LOAD_DEFAULT
         s.setSafeBrowsingEnabled(true)
+        s.allowContentAccess = false
+        s.allowFileAccess = false
         s.loadsImagesAutomatically = !Prefs.dataSaver
         s.blockNetworkImage = Prefs.dataSaver
         s.setOffscreenPreRaster(false)   // يوفر الذاكرة للتبويبات الخلفية

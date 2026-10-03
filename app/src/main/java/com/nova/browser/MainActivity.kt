@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -124,6 +125,10 @@ private val NovaTypography = Typography().let { t ->
 }
 
 class BrowserTab(val id: Int, startUrl: String = "") {
+    var upgradedFrom: String? = null        // رابط http الأصلي إذا رُقّي إلى https
+    var upgradedTo: String? = null
+    var noUpgradeHost: String? = null
+    var lastUpgrade: Pair<String, Long>? = null
     var url by mutableStateOf(startUrl)
     var title by mutableStateOf("تبويب جديد")
     var progress by mutableFloatStateOf(0f)
@@ -209,7 +214,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     applyUa(this, tab.desktop)
     Perf.tune(this)
     CookieManager.getInstance().setAcceptCookie(true)
-    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+    CookieManager.getInstance().setAcceptThirdPartyCookies(this, !Prefs.blockThirdCookies)
     setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
     setFindListener { active, total, _ -> tab.findInfo = if (total == 0) "0" else "${active + 1}/$total" }
     setOnLongClickListener {
@@ -245,7 +250,24 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.epoch++
             return true
         }
+        override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
+            h.cancel()   // لا نتجاوز أخطاء الشهادات أبداً
+            Security.log("شهادة", "رُفض اتصال غير موثوق: ${e.url?.let { hostOf(it) }}")
+            val u = e.url ?: v.url ?: ""
+            v.loadDataWithBaseURL(u, errorHtml(u, "شهادة أمان الموقع غير صالحة — تم حظر الاتصال لحمايتك"), "text/html", "UTF-8", u)
+        }
+        override fun onSafeBrowsingHit(v: WebView, r: WebResourceRequest, threatType: Int, cb: SafeBrowsingResponse) {
+            cb.backToSafety(true)
+            Security.log("Safe Browsing", "حُظر موقع خطير: ${r.url.host}")
+            toast(ctx, "تم حظر موقع خطير وإعادتك إلى صفحة آمنة")
+        }
         override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
+            if (r.isForMainFrame && tab.upgradedFrom != null && r.url.toString() == tab.upgradedTo) {
+                // الموقع لا يدعم HTTPS: رجوع إلى http مرة واحدة
+                val orig = tab.upgradedFrom!!
+                tab.noUpgradeHost = Uri.parse(orig).host; tab.upgradedFrom = null; tab.upgradedTo = null
+                v.loadUrl(orig); return
+            }
             if (r.isForMainFrame) {
                 val u = r.url.toString()
                 v.loadDataWithBaseURL(u, errorHtml(u, e.description.toString()), "text/html", "UTF-8", u)
@@ -254,7 +276,24 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
             val u = r.url
             return when (u.scheme) {
-                null, "http", "https", "about", "data", "blob" -> false
+                "http", "https" -> {
+                    if (!r.isForMainFrame) false
+                    else {
+                        var t = Security.cleanUrl(u)
+                        val host = t.host
+                        if (Prefs.httpsFirst && t.scheme == "http" && host != null && host != tab.noUpgradeHost) {
+                            val last = tab.lastUpgrade; val now = System.currentTimeMillis()
+                            if (last != null && last.first == host && now - last.second < 5000) tab.noUpgradeHost = host   // حلقة تحويل
+                            else {
+                                tab.upgradedFrom = t.toString(); t = t.buildUpon().scheme("https").build()
+                                tab.upgradedTo = t.toString(); tab.lastUpgrade = host to now
+                                Security.log("HTTPS", "رُقّي $host")
+                            }
+                        }
+                        if (t != u) { v.loadUrl(t.toString()); true } else false
+                    }
+                }
+                null, "about", "data", "blob" -> false
                 "intent" -> {
                     runCatching {
                         Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
@@ -302,6 +341,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
+        Security.init(this)
+        Security.deviceWarnings(this).forEach { Security.log("الجهاز", it) }
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
@@ -410,6 +451,10 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         t.url = ""; t.title = "تبويب جديد"; t.canBack = false; t.canForward = false; t.loading = false; t.finding = false
     }
 
+    LaunchedEffect(Prefs.secureScreen) {
+        val f = android.view.WindowManager.LayoutParams.FLAG_SECURE
+        if (Prefs.secureScreen) activity.window.setFlags(f, f) else activity.window.clearFlags(f)
+    }
     LaunchedEffect(Prefs.js) { tabs.forEach { it.webView?.settings?.javaScriptEnabled = Prefs.js } }
     fun clearData() {
         CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
@@ -492,10 +537,19 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             onDownload = { u, ua, cd, mime, ref ->
                 if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, "هذا النوع من التنزيل غير مدعوم بعد")
                 else {
-                    Downloader.start(activity, u, ua, cd, mime, ref)
-                    toast(activity, "بدأ التنزيل — القائمة ⋮ ثم التنزيلات")
-                    if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
-                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    val start = {
+                        Downloader.start(activity, u, ua, cd, mime, ref)
+                        toast(activity, "بدأ التنزيل — القائمة ⋮ ثم التنزيلات")
+                        if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
+                            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        Unit
+                    }
+                    if (Security.isRiskyFile(u, cd)) {
+                        Security.log("تنزيل", "تحذير ملف تنفيذي من ${hostOf(u)}")
+                        AlertDialog.Builder(activity).setTitle("ملف قد يكون خطيراً")
+                            .setMessage("هذا النوع من الملفات (تطبيق/ملف تنفيذي) قد يضر بجهازك. نزّله فقط من مصدر تثق به.\n\n${hostOf(u)}")
+                            .setPositiveButton("تنزيل") { _, _ -> start() }.setNegativeButton("إلغاء", null).show()
+                    } else start()
                 }
             }
         )

@@ -31,6 +31,10 @@ object Prefs {
     var blockAds by mutableStateOf(true); private set       // حجب الإعلانات والمتتبعات
     var dataSaver by mutableStateOf(false); private set     // عدم تحميل الصور
     var lazyMedia by mutableStateOf(true); private set      // تحميل كسول للصور
+    var httpsFirst by mutableStateOf(true); private set     // ترقية http إلى https
+    var cleanUrls by mutableStateOf(true); private set      // إزالة معرّفات التتبع من الروابط
+    var blockThirdCookies by mutableStateOf(true); private set
+    var secureScreen by mutableStateOf(false); private set  // منع لقطات الشاشة
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -47,6 +51,8 @@ object Prefs {
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
         autoClean = p.getBoolean("autoclean", true); blockAds = p.getBoolean("blockads", true)
         dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true)
+        httpsFirst = p.getBoolean("https1", true); cleanUrls = p.getBoolean("cleanurl", true)
+        blockThirdCookies = p.getBoolean("c3p", true); secureScreen = p.getBoolean("secscr", false)
     }
     fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
     fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
@@ -57,6 +63,10 @@ object Prefs {
     fun pickAutoClean(v: Boolean) { autoClean = v; sp?.edit()?.putBoolean("autoclean", v)?.apply() }
     fun pickBlockAds(v: Boolean) { blockAds = v; sp?.edit()?.putBoolean("blockads", v)?.apply() }
     fun pickDataSaver(v: Boolean) { dataSaver = v; sp?.edit()?.putBoolean("saver", v)?.apply() }
+    fun pickHttpsFirst(v: Boolean) { httpsFirst = v; sp?.edit()?.putBoolean("https1", v)?.apply() }
+    fun pickCleanUrls(v: Boolean) { cleanUrls = v; sp?.edit()?.putBoolean("cleanurl", v)?.apply() }
+    fun pickThirdCookies(v: Boolean) { blockThirdCookies = v; sp?.edit()?.putBoolean("c3p", v)?.apply() }
+    fun pickSecureScreen(v: Boolean) { secureScreen = v; sp?.edit()?.putBoolean("secscr", v)?.apply() }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -104,6 +114,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var cacheSize by remember { mutableStateOf("…") }
     var cacheTick by remember { mutableIntStateOf(0) }
+    val warnings = remember { Security.deviceWarnings(ctx) }
     LaunchedEffect(cacheTick) {
         cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CacheCleaner.format(CacheCleaner.size(ctx)) }
     }
@@ -134,6 +145,18 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.blockAds, onCheckedChange = null) }),
                     RowSpec("مسح بيانات التصفح", "الكوكيز والذاكرة المؤقتة والسجل", Icons.Default.Delete, { dialog = "clear" })
                 ))
+                Group("الأمان", listOf(
+                    RowSpec("HTTPS أولاً", "ترقية الروابط إلى اتصال مشفّر مع رجوع تلقائي عند عدم الدعم", Icons.Default.Lock, { Prefs.pickHttpsFirst(!Prefs.httpsFirst) },
+                        { Switch(checked = Prefs.httpsFirst, onCheckedChange = null) }),
+                    RowSpec("إزالة معرّفات التتبع", "utm و fbclid و gclid وغيرها من الروابط", Icons.Default.Check, { Prefs.pickCleanUrls(!Prefs.cleanUrls) },
+                        { Switch(checked = Prefs.cleanUrls, onCheckedChange = null) }),
+                    RowSpec("حظر كوكيز الطرف الثالث", "قد تتأثر بعض مواقع تسجيل الدخول المشترك", Icons.Default.Info, { Prefs.pickThirdCookies(!Prefs.blockThirdCookies) },
+                        { Switch(checked = Prefs.blockThirdCookies, onCheckedChange = null) }),
+                    RowSpec("حماية الشاشة", "منع لقطات الشاشة وتسجيلها داخل التطبيق", Icons.Default.Lock, { Prefs.pickSecureScreen(!Prefs.secureScreen) },
+                        { Switch(checked = Prefs.secureScreen, onCheckedChange = null) }),
+                    RowSpec("سجل الأمان", "التهديدات والمتتبعات المحجوبة", Icons.Default.Info, { dialog = "seclog" }),
+                    RowSpec("فحص سلامة الجهاز", if (warnings.isEmpty()) "لا مؤشرات مقلقة" else warnings.joinToString(" • "), Icons.Default.Warning, {})
+                ))
                 Group("الأداء والذاكرة المؤقتة", listOf(
                     RowSpec("تنظيف المؤقت عند كل تشغيل", "يُحذف أثناء شاشة البداية (لا يمس الكوكيز والتنزيلات)", Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
@@ -147,7 +170,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec("الحد الأقصى للاتصالات", connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec("مكان الحفظ", "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.1", Icons.Default.Star, {})))
+                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.2", Icons.Default.Star, {})))
             }
         }
     }
@@ -156,6 +179,12 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
         "engine" -> ChoiceDialog("محرك البحث", Prefs.engines.map { it.first }, Prefs.engine, { Prefs.pickEngine(it) }) { dialog = null }
         "theme" -> ChoiceDialog("المظهر", themeNames, Prefs.theme, { Prefs.pickTheme(it) }) { dialog = null }
         "conns" -> ChoiceDialog("الحد الأقصى للاتصالات", connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.pickMaxConns(connOpts[it]) }) { dialog = null }
+        "seclog" -> AlertDialog(
+            onDismissRequest = { dialog = null }, title = { Text("سجل الأمان") },
+            text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) } },
+            confirmButton = { TextButton(onClick = { dialog = null }) { Text("إغلاق") } },
+            dismissButton = { TextButton(onClick = { Security.clearLog(); dialog = null }) { Text("مسح السجل") } }
+        )
         "cache" -> AlertDialog(
             onDismissRequest = { dialog = null }, title = { Text("مسح الذاكرة المؤقتة؟") },
             text = { Text("سيتم حذف ملفات الكاش المؤقتة فقط. قد يبطؤ تحميل الصفحات المرة القادمة قليلاً.") },
