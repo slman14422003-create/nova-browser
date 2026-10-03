@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.app.ActivityCompat
 import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
@@ -259,6 +260,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
 class MainActivity : ComponentActivity() {
     private var dlTrigger by mutableIntStateOf(0)
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Downloader.init(this)
