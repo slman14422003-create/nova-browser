@@ -11,8 +11,8 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
     buildTypes {
         release {
@@ -39,4 +39,6 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
 }

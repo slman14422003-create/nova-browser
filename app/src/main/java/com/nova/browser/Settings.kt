@@ -35,6 +35,8 @@ object Prefs {
     var cleanUrls by mutableStateOf(true); private set      // إزالة معرّفات التتبع من الروابط
     var blockThirdCookies by mutableStateOf(true); private set
     var secureScreen by mutableStateOf(false); private set  // منع لقطات الشاشة
+    var antiFingerprint by mutableStateOf(true); private set // الحماية من البصمة
+    var pauseBg by mutableStateOf(true); private set        // إيقاف الصفحات عند الخروج من التطبيق
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -53,6 +55,7 @@ object Prefs {
         dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true)
         httpsFirst = p.getBoolean("https1", true); cleanUrls = p.getBoolean("cleanurl", true)
         blockThirdCookies = p.getBoolean("c3p", true); secureScreen = p.getBoolean("secscr", false)
+        antiFingerprint = p.getBoolean("antifp", true); pauseBg = p.getBoolean("pausebg", true)
     }
     fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
     fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
@@ -66,6 +69,8 @@ object Prefs {
     fun pickHttpsFirst(v: Boolean) { httpsFirst = v; sp?.edit()?.putBoolean("https1", v)?.apply() }
     fun pickCleanUrls(v: Boolean) { cleanUrls = v; sp?.edit()?.putBoolean("cleanurl", v)?.apply() }
     fun pickThirdCookies(v: Boolean) { blockThirdCookies = v; sp?.edit()?.putBoolean("c3p", v)?.apply() }
+    fun pickAntiFingerprint(v: Boolean) { antiFingerprint = v; sp?.edit()?.putBoolean("antifp", v)?.apply() }
+    fun pickPauseBg(v: Boolean) { pauseBg = v; sp?.edit()?.putBoolean("pausebg", v)?.apply() }
     fun pickSecureScreen(v: Boolean) { secureScreen = v; sp?.edit()?.putBoolean("secscr", v)?.apply() }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
 
@@ -148,6 +153,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Group("الأمان", listOf(
                     RowSpec("HTTPS أولاً", "ترقية الروابط إلى اتصال مشفّر مع رجوع تلقائي عند عدم الدعم", Icons.Default.Lock, { Prefs.pickHttpsFirst(!Prefs.httpsFirst) },
                         { Switch(checked = Prefs.httpsFirst, onCheckedChange = null) }),
+                    RowSpec("الحماية من البصمة", "توحيد وتشويش قيم Canvas وWebGL والصوت والجهاز (يُطبَّق على التبويبات الجديدة)", Icons.Default.Lock, { Prefs.pickAntiFingerprint(!Prefs.antiFingerprint) },
+                        { Switch(checked = Prefs.antiFingerprint, onCheckedChange = null) }),
                     RowSpec("إزالة معرّفات التتبع", "utm و fbclid و gclid وغيرها من الروابط", Icons.Default.Check, { Prefs.pickCleanUrls(!Prefs.cleanUrls) },
                         { Switch(checked = Prefs.cleanUrls, onCheckedChange = null) }),
                     RowSpec("حظر كوكيز الطرف الثالث", "قد تتأثر بعض مواقع تسجيل الدخول المشترك", Icons.Default.Info, { Prefs.pickThirdCookies(!Prefs.blockThirdCookies) },
@@ -161,6 +168,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec("تنظيف المؤقت عند كل تشغيل", "يُحذف أثناء شاشة البداية (لا يمس الكوكيز والتنزيلات)", Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
                     RowSpec("مسح الذاكرة المؤقتة الآن", "الحجم الحالي: $cacheSize", Icons.Default.Delete, { dialog = "cache" }),
+                    RowSpec("إيقاف الصفحات في الخلفية", "يوفر المعالج والبطارية عند الخروج من التطبيق (يوقف الصوت أيضاً)", Icons.Default.Refresh, { Prefs.pickPauseBg(!Prefs.pauseBg) },
+                        { Switch(checked = Prefs.pauseBg, onCheckedChange = null) }),
                     RowSpec("تحميل كسول للصور", "تحميل الصور عند الاقتراب منها فقط", Icons.Default.KeyboardArrowDown, { Prefs.pickLazyMedia(!Prefs.lazyMedia) },
                         { Switch(checked = Prefs.lazyMedia, onCheckedChange = null) }),
                     RowSpec("توفير البيانات", "عدم تحميل الصور (يُطبَّق على التبويبات الجديدة)", Icons.Default.Info, { Prefs.pickDataSaver(!Prefs.dataSaver) },
@@ -170,7 +179,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec("الحد الأقصى للاتصالات", connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec("مكان الحفظ", "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.2", Icons.Default.Star, {})))
+                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.3", Icons.Default.Star, {})))
             }
         }
     }

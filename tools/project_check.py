@@ -42,6 +42,21 @@ for m in re.finditer(r"<(?:service|receiver|provider)[^>]*android:exported=\"tru
 if re.search(r"setJavaScriptEnabled|addJavascriptInterface", "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt"))) and "addJavascriptInterface" in "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt")):
     warnings.append("أمان: addJavascriptInterface مستخدم — تأكد من حصره بمصادر موثوقة")
 
+# 2.7) ملفات assets المطلوبة
+AS = ROOT / "app/src/main/assets"
+for need in ("blocklist.txt", "privacy.js"):
+    if not (AS / need).exists(): errors.append(f"assets/{need} مفقود")
+bl = AS / "blocklist.txt"
+if bl.exists():
+    doms = [l.strip().lower() for l in bl.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
+    for d in doms:
+        if not re.fullmatch(r"[a-z0-9.-]+\.[a-z]{2,}", d): errors.append(f"blocklist: نطاق غير صالح: {d}")
+    if len(doms) != len(set(doms)): warnings.append("blocklist: نطاقات مكررة")
+    for must in ("trackersimulator.org", "eviltracker.net"):
+        if must not in doms: warnings.append(f"blocklist: {must} غير موجود")
+if (AS / "privacy.js").exists() and "__SEED__" not in (AS / "privacy.js").read_text(encoding="utf-8"):
+    errors.append("privacy.js: العلامة __SEED__ مفقودة")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s+by\s+mutable|fun\s+(\w+)\(", prefs))

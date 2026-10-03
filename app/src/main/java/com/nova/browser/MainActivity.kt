@@ -138,6 +138,8 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var desktop by mutableStateOf(Prefs.desktop)
     var finding by mutableStateOf(false)
     var findInfo by mutableStateOf("")
+    var saved: android.os.Bundle? = null      // حالة الصفحة عند تحرير الـ WebView لتوفير الذاكرة
+    var lastUsed = 0L
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
 }
@@ -213,6 +215,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     }
     applyUa(this, tab.desktop)
     Perf.tune(this)
+    Perf.installPrivacy(this)
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, !Prefs.blockThirdCookies)
     setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
@@ -233,7 +236,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u }
+        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v) }
         override fun onPageFinished(v: WebView, u: String) {
             tab.loading = false; tab.url = u
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
@@ -266,7 +269,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 // الموقع لا يدعم HTTPS: رجوع إلى http مرة واحدة
                 val orig = tab.upgradedFrom!!
                 tab.noUpgradeHost = Uri.parse(orig).host; tab.upgradedFrom = null; tab.upgradedTo = null
-                v.loadUrl(orig); return
+                v.loadUrl(orig, Perf.privacyHeaders); return
             }
             if (r.isForMainFrame) {
                 val u = r.url.toString()
@@ -290,7 +293,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                                 Security.log("HTTPS", "رُقّي $host")
                             }
                         }
-                        if (t != u) { v.loadUrl(t.toString()); true } else false
+                        if (t != u) { v.loadUrl(t.toString(), Perf.privacyHeaders); true } else false
                     }
                 }
                 null, "about", "data", "blob" -> false
@@ -310,7 +313,10 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webChromeClient = object : WebChromeClient() {
-        override fun onProgressChanged(v: WebView, p: Int) { tab.progress = p / 100f }
+        override fun onProgressChanged(v: WebView, p: Int) {
+            val f = p / 100f   // نحدّث الحالة كل 5% فقط لتقليل إعادة التركيب
+            if (p == 0 || p == 100 || kotlin.math.abs(f - tab.progress) >= 0.05f) tab.progress = f
+        }
         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
         override fun onShowCustomView(view: View, cb: CustomViewCallback) = h.showCustom(view, cb)
         override fun onHideCustomView() = h.hideCustom()
@@ -342,6 +348,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         Prefs.init(this)
         Security.init(this)
+        Perf.init(this)
         Security.deviceWarnings(this).forEach { Security.log("الجهاز", it) }
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
@@ -434,12 +441,16 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         else { permCallback = cb; permLauncher.launch(perms.filter { !granted(it) }.toTypedArray()) }
     }
 
-    fun go(t: BrowserTab, input: String) { val u = normalize(input); t.url = u; t.webView?.loadUrl(u) }
+    fun go(t: BrowserTab, input: String) { val u = normalize(input); t.url = u; t.webView?.loadUrl(u, Perf.privacyHeaders) }
     fun newTab() { tabs.add(BrowserTab(nextId++)); current = tabs.lastIndex; showTabs = false; editing = true }
     fun openInNewTab(u: String) { tabs.add(BrowserTab(nextId++, u)); current = tabs.lastIndex }
     fun dispose(t: BrowserTab) {
         t.webView?.let { w -> (w.parent as? ViewGroup)?.removeView(w); w.destroy() }
         t.webView = null
+    }
+    fun discard(t: BrowserTab) {   // تحرير الذاكرة مع حفظ الحالة (السجل والتمرير) لاستعادتها لاحقاً
+        t.webView?.let { w -> val b = android.os.Bundle(); runCatching { w.saveState(b) }; t.saved = b }
+        dispose(t)
     }
     fun closeTab(i: Int) {
         dispose(tabs[i]); tabs.removeAt(i)
@@ -447,7 +458,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         current = current.coerceIn(0, tabs.lastIndex)
     }
     fun home(t: BrowserTab) {
-        dispose(t)
+        dispose(t); t.saved = null
         t.url = ""; t.title = "تبويب جديد"; t.canBack = false; t.canForward = false; t.loading = false; t.finding = false
     }
 
@@ -473,9 +484,9 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     DisposableEffect(Unit) {
         val cb = object : ComponentCallbacks2 {
             override fun onTrimMemory(level: Int) {
-                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
                     val cur = tabs.getOrNull(current)
-                    tabs.toList().forEach { t -> if (t !== cur && t.webView != null) dispose(t) }
+                    tabs.toList().forEach { t -> if (t !== cur && t.webView != null) discard(t) }
                 }
             }
             override fun onConfigurationChanged(c: android.content.res.Configuration) {}
@@ -483,6 +494,30 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         }
         activity.registerComponentCallbacks(cb)
         onDispose { activity.unregisterComponentCallbacks(cb) }
+    }
+
+    // حدّ أقصى لعدد الـ WebView الحيّة حسب ذاكرة الجهاز؛ الأقدم استخداماً يُحرَّر ويُستعاد عند الرجوع
+    val maxLive = remember {
+        val am = activity.getSystemService(android.app.ActivityManager::class.java)
+        if (am.isLowRamDevice) 2 else if (am.memoryClass >= 256) 5 else 3
+    }
+    LaunchedEffect(current, tabs.size) {
+        val cur = tabs.getOrNull(current)
+        cur?.lastUsed = android.os.SystemClock.elapsedRealtime()
+        kotlinx.coroutines.delay(1200)   // بعد إنشاء الـ WebView الجديد
+        val live = tabs.filter { it.webView != null }
+        if (live.size > maxLive)
+            live.filter { it !== cur }.sortedBy { it.lastUsed }.take(live.size - maxLive).forEach { discard(it) }
+    }
+    // عند الخروج من التطبيق: إيقاف مؤقتات الصفحات لتوفير المعالج والبطارية
+    DisposableEffect(Unit) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            val w = tabs.getOrNull(current)?.webView
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && Prefs.pauseBg && customView == null) { w?.onPause(); w?.pauseTimers() }
+            else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) { w?.resumeTimers(); w?.onResume() }
+        }
+        activity.lifecycle.addObserver(obs)
+        onDispose { activity.lifecycle.removeObserver(obs) }
     }
 
     val handlers = remember {
@@ -603,7 +638,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                                 AndroidView(
                                     modifier = Modifier.fillMaxSize(),
                                     factory = { ctx ->
-                                        val wv = tb.webView ?: createWebView(ctx, tb, handlers).also { tb.webView = it; it.loadUrl(tb.url) }
+                                        val wv = tb.webView ?: createWebView(ctx, tb, handlers).also { w ->
+                                            tb.webView = w
+                                            val sv = tb.saved; tb.saved = null
+                                            val restored = sv != null && w.restoreState(sv) != null
+                                            if (!restored) w.loadUrl(tb.url, Perf.privacyHeaders)
+                                        }
                                         (wv.parent as? ViewGroup)?.removeView(wv)
                                         SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -614,6 +654,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                                         }
                                     }
                                 )
+                                // التبويب غير الظاهر يُوقَف مؤقتاً (يوفر المعالج والذاكرة) ويُستأنف عند ظهوره
+                                DisposableEffect(tb.id, tb.epoch) {
+                                    tb.webView?.onResume()
+                                    onDispose { tb.webView?.onPause() }
+                                }
                             }
                         }
                     }
