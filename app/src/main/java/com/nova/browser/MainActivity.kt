@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.view.View
@@ -100,7 +101,8 @@ class Handlers(
     val geo: (String, GeolocationPermissions.Callback) -> Unit,
     val openTab: (String) -> Unit,
     val showCustom: (View, WebChromeClient.CustomViewCallback) -> Unit,
-    val hideCustom: () -> Unit
+    val hideCustom: () -> Unit,
+    val onDownload: (String, String?, String?, String?, String?) -> Unit
 )
 
 fun normalize(input: String): String {
@@ -136,19 +138,6 @@ fun shareText(c: Context, t: String) {
     c.startActivity(Intent.createChooser(i, null))
 }
 
-fun download(c: Context, url: String, ua: String?, cd: String?, mime: String?) {
-    runCatching {
-        val name = URLUtil.guessFileName(url, cd, mime)
-        val req = DownloadManager.Request(Uri.parse(url))
-            .setMimeType(mime).addRequestHeader("User-Agent", ua ?: "")
-            .addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url) ?: "")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-        (c.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
-        toast(c, "بدأ التنزيل: $name")
-    }.onFailure { toast(c, "تعذّر التنزيل") }
-}
-
 fun choose(c: Context, items: List<Pair<String, () -> Unit>>) {
     AlertDialog.Builder(c).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
 }
@@ -179,7 +168,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     applyUa(this, tab.desktop)
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-    setDownloadListener { url, ua, cd, mime, _ -> download(ctx, url, ua, cd, mime) }
+    setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
     setFindListener { active, total, _ -> tab.findInfo = if (total == 0) "0" else "${active + 1}/$total" }
     setOnLongClickListener {
         val r = hitTestResult
@@ -190,7 +179,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 true
             }
             WebView.HitTestResult.IMAGE_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                choose(ctx, listOf("تنزيل الصورة" to { download(ctx, ex, settings.userAgentString, null, null) }, "فتح الصورة في تبويب جديد" to { h.openTab(ex) }))
+                choose(ctx, listOf("تنزيل الصورة" to { h.onDownload(ex, settings.userAgentString, null, null, this.url) }, "فتح الصورة في تبويب جديد" to { h.openTab(ex) }))
                 true
             }
             else -> false
@@ -250,19 +239,27 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
 }
 
 class MainActivity : ComponentActivity() {
+    private var dlTrigger by mutableIntStateOf(0)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
+        if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) { BrowserApp(start) }
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) { BrowserApp(start, dlTrigger) }
         }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("dl", false)) dlTrigger++
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserApp(startUrl: String) {
+fun BrowserApp(startUrl: String, dlTrigger: Int) {
     val activity = LocalContext.current as ComponentActivity
     val cs = MaterialTheme.colorScheme
     val prefs = remember { activity.getSharedPreferences("nova", Context.MODE_PRIVATE) }
@@ -278,6 +275,9 @@ fun BrowserApp(startUrl: String) {
     var current by remember { mutableIntStateOf(if (startUrl.isNotBlank()) tabs.lastIndex else prefs.getInt("cur", 0).coerceIn(0, tabs.lastIndex)) }
     var showTabs by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var showDownloads by remember { mutableStateOf(false) }
+    LaunchedEffect(dlTrigger) { if (dlTrigger > 0) showDownloads = true }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var customView by remember { mutableStateOf<View?>(null) }
     var customCb by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     val tab = tabs[current.coerceIn(0, tabs.lastIndex)]
@@ -339,7 +339,17 @@ fun BrowserApp(startUrl: String) {
             },
             openTab = { openInNewTab(it) },
             showCustom = { v, cb -> customView = v; customCb = cb },
-            hideCustom = { customView = null; customCb = null }
+            hideCustom = { customView = null; customCb = null },
+            onDownload = { u, ua, cd, mime, ref ->
+                if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, "هذا النوع من التنزيل غير مدعوم بعد")
+                else {
+                    Downloader.start(activity, u, ua, cd, mime, ref)
+                    toast(activity, "بدأ التنزيل — القائمة ⋮ ثم التنزيلات")
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
         )
     }
 
@@ -359,6 +369,7 @@ fun BrowserApp(startUrl: String) {
     BackHandler(enabled = tab.canBack) { tab.webView?.goBack() }
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
+    BackHandler(enabled = showDownloads) { showDownloads = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
     val primaryInt = cs.primary.toArgb()
@@ -394,10 +405,12 @@ fun BrowserApp(startUrl: String) {
                     onGo = { go(tab, it) }, onTabs = { showTabs = true }, onNewTab = { newTab() }, onHome = { home(tab) },
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
-                    onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) }
+                    onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
+                    onDownloads = { showDownloads = true }
                 )
             }
         }
+        if (showDownloads) DownloadsScreen(onBack = { showDownloads = false })
         customView?.let { v ->
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -471,7 +484,7 @@ fun FindBar(tab: BrowserTab) {
 fun BottomPill(
     tab: BrowserTab, tabCount: Int, editing: Boolean, setEditing: (Boolean) -> Unit,
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
-    onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit
+    onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
@@ -549,6 +562,7 @@ fun BottomPill(
                                 onClick = { menu = false; onShare() })
                             DropdownMenuItem(text = { Text("نسخ الرابط") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, enabled = hasPage,
                                 onClick = { menu = false; onCopy() })
+                            DropdownMenuItem(text = { Text("التنزيلات") }, leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) }, onClick = { menu = false; onDownloads() })
                             DropdownMenuItem(text = { Text("الرئيسية") }, leadingIcon = { Icon(Icons.Default.Home, null) }, onClick = { menu = false; onHome() })
                         }
                     }
