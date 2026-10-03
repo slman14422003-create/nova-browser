@@ -86,19 +86,36 @@ import org.json.JSONObject
 import java.net.URLEncoder
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF3D5AFE), onPrimary = Color.White,
-    primaryContainer = Color(0xFFDDE2FF), onPrimaryContainer = Color(0xFF001258),
-    background = Color(0xFFF1F3FA), onBackground = Color(0xFF191B23),
-    surface = Color(0xFFF1F3FA), onSurface = Color(0xFF191B23), onSurfaceVariant = Color(0xFF5A5E72),
-    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFECEEF7), surfaceContainerHighest = Color(0xFFE4E7F2)
+    primary = Color(0xFF141413), onPrimary = Color(0xFFFAF9F5),
+    primaryContainer = Color(0xFFF6DDD2), onPrimaryContainer = Color(0xFF5A2A1B),
+    secondary = Color(0xFF3D3D3A), onSecondary = Color(0xFFFAF9F5),
+    secondaryContainer = Color(0xFFE0DDD2), onSecondaryContainer = Color(0xFF141413),
+    tertiary = Color(0xFFC6613F), onTertiary = Color.White,
+    background = Color(0xFFFAF9F5), onBackground = Color(0xFF141413),
+    surface = Color(0xFFFAF9F5), onSurface = Color(0xFF141413), onSurfaceVariant = Color(0xFF6B6A68),
+    outline = Color(0xFFB0AEA5), outlineVariant = Color(0xFFE0DDD2),
+    surfaceContainer = Color(0xFFF0EEE6), surfaceContainerHigh = Color(0xFFE9E6DC), surfaceContainerHighest = Color(0xFFDEDBD0)
 )
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF9DB0FF), onPrimary = Color(0xFF0A1A6B),
-    primaryContainer = Color(0xFF26346F), onPrimaryContainer = Color(0xFFDDE2FF),
-    background = Color(0xFF0E1015), onBackground = Color(0xFFE5E6EE),
-    surface = Color(0xFF0E1015), onSurface = Color(0xFFE5E6EE), onSurfaceVariant = Color(0xFF9EA2B5),
-    surfaceContainer = Color(0xFF1A1D26), surfaceContainerHigh = Color(0xFF232733), surfaceContainerHighest = Color(0xFF2B3040)
+    primary = Color(0xFFFAF9F5), onPrimary = Color(0xFF141413),
+    primaryContainer = Color(0xFF3B2A23), onPrimaryContainer = Color(0xFFF3B49C),
+    secondary = Color(0xFFB0AEA5), onSecondary = Color(0xFF141413),
+    secondaryContainer = Color(0xFF353330), onSecondaryContainer = Color(0xFFFAF9F5),
+    tertiary = Color(0xFFD97757), onTertiary = Color.White,
+    background = Color(0xFF141413), onBackground = Color(0xFFFAF9F5),
+    surface = Color(0xFF141413), onSurface = Color(0xFFFAF9F5), onSurfaceVariant = Color(0xFFB0AEA5),
+    outline = Color(0xFF6B6A68), outlineVariant = Color(0xFF3A3835),
+    surfaceContainer = Color(0xFF1F1E1D), surfaceContainerHigh = Color(0xFF2A2927), surfaceContainerHighest = Color(0xFF353330)
 )
+private val NovaTypography = Typography().let { t ->
+    val serif = androidx.compose.ui.text.font.FontFamily.Serif
+    t.copy(
+        displayLarge = t.displayLarge.copy(fontFamily = serif), displayMedium = t.displayMedium.copy(fontFamily = serif),
+        displaySmall = t.displaySmall.copy(fontFamily = serif), headlineLarge = t.headlineLarge.copy(fontFamily = serif),
+        headlineMedium = t.headlineMedium.copy(fontFamily = serif), headlineSmall = t.headlineSmall.copy(fontFamily = serif),
+        titleLarge = t.titleLarge.copy(fontFamily = serif)
+    )
+}
 
 class BrowserTab(val id: Int, startUrl: String = "") {
     var url by mutableStateOf(startUrl)
@@ -267,7 +284,7 @@ class MainActivity : ComponentActivity() {
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) { BrowserApp(start, dlTrigger) }
+            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, typography = NovaTypography) { BrowserApp(start, dlTrigger) }
         }
     }
     override fun onNewIntent(intent: Intent) {
@@ -431,9 +448,9 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     val bgInt = cs.surfaceContainerHigh.toArgb()
 
     Box(Modifier.fillMaxSize()) {
-        Surface(Modifier.fillMaxSize(), color = cs.surfaceContainer) {
+        Surface(Modifier.fillMaxSize(), color = cs.background) {
             Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Box(Modifier.weight(1f).fillMaxWidth().background(cs.surfaceContainer)) {
+                Box(Modifier.weight(1f).fillMaxWidth().background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(120)) },
@@ -525,8 +542,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                     itemsIndexed(tabs, key = { _, t -> t.id }) { i, t ->
                         val sel = i == current
                         Surface(
-                            onClick = { current = i; showTabs = false }, shape = RoundedCornerShape(22.dp), color = cs.surfaceContainer,
-                            border = BorderStroke(if (sel) 2.dp else 1.dp, if (sel) cs.primary else cs.surfaceContainerHighest),
+                            onClick = { current = i; showTabs = false }, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh,
+                            border = BorderStroke(if (sel) 2.dp else 1.dp, if (sel) cs.primary else cs.outlineVariant),
                             modifier = Modifier.height(116.dp).animateItem()
                         ) {
                             Box(Modifier.fillMaxSize().padding(14.dp)) {
@@ -553,7 +570,7 @@ fun FindBar(tab: BrowserTab) {
     var q by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { fr.requestFocus() }
-    Surface(Modifier.imePadding().fillMaxWidth(), color = cs.surfaceContainer) {
+    Surface(Modifier.imePadding().fillMaxWidth(), color = cs.background) {
         Row(Modifier.navigationBarsPadding().height(60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(
                 value = q, onValueChange = { q = it; tab.webView?.findAllAsync(it) }, singleLine = true,
@@ -590,10 +607,10 @@ fun BottomPill(
     val p by animateFloatAsState(tab.progress, label = "progress")
     val hasPage = tab.url.isNotBlank()
 
-    Surface(Modifier.imePadding().fillMaxWidth(), shape = RectangleShape, color = cs.surfaceContainer) {
+    Surface(Modifier.imePadding().fillMaxWidth(), shape = RectangleShape, color = cs.background) {
         Column(Modifier.navigationBarsPadding().animateContentSize()) {
             if (tab.loading && !editing) {
-                LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth().height(3.dp), trackColor = Color.Transparent)
+                LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth().height(3.dp), color = cs.tertiary, trackColor = Color.Transparent)
             } else Spacer(Modifier.height(3.dp))
 
             AnimatedContent(
@@ -627,11 +644,11 @@ fun BottomPill(
                         )
                         IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Close, "مسح") }
                     } else {
-                        IconButton(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
+                        RoundBtn(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
                             Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, null)
                         }
                         Row(
-                            Modifier.weight(1f).height(44.dp).clip(CircleShape).background(cs.surfaceContainerHighest)
+                            Modifier.weight(1f).height(44.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
                                 .pointerInput(Unit) {
                                     var dx = 0f; var dy = 0f
                                     detectDragGestures(
@@ -656,13 +673,13 @@ fun BottomPill(
                                 style = MaterialTheme.typography.bodyMedium, color = if (hasPage) cs.onSurface else cs.onSurfaceVariant
                             )
                         }
-                        IconButton(onClick = onTabs) {
+                        RoundBtn(onClick = onTabs) {
                             Box(Modifier.size(24.dp).border(2.dp, cs.onSurface, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
                                 Text("$tabCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             }
                         }
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "المزيد") }
+                            RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "المزيد") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp)) {
                                 DropdownMenuItem(text = { Text("تبويب جديد") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onNewTab() })
                                 DropdownMenuItem(text = { Text("التالي") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) },
@@ -694,6 +711,16 @@ fun BottomPill(
 private class Site(val name: String, val url: String, val glyph: String, val color: Long)
 
 @Composable
+fun RoundBtn(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Box(
+        Modifier.padding(horizontal = 3.dp).size(44.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { CompositionLocalProvider(LocalContentColor provides cs.onSurface) { content() } }
+}
+
+@Composable
 fun Reveal(shown: Boolean, delay: Int, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = shown,
@@ -701,31 +728,30 @@ fun Reveal(shown: Boolean, delay: Int, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-@Composable
-private fun RowScope.Tile(s: Site, onOpen: (String) -> Unit) {
-    val c = Color(s.color)
-    Column(
-        Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).clickable { onOpen(s.url) }.padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(Modifier.size(60.dp).clip(RoundedCornerShape(20.dp)).background(c.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Text(s.glyph, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = c)
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(s.name, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-    }
+private fun groupShape(i: Int, n: Int): RoundedCornerShape {
+    val big = 28.dp; val small = 6.dp
+    val top = if (i == 0) big else small
+    val bot = if (i == n - 1) big else small
+    return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bot, bottomEnd = bot)
 }
 
 @Composable
-private fun ActionCard(title: String, sub: String, highlight: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun IconCircle(content: @Composable () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick, shape = RoundedCornerShape(24.dp), modifier = modifier,
-        color = if (highlight) cs.primaryContainer else cs.surfaceContainerHigh
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+    Box(Modifier.size(40.dp).clip(CircleShape).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) { content() }
+}
+
+@Composable
+private fun ListRow(shape: RoundedCornerShape, title: String, sub: String?, onClick: () -> Unit, leading: @Composable () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(onClick = onClick, shape = shape, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            leading()
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -736,7 +762,6 @@ fun StartPage(
     onTabs: () -> Unit, onDownloads: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
-    val ctx = LocalContext.current
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
@@ -744,79 +769,75 @@ fun StartPage(
     val date = remember { java.text.SimpleDateFormat("EEEE، d MMMM", java.util.Locale.forLanguageTag("ar")).format(java.util.Date()) }
     val sites = remember {
         listOf(
-            Site("Google", "google.com", "G", 0xFF4285F4), Site("YouTube", "youtube.com", "▶", 0xFFFF3D3D),
-            Site("Wikipedia", "wikipedia.org", "W", 0xFF7A8094), Site("GitHub", "github.com", "</>", 0xFF8B5CF6),
-            Site("الخرائط", "maps.google.com", "📍", 0xFF34A853), Site("Gmail", "mail.google.com", "✉", 0xFFEA4335),
-            Site("ترجمة", "translate.google.com", "文", 0xFF1A73E8), Site("الأخبار", "news.google.com", "N", 0xFFFB8C00)
+            Site("Google", "google.com", "G", 0xFF4285F4), Site("YouTube", "youtube.com", "▶", 0xFFFF4D4D),
+            Site("Wikipedia", "wikipedia.org", "W", 0xFF8A8F9E), Site("GitHub", "github.com", "</>", 0xFFA78BFA),
+            Site("Gmail", "mail.google.com", "✉", 0xFFEA4335), Site("الخرائط", "maps.google.com", "📍", 0xFF34A853)
         )
     }
-    val recent = Downloader.tasks.take(2)
+    val latest = Downloader.tasks.firstOrNull()
+    val dlSub = when {
+        activeDl > 0 -> "$activeDl قيد التنزيل"
+        latest != null -> latest.name
+        else -> "لا توجد تنزيلات بعد"
+    }
 
-    Box(
-        Modifier.fillMaxSize().drawBehind {
-            drawRect(Brush.radialGradient(listOf(cs.primary.copy(alpha = 0.20f), Color.Transparent), Offset(size.width * 0.95f, 0f), size.width * 0.9f))
-            drawRect(Brush.radialGradient(listOf(Color(0xFF8B5CF6).copy(alpha = 0.14f), Color.Transparent), Offset(0f, size.height * 0.75f), size.width * 0.9f))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp)) {
+        Reveal(shown, 0) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = cs.surfaceContainerHigh) {
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = cs.tertiary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Nova", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                RoundBtn(onClick = onTabs) {
+                    Box(Modifier.size(22.dp).border(2.dp, cs.onSurface, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                        Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
-    ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 28.dp)) {
-            Reveal(shown, 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(48.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
-                        Text("N", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = cs.onPrimary)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Text(greet, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text(date, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-                    }
-                }
+        Spacer(Modifier.height(40.dp))
+        Reveal(shown, 60) {
+            Column(Modifier.padding(horizontal = 8.dp)) {
+                Text(greet, style = MaterialTheme.typography.displaySmall)
+                Text(date, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
             }
-            Spacer(Modifier.height(26.dp))
-            Reveal(shown, 80) {
-                Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surfaceContainer, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth().height(60.dp)) {
-                    Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Search, null, tint = cs.primary)
-                        Spacer(Modifier.width(12.dp))
-                        Text("ابحث في الويب أو اكتب رابطاً", color = cs.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(26.dp))
+        Reveal(shown, 120) {
+            Surface(onClick = onSearchClick, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                    Text("ابحث في الويب أو اكتب رابطاً", style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+                    Spacer(Modifier.height(28.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
+                        Spacer(Modifier.weight(1f))
+                        Box(Modifier.size(42.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = cs.onPrimary)
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(30.dp))
-            Reveal(shown, 160) {
-                Column {
-                    Text("وصول سريع", style = MaterialTheme.typography.titleSmall, color = cs.onSurfaceVariant)
-                    Spacer(Modifier.height(10.dp))
-                    sites.chunked(4).forEach { row ->
-                        Row(Modifier.fillMaxWidth()) { row.forEach { Tile(it, onOpen) } }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
+        }
+        Spacer(Modifier.height(24.dp))
+        Reveal(shown, 180) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                ListRow(groupShape(0, 2), "التنزيلات", dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(1, 2), "التبويبات", "$tabsCount مفتوحة", onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
             }
-            Spacer(Modifier.height(14.dp))
-            Reveal(shown, 240) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionCard("التنزيلات", if (activeDl > 0) "$activeDl قيد التنزيل" else "الملفات المحمّلة", activeDl > 0, onDownloads, Modifier.weight(1f))
-                    ActionCard("التبويبات", "$tabsCount مفتوحة", false, onTabs, Modifier.weight(1f))
-                }
-            }
-            if (recent.isNotEmpty()) {
-                Reveal(shown, 320) {
-                    Column(Modifier.padding(top = 24.dp)) {
-                        Text("آخر التنزيلات", style = MaterialTheme.typography.titleSmall, color = cs.onSurfaceVariant)
-                        Spacer(Modifier.height(6.dp))
-                        recent.forEach { t ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                                    .clickable { if (t.status == Downloader.DONE) openFile(ctx, t) else onDownloads() }
-                                    .padding(horizontal = 4.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(t.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    if (t.status == Downloader.DONE) fmtSize(t.total) else if (t.total > 0) "${t.downloaded * 100 / t.total}%" else "…",
-                                    style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant
-                                )
+        }
+        Spacer(Modifier.height(24.dp))
+        Reveal(shown, 240) {
+            Column {
+                Text("وصول سريع", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    sites.forEachIndexed { i, st ->
+                        ListRow(groupShape(i, sites.size), st.name, st.url, { onOpen(st.url) }) {
+                            Box(Modifier.size(40.dp).clip(CircleShape).background(Color(st.color).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                                Text(st.glyph, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(st.color))
                             }
                         }
                     }

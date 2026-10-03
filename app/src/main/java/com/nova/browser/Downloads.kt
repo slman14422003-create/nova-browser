@@ -70,7 +70,7 @@ private fun statusLine(t: DlTask): String {
 @Composable
 fun SegmentBar(t: DlTask) {
     val cs = MaterialTheme.colorScheme
-    val track = cs.surfaceContainerHighest; val fill = cs.primary; val gap = cs.surfaceContainer
+    val track = cs.surfaceContainerHighest; val fill = cs.tertiary; val gap = cs.surfaceContainerHigh
     Canvas(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
         drawRect(track)
         val tot = t.total
@@ -93,7 +93,7 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val running = t.status == Downloader.DOWNLOADING || t.status == Downloader.PREPARING
-    Surface(shape = RoundedCornerShape(22.dp), color = cs.surfaceContainer, modifier = modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
@@ -141,7 +141,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = cs.surface) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
+                RoundBtn(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
                 Text("التنزيلات", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (Downloader.tasks.any { it.status == Downloader.DOWNLOADING }) TextButton(onClick = { Downloader.pauseAll() }) { Text("إيقاف الكل") }
             }
