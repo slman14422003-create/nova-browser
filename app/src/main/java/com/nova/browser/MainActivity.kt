@@ -2,6 +2,7 @@ package com.nova.browser
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.View
@@ -171,6 +172,9 @@ fun BrowserApp(startUrl: String) {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.useWideViewPort = true
+                                    settings.userAgentString = settings.userAgentString
+                                        .replace("; wv", "").replace(Regex("Version/\\S+ "), "")
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
                                             tab.loading = true; tab.url = u
@@ -179,8 +183,24 @@ fun BrowserApp(startUrl: String) {
                                             tab.loading = false; tab.url = u
                                             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
                                         }
-                                        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) =
-                                            r.url.scheme?.startsWith("http") != true
+                                        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
+                                            val u = r.url
+                                            return when (u.scheme) {
+                                                null, "http", "https", "about", "data", "blob" -> false
+                                                "intent" -> {
+                                                    runCatching {
+                                                        val i = Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
+                                                        i.getStringExtra("browser_fallback_url")?.let { v.loadUrl(it) }
+                                                    }
+                                                    true
+                                                }
+                                                "tel", "mailto", "sms", "geo" -> {
+                                                    runCatching { v.context.startActivity(Intent(Intent.ACTION_VIEW, u)) }
+                                                    true
+                                                }
+                                                else -> true
+                                            }
+                                        }
                                     }
                                     webChromeClient = object : WebChromeClient() {
                                         override fun onProgressChanged(v: WebView, p: Int) { tab.progress = p / 100f }
