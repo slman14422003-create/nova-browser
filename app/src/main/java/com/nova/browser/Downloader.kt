@@ -224,11 +224,14 @@ object Downloader {
         t.channel = ParcelFileDescriptor.AutoCloseOutputStream(pfd).channel
     }
 
-    fun connsFor(total: Long): Int = when {
-        total < 1_000_000 -> 1
-        total < 8_000_000 -> 4
-        total < 64_000_000 -> 8
-        else -> 16
+    fun connsFor(total: Long): Int {
+        val auto = when {
+            total < 1_000_000 -> 1
+            total < 8_000_000 -> 4
+            total < 64_000_000 -> 8
+            else -> 16
+        }
+        return minOf(auto, if (Prefs.maxConns > 0) Prefs.maxConns else 16)
     }
 
     private fun buildSegs(t: DlTask) {

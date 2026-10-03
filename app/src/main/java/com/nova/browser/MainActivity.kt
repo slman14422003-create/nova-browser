@@ -64,6 +64,12 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.app.ActivityCompat
 import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.activity.SystemBarStyle
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -124,7 +130,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var loading by mutableStateOf(false)
     var canBack by mutableStateOf(false)
     var canForward by mutableStateOf(false)
-    var desktop by mutableStateOf(false)
+    var desktop by mutableStateOf(Prefs.desktop)
     var finding by mutableStateOf(false)
     var findInfo by mutableStateOf("")
     var webView: WebView? = null
@@ -146,7 +152,7 @@ fun normalize(input: String): String {
     return when {
         t.startsWith("http://") || t.startsWith("https://") -> t
         t.contains(".") && !t.contains(" ") -> "https://$t"
-        else -> "https://www.google.com/search?q=" + URLEncoder.encode(t, "UTF-8")
+        else -> Prefs.engines[Prefs.engine].second + URLEncoder.encode(t, "UTF-8")
     }
 }
 
@@ -190,16 +196,14 @@ button{margin-top:22px;padding:12px 30px;border:0;border-radius:24px;background:
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView(ctx).apply {
-    setLayerType(View.LAYER_TYPE_HARDWARE, null)
     with(settings) {
-        javaScriptEnabled = true; domStorageEnabled = true; databaseEnabled = true
+        javaScriptEnabled = Prefs.js; domStorageEnabled = true; databaseEnabled = true
         mediaPlaybackRequiresUserGesture = false
         javaScriptCanOpenWindowsAutomatically = true
         setSupportMultipleWindows(false)
         allowFileAccess = false
         setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        setOffscreenPreRaster(true)
     }
     applyUa(this, tab.desktop)
     CookieManager.getInstance().setAcceptCookie(true)
@@ -280,12 +284,22 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Prefs.init(this)
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         setContent {
-            MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors, typography = NovaTypography) { BrowserApp(start, dlTrigger) }
+            val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
+            SideEffect {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+                )
+            }
+            MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) { BrowserApp(start, dlTrigger) }
         }
+        // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
+        android.os.Looper.myQueue().addIdleHandler { runCatching { WebView(applicationContext).destroy() }; false }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -302,7 +316,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     val prefs = remember { activity.getSharedPreferences("nova", Context.MODE_PRIVATE) }
     val tabs = remember {
         mutableStateListOf<BrowserTab>().apply {
-            prefs.getString("tabs", "")!!.split("\n").filter { it.isNotBlank() }
+            (if (Prefs.restore) prefs.getString("tabs", "")!! else "").split("\n").filter { it.isNotBlank() }
                 .forEachIndexed { i, u -> add(BrowserTab(i, if (u == "-") "" else u)) }
             if (startUrl.isNotBlank()) add(BrowserTab(size, startUrl))
             if (isEmpty()) add(BrowserTab(0, ""))
@@ -313,6 +327,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     var showTabs by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     LaunchedEffect(dlTrigger) { if (dlTrigger > 0) showDownloads = true }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) toast(activity, "فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية")
@@ -362,6 +377,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     fun home(t: BrowserTab) {
         dispose(t)
         t.url = ""; t.title = "تبويب جديد"; t.canBack = false; t.canForward = false; t.loading = false; t.finding = false
+    }
+
+    LaunchedEffect(Prefs.js) { tabs.forEach { it.webView?.settings?.javaScriptEnabled = Prefs.js } }
+    fun clearData() {
+        CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
+        tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
+        decisions.clear()
+        toast(activity, "تم مسح بيانات التصفح")
     }
 
     val handlers = remember {
@@ -442,6 +466,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
     BackHandler(enabled = showDownloads) { showDownloads = false }
+    BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
     val primaryInt = cs.primary.toArgb()
@@ -449,11 +474,14 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
 
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = cs.background) {
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Box(Modifier.weight(1f).fillMaxWidth().background(cs.background)) {
+            Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 63.dp).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
-                        transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(120)) },
+                        transitionSpec = {
+                            if (targetState.second) fadeIn(tween(160)) togetherWith fadeOut(tween(100))
+                            else EnterTransition.None togetherWith ExitTransition.None
+                        },
                         label = "page"
                     ) { (id, blank) ->
                         val tb = tabs.firstOrNull { it.id == id }
@@ -484,15 +512,17 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                         }
                     }
                 }
+                Box(Modifier.align(Alignment.BottomCenter)) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
                     tab = tab, tabCount = tabs.size, editing = editing, setEditing = { editing = it },
                     onGo = { go(tab, it) }, onTabs = { showTabs = true }, onNewTab = { newTab() }, onHome = { home(tab) },
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { showDownloads = true },
+                    onDownloads = { showDownloads = true }, onSettings = { showSettings = true },
                     onSwitch = { d -> current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
+                }
             }
         }
         AnimatedVisibility(
@@ -500,6 +530,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
         ) { DownloadsScreen(onBack = { showDownloads = false }) }
+        AnimatedVisibility(
+            visible = showSettings,
+            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }) }
         customView?.let { v ->
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -598,19 +633,18 @@ fun BottomPill(
     tab: BrowserTab, tabCount: Int, editing: Boolean, setEditing: (Boolean) -> Unit,
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
     onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit,
-    onDownloads: () -> Unit, onSwitch: (Int) -> Unit
+    onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
-    val p by animateFloatAsState(tab.progress, label = "progress")
     val hasPage = tab.url.isNotBlank()
 
     Surface(Modifier.imePadding().fillMaxWidth(), shape = RectangleShape, color = cs.background) {
-        Column(Modifier.navigationBarsPadding().animateContentSize()) {
+        Column(Modifier.navigationBarsPadding()) {
             if (tab.loading && !editing) {
-                LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth().height(3.dp), color = cs.tertiary, trackColor = Color.Transparent)
+                LinearProgressIndicator(progress = { tab.progress }, modifier = Modifier.fillMaxWidth().height(3.dp), color = cs.tertiary, trackColor = Color.Transparent)
             } else Spacer(Modifier.height(3.dp))
 
             AnimatedContent(
@@ -678,29 +712,8 @@ fun BottomPill(
                                 Text("$tabCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             }
                         }
-                        Box {
-                            RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "المزيد") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp)) {
-                                DropdownMenuItem(text = { Text("تبويب جديد") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { menu = false; onNewTab() })
-                                DropdownMenuItem(text = { Text("التالي") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) },
-                                    enabled = tab.canForward, onClick = { menu = false; tab.webView?.goForward() })
-                                DropdownMenuItem(text = { Text(if (tab.loading) "إيقاف" else "تحديث") },
-                                    leadingIcon = { Icon(if (tab.loading) Icons.Default.Close else Icons.Default.Refresh, null) }, enabled = hasPage,
-                                    onClick = { menu = false; if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() })
-                                DropdownMenuItem(text = { Text("بحث في الصفحة") }, leadingIcon = { Icon(Icons.Default.Search, null) }, enabled = hasPage,
-                                    onClick = { menu = false; onFind() })
-                                DropdownMenuItem(text = { Text("نسخة سطح المكتب") }, leadingIcon = { Icon(Icons.Default.Settings, null) },
-                                    trailingIcon = { if (tab.desktop) Icon(Icons.Default.Check, null) }, enabled = hasPage,
-                                    onClick = { menu = false; onDesktop() })
-                                DropdownMenuItem(text = { Text("مشاركة الرابط") }, leadingIcon = { Icon(Icons.Default.Share, null) }, enabled = hasPage,
-                                    onClick = { menu = false; onShare() })
-                                DropdownMenuItem(text = { Text("نسخ الرابط") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, enabled = hasPage,
-                                    onClick = { menu = false; onCopy() })
-                                DropdownMenuItem(text = { Text("التنزيلات") }, leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) },
-                                    onClick = { menu = false; onDownloads() })
-                                DropdownMenuItem(text = { Text("الرئيسية") }, leadingIcon = { Icon(Icons.Default.Home, null) }, onClick = { menu = false; onHome() })
-                            }
-                        }
+                        RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "المزيد") }
+                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome)
                     }
                 }
             }
@@ -728,7 +741,7 @@ fun Reveal(shown: Boolean, delay: Int, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-private fun groupShape(i: Int, n: Int): RoundedCornerShape {
+fun groupShape(i: Int, n: Int): RoundedCornerShape {
     val big = 28.dp; val small = 6.dp
     val top = if (i == 0) big else small
     val bot = if (i == n - 1) big else small
@@ -736,21 +749,82 @@ private fun groupShape(i: Int, n: Int): RoundedCornerShape {
 }
 
 @Composable
-private fun IconCircle(content: @Composable () -> Unit) {
+fun IconCircle(content: @Composable () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(Modifier.size(40.dp).clip(CircleShape).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) { content() }
 }
 
 @Composable
-private fun ListRow(shape: RoundedCornerShape, title: String, sub: String?, onClick: () -> Unit, leading: @Composable () -> Unit) {
+fun ListRow(
+    shape: RoundedCornerShape, title: String, sub: String?, onClick: () -> Unit,
+    enabled: Boolean = true, trailing: (@Composable () -> Unit)? = null, leading: @Composable () -> Unit
+) {
     val cs = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = shape, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        onClick = onClick, enabled = enabled, shape = shape, color = cs.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.4f)
+    ) {
         Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             leading()
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (trailing != null) { Spacer(Modifier.width(8.dp)); trailing() }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.QuickTile(label: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick, enabled = enabled, shape = RoundedCornerShape(24.dp), color = cs.surfaceContainerHigh,
+        modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.4f)
+    ) {
+        Column(Modifier.padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null)
+            Spacer(Modifier.height(6.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MenuSheet(
+    tab: BrowserTab, onDismiss: () -> Unit, onNewTab: () -> Unit, onFind: () -> Unit, onDesktop: () -> Unit,
+    onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit, onHome: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    val hasPage = tab.url.isNotBlank()
+    fun act(a: () -> Unit) { scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); a() } }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.background) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 20.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickTile("التالي", Icons.AutoMirrored.Filled.ArrowForward, tab.canForward) { act { tab.webView?.goForward() } }
+                QuickTile(if (tab.loading) "إيقاف" else "تحديث", if (tab.loading) Icons.Default.Close else Icons.Default.Refresh, hasPage) {
+                    act { if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() }
+                }
+                QuickTile("مشاركة", Icons.Default.Share, hasPage) { act(onShare) }
+                QuickTile("نسخ", Icons.Default.Edit, hasPage) { act(onCopy) }
+            }
+            Spacer(Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                ListRow(groupShape(0, 3), "تبويب جديد", null, { act(onNewTab) }) { IconCircle { Icon(Icons.Default.Add, null) } }
+                ListRow(groupShape(1, 3), "بحث في الصفحة", null, { act(onFind) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Search, null) } }
+                ListRow(groupShape(2, 3), "نسخة سطح المكتب", null, { onDesktop() }, enabled = hasPage,
+                    trailing = { Switch(checked = tab.desktop, onCheckedChange = null) }) { IconCircle { Icon(Icons.Default.Build, null) } }
+            }
+            Spacer(Modifier.height(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                ListRow(groupShape(0, 3), "التنزيلات", null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(1, 3), "الإعدادات", null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
+                ListRow(groupShape(2, 3), "الرئيسية", null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
             }
         }
     }
