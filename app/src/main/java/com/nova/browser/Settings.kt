@@ -42,12 +42,12 @@ object Prefs {
         theme = p.getInt("theme", 0); desktop = p.getBoolean("desktop", false)
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
     }
-    fun setEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
-    fun setTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
-    fun setDesktop(v: Boolean) { desktop = v; sp?.edit()?.putBoolean("desktop", v)?.apply() }
-    fun setJs(v: Boolean) { js = v; sp?.edit()?.putBoolean("js", v)?.apply() }
-    fun setRestore(v: Boolean) { restore = v; sp?.edit()?.putBoolean("restore", v)?.apply() }
-    fun setMaxConns(v: Int) { maxConns = v; sp?.edit()?.putInt("maxc", v)?.apply() }
+    fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
+    fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
+    fun pickDesktop(v: Boolean) { desktop = v; sp?.edit()?.putBoolean("desktop", v)?.apply() }
+    fun pickJs(v: Boolean) { js = v; sp?.edit()?.putBoolean("js", v)?.apply() }
+    fun pickRestore(v: Boolean) { restore = v; sp?.edit()?.putBoolean("restore", v)?.apply() }
+    fun pickMaxConns(v: Int) { maxConns = v; sp?.edit()?.putInt("maxc", v)?.apply() }
 }
 
 private class RowSpec(
@@ -103,13 +103,13 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                 Group("عام", listOf(
                     RowSpec("محرك البحث", Prefs.engines[Prefs.engine].first, Icons.Default.Search, { dialog = "engine" }),
                     RowSpec("المظهر", themeNames[Prefs.theme], Icons.Default.Star, { dialog = "theme" }),
-                    RowSpec("نسخة سطح المكتب افتراضياً", "للتبويبات الجديدة", Icons.Default.Build, { Prefs.setDesktop(!Prefs.desktop) },
+                    RowSpec("نسخة سطح المكتب افتراضياً", "للتبويبات الجديدة", Icons.Default.Build, { Prefs.pickDesktop(!Prefs.desktop) },
                         { Switch(checked = Prefs.desktop, onCheckedChange = null) })
                 ))
                 Group("التصفح والخصوصية", listOf(
-                    RowSpec("JavaScript", "تعطيله قد يكسر بعض المواقع", Icons.Default.Check, { Prefs.setJs(!Prefs.js) },
+                    RowSpec("JavaScript", "تعطيله قد يكسر بعض المواقع", Icons.Default.Check, { Prefs.pickJs(!Prefs.js) },
                         { Switch(checked = Prefs.js, onCheckedChange = null) }),
-                    RowSpec("استعادة التبويبات", "عند فتح التطبيق", Icons.Default.Refresh, { Prefs.setRestore(!Prefs.restore) },
+                    RowSpec("استعادة التبويبات", "عند فتح التطبيق", Icons.Default.Refresh, { Prefs.pickRestore(!Prefs.restore) },
                         { Switch(checked = Prefs.restore, onCheckedChange = null) }),
                     RowSpec("مسح بيانات التصفح", "الكوكيز والذاكرة المؤقتة والسجل", Icons.Default.Delete, { dialog = "clear" })
                 ))
@@ -123,9 +123,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
     }
 
     when (dialog) {
-        "engine" -> ChoiceDialog("محرك البحث", Prefs.engines.map { it.first }, Prefs.engine, { Prefs.setEngine(it) }) { dialog = null }
-        "theme" -> ChoiceDialog("المظهر", themeNames, Prefs.theme, { Prefs.setTheme(it) }) { dialog = null }
-        "conns" -> ChoiceDialog("الحد الأقصى للاتصالات", connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.setMaxConns(connOpts[it]) }) { dialog = null }
+        "engine" -> ChoiceDialog("محرك البحث", Prefs.engines.map { it.first }, Prefs.engine, { Prefs.pickEngine(it) }) { dialog = null }
+        "theme" -> ChoiceDialog("المظهر", themeNames, Prefs.theme, { Prefs.pickTheme(it) }) { dialog = null }
+        "conns" -> ChoiceDialog("الحد الأقصى للاتصالات", connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.pickMaxConns(connOpts[it]) }) { dialog = null }
         "clear" -> AlertDialog(
             onDismissRequest = { dialog = null }, title = { Text("مسح بيانات التصفح؟") },
             text = { Text("سيتم حذف الكوكيز والذاكرة المؤقتة وسجل التبويبات. لن تُحذف التنزيلات.") },
