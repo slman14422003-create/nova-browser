@@ -133,6 +133,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var desktop by mutableStateOf(Prefs.desktop)
     var finding by mutableStateOf(false)
     var findInfo by mutableStateOf("")
+    var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
 }
 
@@ -206,6 +207,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
     }
     applyUa(this, tab.desktop)
+    Perf.tune(this)
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
     setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
@@ -231,6 +233,17 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.loading = false; tab.url = u
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
+            Perf.onPageDone(v)
+        }
+        override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
+            Perf.intercept(r.url, r.isForMainFrame)
+        override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
+            // منع انهيار التطبيق: نُسقط الـ WebView ونعيد إنشاءه بنفس العنوان
+            (v.parent as? ViewGroup)?.removeView(v)
+            runCatching { v.destroy() }
+            tab.webView = null; tab.loading = false
+            tab.epoch++
+            return true
         }
         override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
             if (r.isForMainFrame) {
@@ -280,14 +293,31 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
 
 class MainActivity : ComponentActivity() {
     private var dlTrigger by mutableIntStateOf(0)
+    @Volatile private var ready = false
+
+    companion object { private var cleanedThisProcess = false }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
+        // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
+        splash.setKeepOnScreenCondition { !ready }
+        if (Prefs.autoClean && !cleanedThisProcess) {
+            cleanedThisProcess = true
+            // التنظيف يجري قبل إنشاء أي WebView كي لا تكون ملفات الكاش مفتوحة
+            Thread({
+                runCatching { CacheCleaner.clean(applicationContext) }
+                runOnUiThread { if (!isFinishing && !isDestroyed) showUi(start) else ready = true }
+            }, "nova-clean").start()
+        } else showUi(start)
+    }
+
+    private fun showUi(start: String) {
         setContent {
             val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
             SideEffect {
@@ -298,8 +328,9 @@ class MainActivity : ComponentActivity() {
             }
             MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) { BrowserApp(start, dlTrigger) }
         }
+        ready = true
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
-        android.os.Looper.myQueue().addIdleHandler { runCatching { WebView(applicationContext).destroy() }; false }
+        android.os.Looper.myQueue().addIdleHandler { Perf.warmUp(applicationContext); runCatching { WebView(applicationContext).destroy() }; false }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -386,6 +417,27 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
         decisions.clear()
         toast(activity, "تم مسح بيانات التصفح")
+    }
+
+    fun clearCacheNow() {
+        tabs.forEach { it.webView?.clearCache(true) }
+        Thread { runCatching { CacheCleaner.clean(activity.applicationContext) } }.start()
+        toast(activity, "تم مسح الذاكرة المؤقتة")
+    }
+    // عند ضغط الذاكرة: نحرر الـ WebView للتبويبات الخلفية (تُعاد عند الرجوع لها)
+    DisposableEffect(Unit) {
+        val cb = object : ComponentCallbacks2 {
+            override fun onTrimMemory(level: Int) {
+                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+                    val cur = tabs.getOrNull(current)
+                    tabs.toList().forEach { t -> if (t !== cur && t.webView != null) dispose(t) }
+                }
+            }
+            override fun onConfigurationChanged(c: android.content.res.Configuration) {}
+            @Deprecated("Deprecated in Java") override fun onLowMemory() {}
+        }
+        activity.registerComponentCallbacks(cb)
+        onDispose { activity.unregisterComponentCallbacks(cb) }
     }
 
     val handlers = remember {
@@ -493,7 +545,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                                     onSearchClick = { editing = true }, onOpen = { go(tb, it) },
                                     onTabs = { showTabs = true }, onDownloads = { showDownloads = true }
                                 )
-                            } else key(id) {
+                            } else key(id, tb.epoch) {
                                 AndroidView(
                                     modifier = Modifier.fillMaxSize(),
                                     factory = { ctx ->
@@ -534,7 +586,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             visible = showSettings,
             enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
-        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }) }
+        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }) }
         customView?.let { v ->
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(Color.Black),

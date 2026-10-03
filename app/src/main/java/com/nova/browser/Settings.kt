@@ -27,6 +27,10 @@ object Prefs {
     var js by mutableStateOf(true); private set
     var restore by mutableStateOf(true); private set
     var maxConns by mutableIntStateOf(0); private set       // 0 = تلقائي
+    var autoClean by mutableStateOf(true); private set      // تنظيف المؤقت عند كل تشغيل
+    var blockAds by mutableStateOf(true); private set       // حجب الإعلانات والمتتبعات
+    var dataSaver by mutableStateOf(false); private set     // عدم تحميل الصور
+    var lazyMedia by mutableStateOf(true); private set      // تحميل كسول للصور
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -41,6 +45,8 @@ object Prefs {
         engine = p.getInt("engine", 0).coerceIn(0, engines.lastIndex)
         theme = p.getInt("theme", 0); desktop = p.getBoolean("desktop", false)
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
+        autoClean = p.getBoolean("autoclean", true); blockAds = p.getBoolean("blockads", true)
+        dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true)
     }
     fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
     fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
@@ -48,6 +54,13 @@ object Prefs {
     fun pickJs(v: Boolean) { js = v; sp?.edit()?.putBoolean("js", v)?.apply() }
     fun pickRestore(v: Boolean) { restore = v; sp?.edit()?.putBoolean("restore", v)?.apply() }
     fun pickMaxConns(v: Int) { maxConns = v; sp?.edit()?.putInt("maxc", v)?.apply() }
+    fun pickAutoClean(v: Boolean) { autoClean = v; sp?.edit()?.putBoolean("autoclean", v)?.apply() }
+    fun pickBlockAds(v: Boolean) { blockAds = v; sp?.edit()?.putBoolean("blockads", v)?.apply() }
+    fun pickDataSaver(v: Boolean) { dataSaver = v; sp?.edit()?.putBoolean("saver", v)?.apply() }
+    fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
+
+    /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
+    fun autoCleanEnabled(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("autoclean", true)
 }
 
 private class RowSpec(
@@ -85,9 +98,15 @@ private fun ChoiceDialog(title: String, options: List<String>, selected: Int, on
 }
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: () -> Unit = {}) {
     val cs = MaterialTheme.colorScheme
     var dialog by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var cacheSize by remember { mutableStateOf("…") }
+    var cacheTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(cacheTick) {
+        cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CacheCleaner.format(CacheCleaner.size(ctx)) }
+    }
     val themeNames = listOf("تلقائي (حسب النظام)", "فاتح", "داكن")
     val connOpts = listOf(0, 4, 8, 16)
     val connNames = listOf("تلقائي (حتى 16)", "4", "8", "16")
@@ -111,13 +130,24 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
                         { Switch(checked = Prefs.js, onCheckedChange = null) }),
                     RowSpec("استعادة التبويبات", "عند فتح التطبيق", Icons.Default.Refresh, { Prefs.pickRestore(!Prefs.restore) },
                         { Switch(checked = Prefs.restore, onCheckedChange = null) }),
+                    RowSpec("حجب الإعلانات والمتتبعات", "يسرّع الصفحات ويوفر البيانات", Icons.Default.Check, { Prefs.pickBlockAds(!Prefs.blockAds) },
+                        { Switch(checked = Prefs.blockAds, onCheckedChange = null) }),
                     RowSpec("مسح بيانات التصفح", "الكوكيز والذاكرة المؤقتة والسجل", Icons.Default.Delete, { dialog = "clear" })
+                ))
+                Group("الأداء والذاكرة المؤقتة", listOf(
+                    RowSpec("تنظيف المؤقت عند كل تشغيل", "يُحذف أثناء شاشة البداية (لا يمس الكوكيز والتنزيلات)", Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
+                        { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
+                    RowSpec("مسح الذاكرة المؤقتة الآن", "الحجم الحالي: $cacheSize", Icons.Default.Delete, { dialog = "cache" }),
+                    RowSpec("تحميل كسول للصور", "تحميل الصور عند الاقتراب منها فقط", Icons.Default.KeyboardArrowDown, { Prefs.pickLazyMedia(!Prefs.lazyMedia) },
+                        { Switch(checked = Prefs.lazyMedia, onCheckedChange = null) }),
+                    RowSpec("توفير البيانات", "عدم تحميل الصور (يُطبَّق على التبويبات الجديدة)", Icons.Default.Info, { Prefs.pickDataSaver(!Prefs.dataSaver) },
+                        { Switch(checked = Prefs.dataSaver, onCheckedChange = null) })
                 ))
                 Group("التنزيلات", listOf(
                     RowSpec("الحد الأقصى للاتصالات", connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec("مكان الحفظ", "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.0", Icons.Default.Star, {})))
+                Group("حول", listOf(RowSpec("Nova Browser", "الإصدار 1.1", Icons.Default.Star, {})))
             }
         }
     }
@@ -126,6 +156,12 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit) {
         "engine" -> ChoiceDialog("محرك البحث", Prefs.engines.map { it.first }, Prefs.engine, { Prefs.pickEngine(it) }) { dialog = null }
         "theme" -> ChoiceDialog("المظهر", themeNames, Prefs.theme, { Prefs.pickTheme(it) }) { dialog = null }
         "conns" -> ChoiceDialog("الحد الأقصى للاتصالات", connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.pickMaxConns(connOpts[it]) }) { dialog = null }
+        "cache" -> AlertDialog(
+            onDismissRequest = { dialog = null }, title = { Text("مسح الذاكرة المؤقتة؟") },
+            text = { Text("سيتم حذف ملفات الكاش المؤقتة فقط. قد يبطؤ تحميل الصفحات المرة القادمة قليلاً.") },
+            confirmButton = { TextButton(onClick = { dialog = null; onClearCache(); cacheTick++ }) { Text("مسح") } },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text("إلغاء") } }
+        )
         "clear" -> AlertDialog(
             onDismissRequest = { dialog = null }, title = { Text("مسح بيانات التصفح؟") },
             text = { Text("سيتم حذف الكوكيز والذاكرة المؤقتة وسجل التبويبات. لن تُحذف التنزيلات.") },

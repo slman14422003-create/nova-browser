@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""فحص سريع للمشروع قبل البناء: توازن الأقواس، وجود المكونات في الـ Manifest، واستخدام Prefs.
+الاستخدام:  python3 tools/project_check.py
+"""
+import re, sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SRC = ROOT / "app/src/main/java/com/nova/browser"
+errors = []
+warnings = []
+
+def strip(code: str) -> str:
+    code = re.sub(r'"""[\s\S]*?"""', '""', code)          # نصوص ثلاثية
+    code = re.sub(r"/\*[\s\S]*?\*/", "", code)            # تعليقات كتلية
+    code = re.sub(r"//[^\n]*", "", code)                  # تعليقات سطرية
+    code = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', code)     # نصوص عادية
+    code = re.sub(r"'(?:\\.|[^'\\\n])'", "''", code)      # محارف
+    return code
+
+# 1) توازن الأقواس
+for f in sorted(SRC.glob("*.*")):
+    if f.suffix not in (".kt", ".java"):
+        continue
+    c = strip(f.read_text(encoding="utf-8"))
+    for a, b in ("{}", "()", "[]"):
+        if c.count(a) != c.count(b):
+            warnings.append(f"{f.name}: تحذير (قد يكون إيجابياً كاذباً) عدم توازن {a}{b} ({c.count(a)} مقابل {c.count(b)})")
+
+# 2) مكونات الـ Manifest موجودة
+mf = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+for name in re.findall(r'android:name="\.(\w+)"', mf):
+    if not (SRC / f"{name}.kt").exists() and not (SRC / f"{name}.java").exists():
+        errors.append(f"Manifest يشير إلى .{name} ولا يوجد ملف له")
+
+# 3) كل Prefs.xxx المستخدمة معرّفة
+prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
+defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s+by\s+mutable|fun\s+(\w+)\(", prefs))
+defined = {x for t in defined for x in t if x}
+for f in SRC.glob("*.kt"):
+    for m in set(re.findall(r"\bPrefs\.(\w+)", f.read_text(encoding="utf-8"))):
+        if m not in defined and m != "engines":
+            errors.append(f"{f.name}: Prefs.{m} غير معرّف")
+
+print("\n".join(warnings + errors) if (warnings or errors) else "OK: لا أخطاء ظاهرة")
+if not errors and warnings:
+    print("لا أخطاء مانعة")
+sys.exit(1 if errors else 0)
