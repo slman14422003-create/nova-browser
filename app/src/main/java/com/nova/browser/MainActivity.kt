@@ -2,7 +2,10 @@ package com.nova.browser
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.view.View
+import android.widget.FrameLayout
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -33,6 +36,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
@@ -109,6 +117,21 @@ fun BrowserApp(startUrl: String) {
     var current by remember { mutableIntStateOf(0) }
     var showTabs by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
+    var customView by remember { mutableStateOf<View?>(null) }
+    var customCb by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+    val activity = LocalContext.current as ComponentActivity
+    DisposableEffect(customView != null) {
+        val c = WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+        if (customView != null) {
+            c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            c.hide(WindowInsetsCompat.Type.systemBars())
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        onDispose {
+            c.show(WindowInsetsCompat.Type.systemBars())
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
     val tab = tabs[current.coerceIn(0, tabs.lastIndex)]
     val cs = MaterialTheme.colorScheme
 
@@ -131,13 +154,12 @@ fun BrowserApp(startUrl: String) {
 
     BackHandler(enabled = tab.canBack) { tab.webView?.goBack() }
     BackHandler(enabled = editing) { editing = false }
+    BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 8.dp)) {
-            Box(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
-                    .clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer)
-            ) {
+    Box(Modifier.fillMaxSize()) {
+    Surface(Modifier.fillMaxSize(), color = cs.surfaceContainer) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Box(Modifier.weight(1f).fillMaxWidth().background(cs.surfaceContainer)) {
                 if (tab.url.isBlank()) {
                     StartPage(onSearchClick = { editing = true }, onOpen = { go(tab, it) })
                 } else {
@@ -148,6 +170,7 @@ fun BrowserApp(startUrl: String) {
                                 tab.webView ?: WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
                                             tab.loading = true; tab.url = u
@@ -162,6 +185,10 @@ fun BrowserApp(startUrl: String) {
                                     webChromeClient = object : WebChromeClient() {
                                         override fun onProgressChanged(v: WebView, p: Int) { tab.progress = p / 100f }
                                         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
+                                        override fun onShowCustomView(view: View, cb: CustomViewCallback) {
+                                            customView = view; customCb = cb
+                                        }
+                                        override fun onHideCustomView() { customView = null; customCb = null }
                                     }
                                     tab.webView = this
                                     loadUrl(tab.url)
@@ -177,6 +204,13 @@ fun BrowserApp(startUrl: String) {
                 onNewTab = { newTab() }, onHome = { home(tab) }
             )
         }
+    }
+    customView?.let { v ->
+        AndroidView(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            factory = { ctx -> FrameLayout(ctx).apply { setBackgroundColor(android.graphics.Color.BLACK); addView(v) } }
+        )
+    }
     }
 
     if (showTabs) {
@@ -232,16 +266,16 @@ fun BottomPill(
     val p by animateFloatAsState(tab.progress, label = "progress")
 
     Surface(
-        modifier = Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp), color = cs.surfaceContainer,
-        shadowElevation = 10.dp, tonalElevation = 2.dp
+        modifier = Modifier.imePadding().fillMaxWidth(),
+        shape = RectangleShape, color = cs.surfaceContainer,
+        shadowElevation = 0.dp, tonalElevation = 0.dp
     ) {
-        Column(Modifier.animateContentSize()) {
+        Column(Modifier.navigationBarsPadding().animateContentSize()) {
             if (tab.loading && !editing) {
                 LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth().height(3.dp), trackColor = Color.Transparent)
             } else Spacer(Modifier.height(3.dp))
 
-            Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (editing) {
                     var field by remember { mutableStateOf(TextFieldValue(tab.url, TextRange(0, tab.url.length))) }
                     val fr = remember { FocusRequester() }
