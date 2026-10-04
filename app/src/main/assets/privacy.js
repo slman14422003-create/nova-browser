@@ -6,10 +6,22 @@
   var SITE_LANG = '__LANG__';
   function safe(f) { try { f(); } catch (e) {} }
   function hash(s) { var x = 2166136261; for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return x >>> 0; }
-  var st = (hash(String(location.hostname)) ^ seed) >>> 0;
+  var rv = 0;
+  safe(function () { var a = new Uint32Array(2); crypto.getRandomValues(a); rv = a[0] ^ a[1]; });
+  // حالة المولّد عشوائية في كل سياق (صفحة أو إطار): نفس الاستدعاء في سياقين مختلفين يعطي نتيجتين مختلفتين
+  var st = (hash(String(location.hostname)) ^ seed ^ rv ^ ((Math.random() * 4294967296) >>> 0)) >>> 0;
   // المولّد يتقدّم مع كل استدعاء: كل قراءة (Canvas/WebGL/صوت) تعطي نتيجة مختلفة قليلاً
   function rnd() { st = (Math.imul(st, 1664525) + 1013904223) >>> 0; return st / 4294967296; }
   function def(o, p, v) { try { Object.defineProperty(o, p, { get: function () { return v; }, configurable: true }); } catch (e) {} }
+  function noisePx(a) {
+    var n = a.length, flips = 0, first = -1;
+    for (var i = 0; i < n; i += 4) {
+      if (a[i + 3] === 0) continue;
+      if (first < 0) first = i;
+      if (rnd() < 0.015) { a[i + ((rnd() * 3) | 0)] ^= 1; flips++; }
+    }
+    if (!flips && first >= 0) a[first] ^= 1;   // نضمن تغييراً واحداً على الأقل
+  }
   function jitter(a) { var n = Math.min(a.length, 8192); for (var i = 0; i < n; i += 4) { if (rnd() < 0.12) a[i + ((rnd() * 3) | 0)] ^= 1; } }
 
   // ---------- Navigator ----------
@@ -27,7 +39,17 @@
   });
   safe(function () {
     var u = navigator.userAgentData;
-    if (u) Object.getPrototypeOf(u).getHighEntropyValues = function () { return Promise.resolve({ brands: this.brands, mobile: this.mobile, platform: this.platform }); };
+    if (u) {
+      var maj = ((navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1]) || '120';
+      Object.getPrototypeOf(u).getHighEntropyValues = function () {
+        var b = this.brands || [];
+        return Promise.resolve({
+          brands: b, mobile: this.mobile, platform: this.platform, architecture: '', bitness: '', model: '',
+          platformVersion: '10.0.0', uaFullVersion: maj + '.0.0.0', wow64: false,
+          fullVersionList: b.map(function (x) { return { brand: x.brand, version: maj + '.0.0.0' }; })
+        });
+      };
+    }
   });
 
   // ---------- Canvas 2D ----------
@@ -48,10 +70,13 @@
   // نسخة منقّحة من أي Canvas (2D أو WebGL) تُستخدم عند التصدير
   function noisyCopy(cv) {
     try {
-      if (!cv.width || !cv.height) return null;
-      var t = document.createElement('canvas'); t.width = cv.width; t.height = cv.height;
+      var w = cv.width, h = cv.height;
+      if (!w || !h) return null;
+      var t = document.createElement('canvas'); t.width = w; t.height = h;
       var c = getCtx.call(t, '2d'); c.drawImage(cv, 0, 0);
-      var d = gid.call(c, 0, 0, Math.min(t.width, 32), Math.min(t.height, 32)); jitter(d.data); pid.call(c, d, 0, 0);
+      var rw = w, rh = h;
+      if (w * h > 600000) { rw = Math.min(w, 512); rh = Math.min(h, 512); }   // لوحات كبيرة: جزء فقط للسرعة
+      var d = gid.call(c, 0, 0, rw, rh); noisePx(d.data); pid.call(c, d, 0, 0);
       return t;
     } catch (e) { return null; }
   }
@@ -73,7 +98,7 @@
     OffscreenCanvasRenderingContext2D.prototype.getImageData = function () { var d = ogid.apply(this, arguments); jitter(d.data); return d; };
     var cb = OffscreenCanvas.prototype.convertToBlob;
     OffscreenCanvas.prototype.convertToBlob = function () {
-      try { var c = this.getContext('2d'); if (c) { var d = ogid.call(c, 0, 0, Math.min(this.width, 32), Math.min(this.height, 32)); jitter(d.data); c.putImageData(d, 0, 0); } } catch (e) {}
+      try { var c = this.getContext('2d'); if (c) { var d = ogid.call(c, 0, 0, Math.min(this.width, 512), Math.min(this.height, 512)); noisePx(d.data); c.putImageData(d, 0, 0); } } catch (e) {}
       return cb.apply(this, arguments);
     };
   });

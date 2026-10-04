@@ -9,5 +9,3 @@ keystore.properties
 *.keystore
 signing/
 *.aab
-SECRETS.txt
-nova-signing-keys*/

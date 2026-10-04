@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -142,6 +143,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var saved: android.os.Bundle? = null      // حالة الصفحة عند تحرير الـ WebView لتوفير الذاكرة
     var lastUsed = 0L
     var ytPlaying by mutableStateOf(false)
+    var thumb by mutableStateOf<Bitmap?>(null)   // معاينة مصغّرة للصفحة تظهر في شاشة التبويبات
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
 }
@@ -176,7 +178,7 @@ const val DESKTOP_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTM
 fun applyUa(wv: WebView, desktop: Boolean) {
     val s = wv.settings
     s.userAgentString = if (desktop) DESKTOP_UA
-    else WebSettings.getDefaultUserAgent(wv.context).replace("; wv", "").replace(Regex("Version/\\S+ "), "")
+    else reduceUa(WebSettings.getDefaultUserAgent(wv.context).replace("; wv", "").replace(Regex("Version/\\S+ "), ""))
     s.useWideViewPort = true
     s.loadWithOverviewMode = desktop
 }
@@ -254,7 +256,6 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             Perf.onPageDone(v)
-            Library.visit(u, v.title)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             YtBridge.onPageDone(v)
@@ -415,8 +416,6 @@ class MainActivity : ComponentActivity() {
         Perf.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
-        Library.init(this)
-        Updater.autoCheck(applicationContext)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
@@ -465,6 +464,13 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         if (intent.getBooleanExtra("dl", false)) dlTrigger++
     }
+}
+
+/** وكيل مستخدم مختصر مثل Chrome: بلا موديل الجهاز ولا رقم الإصدار الكامل، فيتطابق مع ملايين المستخدمين (يقلّل التفرّد). */
+fun reduceUa(ua: String): String {
+    if (!Prefs.antiFingerprint) return ua
+    return ua.replace(Regex("Android [^;)]+; [^)]*\\)"), "Android 10; K)")
+        .replace(Regex("Chrome/(\\d+)\\.[\\d.]+"), "Chrome/\$1.0.0.0")
 }
 
 @OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
@@ -527,7 +533,18 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     }
 
     fun go(t: BrowserTab, input: String) { val u = normalize(input); t.url = u; t.webView?.loadUrl(u, Perf.privacyHeaders) }
-    fun newTab() { tabs.add(BrowserTab(nextId++)); current = tabs.lastIndex; showTabs = false; editing = true }
+    fun snap(t: BrowserTab) {   // لقطة مصغّرة (40%) للتبويب الظاهر قبل مغادرته
+        val w = t.webView ?: return
+        if (t.url.isBlank() || w.width <= 0 || w.height <= 0) return
+        runCatching {
+            val k = 0.4f
+            val bmp = Bitmap.createBitmap((w.width * k).toInt().coerceAtLeast(1), (w.height * k).toInt().coerceAtLeast(1), Bitmap.Config.RGB_565)
+            val c = android.graphics.Canvas(bmp); c.scale(k, k); w.draw(c)
+            t.thumb = bmp
+        }
+    }
+    fun openTabs() { snap(tab); showTabs = true }
+    fun newTab() { snap(tab); tabs.add(BrowserTab(nextId++)); current = tabs.lastIndex; showTabs = false; editing = true }
     fun openInNewTab(u: String) { tabs.add(BrowserTab(nextId++, u)); current = tabs.lastIndex }
     fun dispose(t: BrowserTab) {
         YtMedia.tabClosed(t)
@@ -542,6 +559,10 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         dispose(tabs[i]); tabs.removeAt(i)
         if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
         current = current.coerceIn(0, tabs.lastIndex)
+    }
+    fun closeAll() {
+        tabs.toList().forEach { dispose(it) }
+        tabs.clear(); tabs.add(BrowserTab(nextId++)); current = 0; showTabs = false
     }
     fun home(t: BrowserTab) {
         dispose(t); t.saved = null
@@ -582,7 +603,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
         tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
-        decisions.clear(); Library.clearHistory()
+        decisions.clear()
         toast(activity, L("تم مسح بيانات التصفح"))
     }
 
@@ -739,12 +760,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     }
 
     BackHandler(enabled = tab.canBack) { tab.webView?.goBack() }
+    BackHandler(enabled = tab.url.isNotBlank() && !tab.canBack) { home(tab) }   // آخر صفحة في السجل: العودة للرئيسية بدل إغلاق التطبيق
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
     BackHandler(enabled = showDownloads) { showDownloads = false }
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = showPasswords) { showPasswords = false }
-    BackHandler(enabled = Library.show) { Library.show = false }
+    BackHandler(enabled = showTabs) { showTabs = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
     // ربط الـ Activity: مزوّد الـ WebView الحالي + تفعيل الدخول التلقائي للنافذة المنبثقة أثناء تشغيل فيديو يوتيوب
@@ -777,8 +799,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                                 StartPage(
                                     tabsCount = tabs.size,
                                     activeDl = Downloader.tasks.count { it.status == Downloader.DOWNLOADING || it.status == Downloader.PREPARING },
-                                    onSearchClick = { editing = true }, onOpen = { go(tb, it) },
-                                    onTabs = { showTabs = true }, onDownloads = { showDownloads = true }
+                                    onSearchClick = { editing = true }, onAi = { go(tb, AI_MODE_URL) }, onOpen = { go(tb, it) },
+                                    onTabs = { openTabs() }, onDownloads = { showDownloads = true }
                                 )
                             } else key(id, tb.epoch) {
                                 AndroidView(
@@ -812,12 +834,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                 if (!inPip) Box(Modifier.align(Alignment.BottomCenter)) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
                     tab = tab, tabCount = tabs.size, editing = editing, setEditing = { editing = it },
-                    onGo = { go(tab, it) }, onTabs = { showTabs = true }, onNewTab = { newTab() }, onHome = { home(tab) },
+                    onGo = { go(tab, it) }, onTabs = { openTabs() }, onNewTab = { newTab() }, onHome = { home(tab) },
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
                     onDownloads = { showDownloads = true }, onSettings = { showSettings = true }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
-                    onSwitch = { d -> current = (current + d).coerceIn(0, tabs.lastIndex) }
+                    onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
             }
@@ -838,12 +860,17 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
         ) { PasswordsScreen(onBack = { showPasswords = false }) }
         AnimatedVisibility(
-            visible = Library.show,
-            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
-            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
-        ) { LibraryScreen(onBack = { Library.show = false }, onOpen = { Library.show = false; showSettings = false; go(tab, it) }) }
-        if (Updater.promptVisible && Updater.info != null && !inPip) UpdateDialog()
-        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords && !Library.show }?.let { o ->
+            visible = showTabs,
+            enter = fadeIn(tween(200)) + slideInVertically(tween(260)) { it / 8 },
+            exit = fadeOut(tween(150)) + slideOutVertically(tween(200)) { it / 8 }
+        ) {
+            TabSwitcher(
+                tabs = tabs, current = current.coerceIn(0, tabs.lastIndex),
+                onSelect = { i -> if (i != current) snap(tab); current = i; showTabs = false },
+                onClose = { i -> closeTab(i) }, onNew = { newTab() }, onCloseAll = { closeAll() }, onBack = { showTabs = false }
+            )
+        }
+        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
             FillBanner(
                 o, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
                 onClose = { fillOffer = null },
@@ -852,7 +879,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                 }
             )
         }
-        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && !Library.show && isYtVideo(tab.url)) {
+        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && isYtVideo(tab.url)) {
             YtBar(
                 onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(bottom = 76.dp, end = 12.dp)
@@ -911,39 +938,6 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             },
             dismissButton = { TextButton(onClick = { settingsMsg = null }) { Text(L("لاحقاً")) } }
         )
-    }
-
-    if (showTabs) {
-        ModalBottomSheet(onDismissRequest = { showTabs = false }, containerColor = cs.surface) {
-            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(L("التبويبات"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    FilledTonalButton(onClick = { newTab() }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(L("جديد")) }
-                }
-                Spacer(Modifier.height(14.dp))
-                LazyVerticalGrid(columns = GridCells.Fixed(2), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    itemsIndexed(tabs, key = { _, t -> t.id }) { i, t ->
-                        val sel = i == current
-                        Surface(
-                            onClick = { current = i; showTabs = false }, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh,
-                            border = BorderStroke(if (sel) 2.dp else 1.dp, if (sel) cs.primary else cs.outlineVariant),
-                            modifier = Modifier.height(116.dp).animateItem()
-                        ) {
-                            Box(Modifier.fillMaxSize().padding(14.dp)) {
-                                Column(Modifier.align(Alignment.BottomStart).padding(end = 4.dp)) {
-                                    Text(t.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                                    Text(if (t.url.isBlank()) L("صفحة البداية") else hostOf(t.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                                }
-                                IconButton(onClick = { closeTab(i) }, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                                    Icon(Icons.Default.Close, L("إغلاق"), Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1075,7 +1069,7 @@ fun BottomPill(
     }
 }
 
-private class Site(val name: String, val url: String, val glyph: String, val color: Long)
+private class Site(val name: String, val host: String, val url: String, val glyph: String, val color: Long, val icon: ImageVector?)
 
 @Composable
 fun RoundBtn(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
@@ -1180,14 +1174,34 @@ fun MenuSheet(
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                val menuCtx = androidx.compose.ui.platform.LocalContext.current
-                val marked = Library.isBookmarked(tab.url)
-                ListRow(groupShape(0, 5), if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"), null,
-                    { act { val added = Library.toggleBookmark(tab.url, tab.webView?.title ?: tab.title); toast(menuCtx, if (added) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) } }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Star, null) } }
-                ListRow(groupShape(1, 5), L("المكتبة"), L("المفضلة والسجل واستيراد كروم"), { act { Library.show = true } }) { IconCircle { Icon(Icons.Default.Refresh, null) } }
-                ListRow(groupShape(2, 5), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(3, 5), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
-                ListRow(groupShape(4, 5), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
+                ListRow(groupShape(0, 3), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(1, 3), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
+                ListRow(groupShape(2, 3), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
+            }
+        }
+    }
+}
+
+/** عنوان وضع الذكاء الاصطناعي (AI Mode) في بحث جوجل. */
+const val AI_MODE_URL = "https://www.google.com/search?udm=50"
+
+@Composable
+private fun SiteTile(st: Site, modifier: Modifier, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val c = Color(st.color)
+    val wash = remember(st.color) { Brush.verticalGradient(listOf(c.copy(alpha = 0.22f), Color.Transparent)) }
+    Surface(
+        onClick = onClick, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh,
+        border = BorderStroke(1.dp, c.copy(alpha = 0.28f)), modifier = modifier.height(108.dp)
+    ) {
+        Box(Modifier.fillMaxSize().background(wash).padding(16.dp)) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(c.copy(alpha = 0.24f)).align(Alignment.TopStart), contentAlignment = Alignment.Center) {
+                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = c)
+                else Text(st.glyph, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c)
+            }
+            Column(Modifier.align(Alignment.BottomStart)) {
+                Text(st.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(st.host, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1195,22 +1209,28 @@ fun MenuSheet(
 
 @Composable
 fun StartPage(
-    tabsCount: Int, activeDl: Int, onSearchClick: () -> Unit, onOpen: (String) -> Unit,
+    tabsCount: Int, activeDl: Int, onSearchClick: () -> Unit, onAi: () -> Unit, onOpen: (String) -> Unit,
     onTabs: () -> Unit, onDownloads: () -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
+    // حركة دخول واحدة تُنفَّذ في طبقة الرسم (بدون إعادة تركيب) لمنع التقطيع
+    val appear by animateFloatAsState(if (shown) 1f else 0f, tween(340), label = "appear")
     val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
     val greet = when { hour < 5 -> L("ليلة هادئة"); hour < 12 -> L("صباح الخير"); hour < 18 -> L("طاب يومك"); else -> L("مساء الخير") }
     val date = remember { java.text.SimpleDateFormat(L("EEEE، d MMMM"), java.util.Locale.forLanguageTag(I18n.code())).format(java.util.Date()) }
     val sites = remember {
         listOf(
-            Site("Google", "google.com", "G", 0xFF4285F4), Site("YouTube", "youtube.com", "▶", 0xFFFF4D4D),
-            Site("Wikipedia", "wikipedia.org", "W", 0xFF8A8F9E), Site("GitHub", "github.com", "</>", 0xFFA78BFA),
-            Site("Gmail", "mail.google.com", "✉", 0xFFEA4335), Site(L("الخرائط"), "maps.google.com", "📍", 0xFF34A853)
+            Site(L("الخرائط"), "maps.google.com", "https://maps.google.com", "", 0xFF34A853, Icons.Default.Place),
+            Site(L("ترجمة جوجل"), "translate.google.com", "https://translate.google.com", "文A", 0xFF4285F4, null),
+            Site("YouTube", "youtube.com", "https://m.youtube.com", "", 0xFFFF4D4D, Icons.Default.PlayArrow),
+            Site("Gmail", "mail.google.com", "https://mail.google.com", "", 0xFFEA4335, Icons.Default.Email),
+            Site("Wikipedia", "wikipedia.org", "https://www.wikipedia.org", "W", 0xFF8A8F9E, null),
+            Site("GitHub", "github.com", "https://github.com", "</>", 0xFFA78BFA, null)
         )
     }
+    val aiBrush = remember { Brush.linearGradient(listOf(Color(0xFF3B6EF6), Color(0xFF8B5CF6), Color(0xFFE8579B))) }
     val latest = Downloader.tasks.firstOrNull()
     val dlSub = when {
         activeDl > 0 -> ("" + activeDl + L(" قيد التنزيل"))
@@ -1218,68 +1238,82 @@ fun StartPage(
         else -> L("لا توجد تنزيلات بعد")
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp)) {
-        Reveal(shown, 0) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = CircleShape, color = cs.surfaceContainerHigh) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = cs.tertiary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Nova", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                    }
-                }
-                Spacer(Modifier.weight(1f))
-                RoundBtn(onClick = onTabs) {
-                    Box(Modifier.size(22.dp).border(2.dp, cs.onSurface, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
-                        Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
+    Column(
+        Modifier.fillMaxSize().graphicsLayer { alpha = appear; translationY = (1f - appear) * 36f }
+            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = cs.surfaceContainerHigh) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = cs.tertiary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Nova", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 }
             }
-        }
-        Spacer(Modifier.height(40.dp))
-        Reveal(shown, 60) {
-            Column(Modifier.padding(horizontal = 8.dp)) {
-                Text(greet, style = MaterialTheme.typography.displaySmall)
-                Text(date, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
-            }
-        }
-        Spacer(Modifier.height(26.dp))
-        Reveal(shown, 120) {
-            Surface(onClick = onSearchClick, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                    Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
-                    Spacer(Modifier.height(28.dp))
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
-                        Spacer(Modifier.weight(1f))
-                        Box(Modifier.size(42.dp).clip(CircleShape).background(cs.primary), contentAlignment = Alignment.Center) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = cs.onPrimary)
-                        }
-                    }
+            Spacer(Modifier.weight(1f))
+            RoundBtn(onClick = onTabs) {
+                Box(Modifier.size(22.dp).border(2.dp, cs.onSurface, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                    Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }
         }
+        Spacer(Modifier.height(28.dp))
+        Column(Modifier.padding(horizontal = 8.dp)) {
+            Text(greet, style = MaterialTheme.typography.displaySmall)
+            Text(date, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(22.dp))
+
+        // بطاقة وضع الذكاء الاصطناعي: تفتح AI Mode في بحث جوجل
+        Surface(onClick = onAi, shape = RoundedCornerShape(32.dp), color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.background(aiBrush).padding(horizontal = 22.dp, vertical = 22.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+                        Text("✦", color = Color.White, fontSize = 17.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(L("وضع الذكاء الاصطناعي"), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.92f))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(L("اسأل Google أي شيء"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(Modifier.height(4.dp))
+                Text(L("اطرح سؤالك كاملاً واحصل على إجابة مفصّلة"), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.88f))
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.20f)).padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Search, null, tint = Color.White)
+                    Spacer(Modifier.width(10.dp))
+                    Text(L("اسأل أي شيء…"), color = Color.White.copy(alpha = 0.92f), modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        // بحث عادي أو رابط
+        Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 20.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
-        Reveal(shown, 180) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 2), L("التنزيلات"), dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(1, 2), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        Reveal(shown, 240) {
-            Column {
-                Text(L("وصول سريع"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    sites.forEachIndexed { i, st ->
-                        ListRow(groupShape(i, sites.size), st.name, st.url, { onOpen(st.url) }) {
-                            Box(Modifier.size(40.dp).clip(CircleShape).background(Color(st.color).copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                                Text(st.glyph, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(st.color))
-                            }
-                        }
-                    }
+        Text(L("وصول سريع"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            sites.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { st -> SiteTile(st, Modifier.weight(1f)) { onOpen(st.url) } }
                 }
             }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            ListRow(groupShape(0, 2), L("التنزيلات"), dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+            ListRow(groupShape(1, 2), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
         }
     }
 }

@@ -82,8 +82,6 @@ object Perf {
         s.loadsImagesAutomatically = !Prefs.dataSaver
         s.blockNetworkImage = Prefs.dataSaver
         s.setOffscreenPreRaster(false)   // يوفر الذاكرة للتبويبات الخلفية
-        // التبويب الظاهر بأولوية عالية؛ وعملية العرض للتبويب المخفي تفقد أولويتها فيُحرَّر المعالج والذاكرة للتبويب الحالي
-        runCatching { wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true) }
         s.textZoom = Prefs.zoomValues[Prefs.textZoom]
         applyDark(wv)
         wv.isScrollbarFadingEnabled = true
@@ -112,7 +110,6 @@ object Perf {
 
     /** يحقن سكربت الحماية قبل أي سكربت للصفحة (إن كان مدعوماً). */
     fun installPrivacy(wv: WebView) {
-        if (Prefs.fastMode && docStartSupported) runCatching { WebViewCompat.addDocumentStartJavaScript(wv, FAST_JS, setOf("*")) }
         val js = fpScript() ?: return
         if (Prefs.antiFingerprint && docStartSupported)
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*")) }
@@ -120,37 +117,18 @@ object Perf {
 
     /** احتياطي للأجهزة التي لا تدعم الحقن المبكر: يُنفَّذ عند بدء الصفحة. */
     fun onPageStart(wv: WebView) {
-        if (Prefs.fastMode && !docStartSupported) wv.evaluateJavascript(FAST_JS, null)
         if (Prefs.antiFingerprint && !docStartSupported) fpScript()?.let { wv.evaluateJavascript(it, null) }
     }
 
     /** تحميل كسول للصور والإطارات التي لا تحدد loading، لتسريع الصفحات الثقيلة. */
-    private const val LAZY_JS = "(function(){try{if(window.__nz)return;window.__nz=1;var t=0;var f=function(){t=0;var l=document.querySelectorAll('img:not([loading]),iframe:not([loading])');for(var i=0;i<l.length;i++){l[i].loading='lazy';if(l[i].tagName==='IMG')l[i].decoding='async'}};f();var o=new MutationObserver(function(){if(!t)t=setTimeout(f,600)});o.observe(document.documentElement,{childList:true,subtree:true});setTimeout(function(){o.disconnect()},15000)}catch(e){}})();"
+    private const val LAZY_JS = "(function(){try{if(window.__nz)return;window.__nz=1;var t=0;var f=function(){t=0;var l=document.querySelectorAll('img:not([loading])');for(var i=0;i<l.length;i++){l[i].loading='lazy';l[i].decoding='async'}};f();var o=new MutationObserver(function(){if(!t)t=setTimeout(f,600)});o.observe(document.documentElement,{childList:true,subtree:true});setTimeout(function(){o.disconnect()},15000)}catch(e){}})();"
 
     fun onPageDone(wv: WebView) {
         if (Prefs.lazyMedia) wv.evaluateJavascript(LAZY_JS, null)
     }
 
-    /** وضع السلاسة (اختياري): مستمعو اللمس/العجلة سلبيون افتراضياً (تمرير أنعم)، بلا تمرير متحرك ولا ضبابية خلفية ثقيلة. */
-    private const val FAST_JS = "(function(){try{if(window.__nf)return;window.__nf=1;var o=EventTarget.prototype.addEventListener,p={touchstart:1,touchmove:1,wheel:1,mousewheel:1};EventTarget.prototype.addEventListener=function(t,l,x){if(p[t]){if(x===undefined||x===false||x===true)x={capture:x===true,passive:true};else if(typeof x==='object'&&x&&x.passive===undefined)x=Object.assign({},x,{passive:true})}return o.call(this,t,l,x)};var s=document.createElement('style');s.textContent='html{scroll-behavior:auto!important}*{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}';var r=document.head||document.documentElement;if(r)r.appendChild(s)}catch(e){}})();"
-
-    // ---------- تسخين الشبكة ----------
-    private val dnsPool by lazy { java.util.concurrent.Executors.newFixedThreadPool(2) { r -> Thread(r, "nova-dns").apply { isDaemon = true } } }
-    private val dnsSeen = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
-    /** يحلّ اسم النطاق مسبقاً في خيط خلفي (يُسخّن كاش DNS للنظام) فيبدأ أول تحميل أسرع. */
-    fun prefetchDns(url: String?) {
-        val host = runCatching { Uri.parse(url ?: return).host }.getOrNull() ?: return
-        val now = android.os.SystemClock.elapsedRealtime()
-        val last = dnsSeen[host]
-        if (last != null && now - last < 120_000) return
-        dnsSeen[host] = now
-        dnsPool.execute { runCatching { java.net.InetAddress.getAllByName(host) } }
-    }
-
     /** تسخين محرك الويب وفحص الأمان مبكراً لتسريع أول تصفح. */
     fun warmUp(ctx: Context) {
         runCatching { WebView.startSafeBrowsing(ctx.applicationContext, null) }
-        prefetchDns(Prefs.engines[Prefs.engine].second)
     }
 }

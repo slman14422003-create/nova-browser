@@ -118,25 +118,6 @@ object Vault {
 
     fun delete(id: String) { items.removeAll { it.id == id }; persist() }
 
-    /** استيراد دفعة (مضيف، مستخدم، كلمة مرور) بتشفير وحفظ واحد؛ يعيد عدد المضاف أو المحدَّث (المتطابق تماماً يُتجاهل). */
-    @Synchronized
-    fun addAll(list: List<Triple<String, String, String>>): Int {
-        val now = System.currentTimeMillis(); var n = 0
-        val index = HashMap<String, Int>()
-        items.forEachIndexed { i, c -> index[c.host + "\u0000" + c.user] = i }
-        for ((host, user, pass) in list) {
-            val h = norm(host); val k = h + "\u0000" + user
-            val idx = index[k]
-            if (idx != null) {
-                if (items[idx].pass == pass) continue
-                items[idx] = Cred(items[idx].id, h, user, pass, now)
-            } else { items.add(Cred(UUID.randomUUID().toString(), h, user, pass, now)); index[k] = items.lastIndex }
-            n++
-        }
-        if (n > 0) persist()
-        return n
-    }
-
     fun clearAll() { items.clear(); persist() }
 
     // مواقع اختار المستخدم عدم حفظ كلمات المرور لها
