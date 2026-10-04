@@ -35,6 +35,34 @@ public final class CacheCleaner {
         return freed;
     }
 
+    /** الحدّ الذي يُنظَّف عنده الكاش تلقائياً. */
+    private static final long LIMIT = 300L * 1024 * 1024;
+
+    private static File webBase(Context ctx) { return new File(ctx.getApplicationInfo().dataDir, "app_webview/Default"); }
+
+    /** هل يحتاج الكاش تنظيفاً عند هذا التشغيل؟ (قراءة علم محفوظ، فورية). */
+    public static boolean pending(Context ctx) {
+        return ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("cleanpending", false);
+    }
+
+    /** يُستدعى عند الخروج من التطبيق: يقيس الكاش ويضع علماً إن تجاوز الحد. */
+    public static void markIfLarge(Context ctx) {
+        long total = sizeOf(ctx.getCacheDir()) + sizeOf(ctx.getExternalCacheDir())
+                + sizeOf(new File(webBase(ctx), "HTTP Cache")) + sizeOf(new File(webBase(ctx), "Service Worker/CacheStorage"));
+        ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("cleanpending", total > LIMIT).apply();
+    }
+
+    /** تنظيف خفيف: ملفات التحميل المؤقتة فقط، ويُبقي كاش الشيفرة والرسوميات (Code/GPU/Shader) لسرعة التشغيل. */
+    public static long cleanLarge(Context ctx) {
+        long freed = deleteContents(ctx.getCacheDir());
+        File ext = ctx.getExternalCacheDir();
+        if (ext != null) freed += deleteContents(ext);
+        freed += deleteContents(new File(webBase(ctx), "HTTP Cache"));
+        freed += deleteContents(new File(webBase(ctx), "Service Worker/CacheStorage"));
+        ctx.getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("cleanpending", false).apply();
+        return freed;
+    }
+
     /** حجم الكاش الحالي بالبايت (للعرض في الإعدادات). */
     public static long size(Context ctx) {
         long total = sizeOf(ctx.getCacheDir());

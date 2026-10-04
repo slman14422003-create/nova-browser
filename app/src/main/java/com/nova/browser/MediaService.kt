@@ -39,7 +39,11 @@ object YtMedia {
 
     fun control(a: String) {
         val w = wvRef?.get() ?: return
-        w.post { w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl(${JSONObject.quote(a)})", null) }
+        w.post {
+            // الصفحة قد تكون مجمّدة (onPause/pauseTimers) فنوقظها قبل تنفيذ الأمر
+            if (a != "pause") { w.resumeTimers(); w.onResume() }
+            w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl(${JSONObject.quote(a)})", null)
+        }
     }
 
     fun update(ctx: Context, tab: BrowserTab, wv: WebView, o: JSONObject) {

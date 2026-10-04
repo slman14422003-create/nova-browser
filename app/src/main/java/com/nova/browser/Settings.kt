@@ -234,7 +234,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("فحص سلامة الجهاز"), if (warnings.isEmpty()) L("لا مؤشرات مقلقة") else warnings.joinToString(" • "), Icons.Default.Warning, {})
                 ))
                 Group(L("الأداء والذاكرة المؤقتة"), listOf(
-                    RowSpec(L("تنظيف المؤقت عند كل تشغيل"), L("يُحذف أثناء شاشة البداية (لا يمس الكوكيز والتنزيلات)"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
+                    RowSpec(L("تنظيف الكاش الذكي"), L("يُمسح فقط عند تجاوز 300 ميغابايت ويُبقي كاش الشيفرة لسرعة المواقع"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
                     RowSpec(L("مسح الذاكرة المؤقتة الآن"), (L("الحجم الحالي: ") + cacheSize), Icons.Default.Delete, { dialog = "cache" }),
                     RowSpec(L("إيقاف الصفحات في الخلفية"), L("يوفر المعالج والبطارية عند الخروج من التطبيق (يوقف الصوت أيضاً)"), Icons.Default.Refresh, { Prefs.pickPauseBg(!Prefs.pauseBg) },

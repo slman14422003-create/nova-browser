@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.Toast
+import kotlinx.coroutines.flow.debounce
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -253,7 +254,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             Perf.onPageDone(v)
-            CookieManager.getInstance().flush()   // حفظ جلسات تسجيل الدخول فوراً
+            Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             YtBridge.onPageDone(v)
         }
@@ -380,7 +381,10 @@ class MainActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
-        wvProvider()?.evaluateJavascript("window.__novaPip&&window.__novaPip($isInPictureInPictureMode)", null)
+        wvProvider()?.let { w ->
+            if (isInPictureInPictureMode) { w.resumeTimers(); w.onResume() }   // تأكد أن الصفحة غير مجمّدة داخل النافذة المنبثقة
+            w.evaluateJavascript("window.__novaPip&&window.__novaPip($isInPictureInPictureMode);window.__novaBg&&window.__novaBg($isInPictureInPictureMode)", null)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -388,20 +392,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
-        Vault.init(this)
+        Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
-        Security.deviceWarnings(this).forEach { Security.log(L("الجهاز"), it) }
+        Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
         splash.setKeepOnScreenCondition { !ready }
-        if (Prefs.autoClean && !cleanedThisProcess) {
+        if (Prefs.autoClean && !cleanedThisProcess && CacheCleaner.pending(this)) {
             cleanedThisProcess = true
             // التنظيف يجري قبل إنشاء أي WebView كي لا تكون ملفات الكاش مفتوحة
             Thread({
-                runCatching { CacheCleaner.clean(applicationContext) }
+                runCatching { CacheCleaner.cleanLarge(applicationContext) }
                 runOnUiThread { if (!isFinishing && !isDestroyed) showUi(start) else ready = true }
             }, "nova-clean").start()
         } else showUi(start)
@@ -428,6 +432,14 @@ class MainActivity : ComponentActivity() {
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
         android.os.Looper.myQueue().addIdleHandler { Perf.warmUp(applicationContext); runCatching { WebView(applicationContext).destroy() }; false }
     }
+    override fun onStop() {
+        super.onStop()
+        Perf.flushCookies(true)
+        // قياس الكاش في الخلفية؛ التنظيف لا يجري إلا عند تجاوز الحد (يحفظ سرعة المواقع وكاش الشيفرة)
+        if (Prefs.autoClean && !isChangingConfigurations)
+            Thread({ runCatching { CacheCleaner.markIfLarge(applicationContext) } }, "nova-cache").apply { priority = Thread.MIN_PRIORITY }.start()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -435,7 +447,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val activity = LocalContext.current as ComponentActivity
@@ -470,7 +482,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
 
     LaunchedEffect(Unit) {
         snapshotFlow { tabs.joinToString("\n") { it.url.ifBlank { "-" } } to current }
-            .collect { (s, c) -> prefs.edit().putString("tabs", s).putInt("cur", c).apply() }
+            .debounce(700).collect { (s, c) -> prefs.edit().putString("tabs", s).putInt("cur", c).apply() }
     }
 
     var fileCb by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
@@ -592,8 +604,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     DisposableEffect(Unit) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
             val w = tabs.getOrNull(current)?.webView
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && Prefs.pauseBg && customView == null && !YtMedia.playing) { w?.onPause(); w?.pauseTimers() }
-            else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) { w?.resumeTimers(); w?.onResume() }
+            val inPipNow = (activity as? MainActivity)?.inPip == true
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                val ytLive = Prefs.ytBg && (YtMedia.owner != null || inPipNow)
+                if (ytLive) w?.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)   // لا نجمّد الصفحة أثناء تشغيل يوتيوب
+                else if (Prefs.pauseBg && customView == null) { w?.onPause(); w?.pauseTimers() }
+            } else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                w?.resumeTimers(); w?.onResume()
+                if (!inPipNow) w?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null)
+            }
         }
         activity.lifecycle.addObserver(obs)
         onDispose { activity.lifecycle.removeObserver(obs) }

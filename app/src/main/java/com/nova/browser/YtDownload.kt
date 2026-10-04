@@ -84,11 +84,25 @@ class YtInfo(val title: String, val author: String, val videos: List<YtOpt>, val
 object YtFetch {
     private var ready = false
 
+    /** يستخرج معرّف الفيديو ويبني رابط watch نظيفاً (يتخلص من list/pp/start_radio وروابط m. وshorts). */
+    fun canonical(u: String): String {
+        val p = Uri.parse(u)
+        val h = (p.host ?: "").removePrefix("www.")
+        val seg = p.pathSegments
+        val id = when {
+            h == "youtu.be" -> seg.firstOrNull()
+            seg.size >= 2 && (seg[0] == "shorts" || seg[0] == "live" || seg[0] == "embed") -> seg[1]
+            else -> p.getQueryParameter("v")
+        }
+        require(id != null && Regex("[A-Za-z0-9_-]{11}").matches(id)) { "رابط فيديو غير صالح" }
+        return "https://www.youtube.com/watch?v=$id"
+    }
+
     private fun ensure() { if (!ready) { NewPipe.init(NpDownloader()); ready = true } }
 
     fun info(url: String): YtInfo {
         ensure()
-        val si = StreamInfo.getInfo(ServiceList.YouTube, url)
+        val si = StreamInfo.getInfo(ServiceList.YouTube, canonical(url))
         val http = DeliveryMethod.PROGRESSIVE_HTTP
 
         val audiosAll = si.audioStreams.filter { it.deliveryMethod == http && it.isUrl }

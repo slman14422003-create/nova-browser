@@ -35,7 +35,26 @@ object Perf {
     /** بادئات نطاقات فرعية دالّة على إعلانات/تتبع. */
     private val trackerLabels = setOf("ads", "adserver", "adservice", "tracking", "tracker", "pixel", "telemetry", "beacon")
 
+    // ذاكرة قرارات الحجب لكل نطاق: كل صفحة تطلب عشرات الموارد من نفس النطاقات
+    private val verdicts = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     private fun isBlocked(host: String?): Boolean {
+        val h = host ?: return false
+        verdicts[h]?.let { return it }
+        val r = computeBlocked(h)
+        if (verdicts.size > 4000) verdicts.clear()
+        verdicts[h] = r
+        return r
+    }
+
+    private var lastFlush = 0L
+    /** حفظ الكوكيز على القرص بحدّ أقصى مرة كل 15 ثانية (الاستدعاء المتكرر يسبب تقطيعاً). */
+    fun flushCookies(force: Boolean = false) {
+        val n = android.os.SystemClock.elapsedRealtime()
+        if (force || n - lastFlush > 15000) { lastFlush = n; android.webkit.CookieManager.getInstance().flush() }
+    }
+
+    private fun computeBlocked(host: String?): Boolean {
         val h0 = host?.lowercase() ?: return false
         if (h0.substringBefore('.') in trackerLabels && h0.contains('.')) return true
         var h = h0
@@ -102,7 +121,7 @@ object Perf {
     }
 
     /** تحميل كسول للصور والإطارات التي لا تحدد loading، لتسريع الصفحات الثقيلة. */
-    private const val LAZY_JS = "(function(){try{var f=function(){document.querySelectorAll('img:not([loading]),iframe:not([loading])').forEach(function(e){e.loading='lazy';e.decoding='async'})};f();new MutationObserver(f).observe(document.documentElement,{childList:true,subtree:true})}catch(e){}})();"
+    private const val LAZY_JS = "(function(){try{if(window.__nz)return;window.__nz=1;var t=0;var f=function(){t=0;var l=document.querySelectorAll('img:not([loading])');for(var i=0;i<l.length;i++){l[i].loading='lazy';l[i].decoding='async'}};f();var o=new MutationObserver(function(){if(!t)t=setTimeout(f,600)});o.observe(document.documentElement,{childList:true,subtree:true});setTimeout(function(){o.disconnect()},15000)}catch(e){}})();"
 
     fun onPageDone(wv: WebView) {
         if (Prefs.lazyMedia) wv.evaluateJavascript(LAZY_JS, null)

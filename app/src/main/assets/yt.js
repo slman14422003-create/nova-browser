@@ -38,11 +38,32 @@
     } catch (e) {}
   }
 
+  // الخلفية/النافذة المنبثقة: إن أوقف يوتيوب أو المتصفح الفيديو من تلقاء نفسه نستأنفه (ما لم يطلب المستخدم الإيقاف)
+  var bg = false, userPaused = false, lastResume = 0;
+  window.__novaBg = function (b) { bg = !!b; };
+  document.addEventListener('play', function () { userPaused = false; }, true);
+  document.addEventListener('pause', function (ev) {
+    var e = v();
+    if (!BG || !bg || userPaused || !e || ev.target !== e || e.ended) return;
+    var now = Date.now();
+    if (now - lastResume < 400) return;
+    lastResume = now;
+    setTimeout(function () { if (bg && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function () {}); } }, 120);
+  }, true);
+  function clickPlay() {
+    var b = document.querySelector('.ytp-play-button,button.player-control-play-pause-icon,[aria-label="Play"]');
+    if (b) b.click();
+  }
+
   // أوامر من إشعار الوسائط
   window.__novaYtCtl = function (a) {
     var e = v(); if (!e) return;
-    if (a === 'play') e.play();
-    else if (a === 'pause') e.pause();
+    if (a === 'play') {
+      userPaused = false;
+      var p = e.play();
+      if (p && p.catch) p.catch(function () { clickPlay(); });
+    }
+    else if (a === 'pause') { userPaused = true; e.pause(); }
     else if (a === 'fwd') e.currentTime = Math.min(e.duration || 1e9, e.currentTime + 10);
     else if (a === 'back') e.currentTime = Math.max(0, e.currentTime - 10);
     else if (a.indexOf('seek:') === 0) e.currentTime = parseFloat(a.slice(5)) / 1000;
