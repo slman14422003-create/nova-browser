@@ -1,6 +1,8 @@
 package com.nova.browser
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -45,6 +47,9 @@ object Prefs {
     val zoomValues = listOf(85, 100, 115, 130)
     fun siteLangCode() = siteLangs.getOrNull(siteLang)?.first ?: ""
     var pauseBg by mutableStateOf(true); private set        // إيقاف الصفحات عند الخروج من التطبيق
+    var pwMode by mutableIntStateOf(0); private set         // كلمات المرور: 0 مدمج، 1 تعبئة النظام (Samsung Pass…)، 2 معطّل
+    var autoPip by mutableStateOf(true); private set        // نافذة منبثقة تلقائياً لفيديو يوتيوب عند الخروج
+    var ytBg by mutableStateOf(true); private set           // متابعة تشغيل يوتيوب في الخلفية
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -66,7 +71,15 @@ object Prefs {
         antiFingerprint = p.getBoolean("antifp", true); pauseBg = p.getBoolean("pausebg", true)
         lang = p.getInt("lang", 0); siteLang = p.getInt("sitelang", 0).coerceIn(0, siteLangs.lastIndex)
         textZoom = p.getInt("zoom", 1).coerceIn(0, zoomValues.lastIndex); siteDark = p.getBoolean("sitedark", false)
+        pwMode = if (p.contains("pwmode")) p.getInt("pwmode", 0).coerceIn(0, 2) else defaultPwMode(c)
+        autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
     }
+
+    /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
+    private fun defaultPwMode(c: Context): Int = runCatching {
+        val am = c.getSystemService(android.view.autofill.AutofillManager::class.java)
+        if (am != null && am.isEnabled && am.hasEnabledAutofillServices()) 1 else 0
+    }.getOrDefault(0)
     fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
     fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
     fun pickDesktop(v: Boolean) { desktop = v; sp?.edit()?.putBoolean("desktop", v)?.apply() }
@@ -86,6 +99,9 @@ object Prefs {
     fun pickSiteDark(v: Boolean) { siteDark = v; sp?.edit()?.putBoolean("sitedark", v)?.apply() }
     fun pickPauseBg(v: Boolean) { pauseBg = v; sp?.edit()?.putBoolean("pausebg", v)?.apply() }
     fun pickSecureScreen(v: Boolean) { secureScreen = v; sp?.edit()?.putBoolean("secscr", v)?.apply() }
+    fun pickPwMode(v: Int) { pwMode = v; sp?.edit()?.putInt("pwmode", v)?.apply() }
+    fun pickAutoPip(v: Boolean) { autoPip = v; sp?.edit()?.putBoolean("autopip", v)?.apply() }
+    fun pickYtBg(v: Boolean) { ytBg = v; sp?.edit()?.putBoolean("ytbg", v)?.apply() }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -126,8 +142,26 @@ private fun ChoiceDialog(title: String, options: List<String>, selected: Int, on
     )
 }
 
+private fun autofillStatus(c: Context): String {
+    val svc = android.provider.Settings.Secure.getString(c.contentResolver, "autofill_service") ?: ""
+    return when {
+        svc.isBlank() -> L("لا توجد خدمة تعبئة مفعّلة في النظام")
+        svc.contains("samsung", true) -> "Samsung Pass"
+        else -> svc.substringBefore('/').substringAfterLast('.')
+    }
+}
+
+/** يفتح اختيار خدمة التعبئة التلقائية في النظام (حيث تُفعّل Samsung Pass أو غيرها). */
+private fun openAutofillSettings(c: Context) {
+    val pm = c.packageManager
+    val pkg = listOf("com.samsung.android.samsungpassautofill", "com.samsung.android.samsungpass")
+        .firstOrNull { runCatching { pm.getPackageInfo(it, 0) }.isSuccess }
+    val i = Intent(android.provider.Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE).setData(Uri.parse("package:" + (pkg ?: "android")))
+    runCatching { c.startActivity(i) }.onFailure { runCatching { c.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) } }
+}
+
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: () -> Unit = {}, onPasswords: () -> Unit = {}) {
     val cs = MaterialTheme.colorScheme
     var dialog by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -142,6 +176,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val zoomNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
     val connOpts = listOf(0, 4, 8, 16)
     val connNames = listOf(L("تلقائي (حتى 16)"), "4", "8", "16")
+    val pwNames = listOf(L("مدمج في المتصفح"), L("خدمة النظام (Samsung Pass وغيرها)"), L("متوقف"))
 
     Surface(Modifier.fillMaxSize(), color = cs.background) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -165,6 +200,17 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("حجب الإعلانات والمتتبعات"), L("يسرّع الصفحات ويوفر البيانات"), Icons.Default.Check, { Prefs.pickBlockAds(!Prefs.blockAds) },
                         { Switch(checked = Prefs.blockAds, onCheckedChange = null) }),
                     RowSpec(L("مسح بيانات التصفح"), L("الكوكيز والذاكرة المؤقتة والسجل"), Icons.Default.Delete, { dialog = "clear" })
+                ))
+                Group(L("كلمات المرور وتسجيل الدخول"), listOf(
+                    RowSpec(L("كلمات المرور المحفوظة"), Vault.items.size.toString(), Icons.Default.Lock, { onPasswords() }),
+                    RowSpec(L("وضع التعبئة التلقائية"), pwNames[Prefs.pwMode.coerceIn(0, 2)], Icons.Default.Person, { dialog = "pwmode" }),
+                    RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) })
+                ))
+                Group(L("يوتيوب"), listOf(
+                    RowSpec(L("متابعة التشغيل في الخلفية"), L("مع أزرار التحكم في الإشعار وشاشة القفل"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
+                        { Switch(checked = Prefs.ytBg, onCheckedChange = null) }),
+                    RowSpec(L("نافذة منبثقة تلقائية"), L("عند الخروج من التطبيق أثناء تشغيل فيديو"), Icons.Default.Share, { Prefs.pickAutoPip(!Prefs.autoPip) },
+                        { Switch(checked = Prefs.autoPip, onCheckedChange = null) })
                 ))
                 Group(L("اللغة والعرض"), listOf(
                     RowSpec(L("لغة التطبيق"), langNames[Prefs.lang.coerceIn(0, 2)], Icons.Default.Settings, { dialog = "lang" }),
@@ -202,12 +248,13 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("الحد الأقصى للاتصالات"), connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec(L("مكان الحفظ"), "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group(L("حول"), listOf(RowSpec("Nova Browser", L("الإصدار 1.5"), Icons.Default.Star, {})))
+                Group(L("حول"), listOf(RowSpec("Nova Browser", L("الإصدار 1.6"), Icons.Default.Star, {})))
             }
         }
     }
 
     when (dialog) {
+        "pwmode" -> ChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), { Prefs.pickPwMode(it) }) { dialog = null }
         "lang" -> ChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), { Prefs.pickLang(it) }) { dialog = null }
         "sitelang" -> ChoiceDialog(L("لغة المواقع"), Prefs.siteLangs.map { if (it.first.isEmpty()) L(it.second) else it.second }, Prefs.siteLang, { Prefs.pickSiteLang(it) }) { dialog = null }
         "zoom" -> ChoiceDialog(L("حجم الخط في المواقع"), zoomNames, Prefs.textZoom, { Prefs.pickTextZoom(it) }) { dialog = null }

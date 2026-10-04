@@ -6,6 +6,7 @@ updates:
     open-pull-requests-limit: 5
     groups:
       androidx: { patterns: ['androidx.*'] }
+      build-tools: { patterns: ['org.jetbrains.kotlin*', 'com.android.*', 'com.android.tools*'] }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }

@@ -63,6 +63,8 @@ class DlTask(
     @Volatile var channel: FileChannel? = null
     var lastBytes = 0L
     var lastTime = 0L
+    var forcedName: String? = null                    // اسم ملف مفروض (مثل تنزيلات يوتيوب)
+    @Volatile var onDone: ((DlTask) -> Unit)? = null  // يُستدعى عند الاكتمال (لا يُحفظ بعد إعادة التشغيل)
 }
 
 object Downloader {
@@ -108,6 +110,31 @@ object Downloader {
         pool.execute { prepare(t, cd) }
     }
 
+    /** تنزيل باسم ونوع محددين مع استدعاء عند الاكتمال (يُستخدم لتنزيل يوتيوب والدمج). */
+    fun startNamed(
+        c: Context, url: String, ua: String, referer: String, name: String, mime: String,
+        onDone: ((DlTask) -> Unit)? = null
+    ): DlTask {
+        init(c)
+        val t = DlTask(UUID.randomUUID().toString(), url, url, ua, referer)
+        t.forcedName = name; t.name = name; t.mime = mime; t.onDone = onDone
+        tasks.add(0, t)
+        startService()
+        pool.execute { prepare(t, null) }
+        return t
+    }
+
+    /** إضافة ملف مكتمل (ناتج الدمج) إلى قائمة التنزيلات. */
+    fun addFinished(name: String, uri: Uri, mime: String, size: Long) {
+        val t = DlTask(UUID.randomUUID().toString(), uri.toString(), uri.toString(), "", "")
+        t.name = name; t.mime = mime; t.uri = uri; t.total = size; t.downloaded = size
+        t.status = DONE; t.resumable = false
+        main.post { tasks.add(0, t); save() }
+        notifyDone(t)
+    }
+
+    fun removeOnMain(t: DlTask, deleteFile: Boolean) { main.post { remove(t, deleteFile) } }
+
     fun pause(t: DlTask) {
         if (t.status == DOWNLOADING || t.status == PREPARING) { t.stopReason = 1; t.status = PAUSED }
     }
@@ -149,7 +176,7 @@ object Downloader {
             val p = probe(t)
             t.url = p.url; t.total = p.total; t.resumable = p.resumable
             if (p.mime.isNotBlank()) t.mime = p.mime
-            t.name = URLUtil.guessFileName(p.url, p.cd ?: cd, t.mime.ifBlank { null })
+            t.name = t.forcedName ?: URLUtil.guessFileName(p.url, p.cd ?: cd, t.mime.ifBlank { null })
             createSink(t)
             openSink(t)
             if (t.total > 0) runCatching { Os.ftruncate(sinkFd[t.id]!!.fileDescriptor, t.total) }
@@ -351,6 +378,11 @@ object Downloader {
         if (t.total <= 0) t.total = downloadedOf(t)
         t.downloaded = t.total; t.segSnap = emptyList(); t.status = DONE
         save()
+        val cb = t.onDone
+        if (cb == null) notifyDone(t) else pool.execute { runCatching { cb(t) } }
+    }
+
+    private fun notifyDone(t: DlTask) {
         runCatching {
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val pi = PendingIntent.getActivity(app, t.id.hashCode(), i, PendingIntent.FLAG_IMMUTABLE)

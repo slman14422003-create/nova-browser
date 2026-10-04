@@ -9,11 +9,14 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <queries>
         <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
+        <package android:name="com.samsung.android.samsungpassautofill" />
+        <package android:name="com.samsung.android.samsungpass" />
     </queries>
     <application
         android:label="Nova Browser"
@@ -32,7 +35,8 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:hardwareAccelerated="true"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,5 +51,6 @@
             </intent-filter>
         </activity>
     <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service android:name=".MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>

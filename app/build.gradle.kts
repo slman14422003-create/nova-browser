@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -25,8 +26,8 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 6
-        versionName = System.getenv("VERSION_NAME") ?: "1.5"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 7
+        versionName = System.getenv("VERSION_NAME") ?: "1.6"
     }
     signingConfigs {
         if (hasReleaseSigning) create("release") {
@@ -38,7 +39,7 @@ android {
     }
     androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
     lint { abortOnError = false; checkReleaseBuilds = false }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     testOptions { unitTests.isReturnDefaultValues = true }
     buildTypes {
         debug {
@@ -56,10 +57,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true      // مطلوب لمكتبة NewPipeExtractor
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
 }
+
+// بديل kotlinOptions { jvmTarget } المحذوف في Kotlin 2.2+
+kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.12.01")
@@ -73,5 +77,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
     implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.8") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
 }

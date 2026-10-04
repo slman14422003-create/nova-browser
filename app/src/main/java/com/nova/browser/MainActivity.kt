@@ -140,6 +140,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var findInfo by mutableStateOf("")
     var saved: android.os.Bundle? = null      // حالة الصفحة عند تحرير الـ WebView لتوفير الذاكرة
     var lastUsed = 0L
+    var ytPlaying by mutableStateOf(false)
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
 }
@@ -152,7 +153,10 @@ class Handlers(
     val openTab: (String) -> Unit,
     val showCustom: (View, WebChromeClient.CustomViewCallback) -> Unit,
     val hideCustom: () -> Unit,
-    val onDownload: (String, String?, String?, String?, String?) -> Unit
+    val onDownload: (String, String?, String?, String?, String?) -> Unit,
+    val onLoginForm: (BrowserTab, WebView, String) -> Unit = { _, _, _ -> },
+    val onCredential: (String, String, String) -> Unit = { _, _, _ -> },
+    val onYtState: (BrowserTab) -> Unit = {}
 )
 
 fun normalize(input: String): String {
@@ -216,6 +220,9 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     applyUa(this, tab.desktop)
     Perf.tune(this)
     Perf.installPrivacy(this)
+    PasswordBridge.install(this, tab, h)
+    YtBridge.install(this, tab, h)
+    importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, !Prefs.blockThirdCookies)
     setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
@@ -236,12 +243,19 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v) }
+        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); YtMedia.pageChanged(tab, u) }
+        override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
+            // تنقّلات الصفحات أحادية الصفحة (مثل يوتيوب) لا تستدعي onPageStarted
+            if (u.startsWith("http")) { tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u) }
+        }
         override fun onPageFinished(v: WebView, u: String) {
             tab.loading = false; tab.url = u
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             Perf.onPageDone(v)
+            CookieManager.getInstance().flush()   // حفظ جلسات تسجيل الدخول فوراً
+            PasswordBridge.onPageDone(v)
+            YtBridge.onPageDone(v)
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
             Perf.intercept(r.url, r.isForMainFrame)
@@ -342,11 +356,39 @@ class MainActivity : ComponentActivity() {
 
     companion object { private var cleanedThisProcess = false }
 
+    // ---- نافذة منبثقة (Picture-in-Picture) ----
+    var inPip by mutableStateOf(false)
+    var pipAuto = false
+    var wvProvider: () -> WebView? = { null }
+
+    private fun pipParams(): android.app.PictureInPictureParams = android.app.PictureInPictureParams.Builder()
+        .setAspectRatio(android.util.Rational(16, 9))
+        .apply { if (Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(pipAuto) }
+        .build()
+
+    fun refreshPip() { runCatching { setPictureInPictureParams(pipParams()) } }
+
+    fun enterPip() {
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipAuto && Build.VERSION.SDK_INT < 31) enterPip()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip = isInPictureInPictureMode
+        wvProvider()?.evaluateJavascript("window.__novaPip&&window.__novaPip($isInPictureInPictureMode)", null)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
+        Vault.init(this)
         Security.init(this)
         Perf.init(this)
         Security.deviceWarnings(this).forEach { Security.log(L("الجهاز"), it) }
@@ -378,7 +420,7 @@ class MainActivity : ComponentActivity() {
                 // اتجاه الواجهة يتبع لغة التطبيق (العربية RTL، الإنجليزية LTR)
                 CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides
                     if (I18n.isEnglish()) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl) {
-                    BrowserApp(start, dlTrigger)
+                    BrowserApp(start, dlTrigger, inPip)
                 }
             }
         }
@@ -395,7 +437,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserApp(startUrl: String, dlTrigger: Int) {
+fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val activity = LocalContext.current as ComponentActivity
     val cs = MaterialTheme.colorScheme
     val prefs = remember { activity.getSharedPreferences("nova", Context.MODE_PRIVATE) }
@@ -413,6 +455,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     var editing by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showPasswords by remember { mutableStateOf(false) }
+    var pendingSave by remember { mutableStateOf<PendingSave?>(null) }
+    var fillOffer by remember { mutableStateOf<FillOffer?>(null) }
+    var ytUrl by remember { mutableStateOf<String?>(null) }
+    var askedNotif by remember { mutableStateOf(false) }
     LaunchedEffect(dlTrigger) { if (dlTrigger > 0) showDownloads = true }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية"))
@@ -451,6 +498,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     fun newTab() { tabs.add(BrowserTab(nextId++)); current = tabs.lastIndex; showTabs = false; editing = true }
     fun openInNewTab(u: String) { tabs.add(BrowserTab(nextId++, u)); current = tabs.lastIndex }
     fun dispose(t: BrowserTab) {
+        YtMedia.tabClosed(t)
         t.webView?.let { w -> (w.parent as? ViewGroup)?.removeView(w); w.destroy() }
         t.webView = null
     }
@@ -493,6 +541,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         toast(activity, L("سيُرسل عنوان الصفحة إلى Google Translate لترجمتها."))
     }
     LaunchedEffect(Prefs.js) { tabs.forEach { it.webView?.settings?.javaScriptEnabled = Prefs.js } }
+    LaunchedEffect(Prefs.pwMode) {
+        tabs.forEach { it.webView?.importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS }
+        fillOffer = null
+    }
+    LaunchedEffect(tab.url) { if (fillOffer?.host != Vault.norm(hostOf(tab.url))) fillOffer = null }
     fun clearData() {
         CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
@@ -539,7 +592,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     DisposableEffect(Unit) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
             val w = tabs.getOrNull(current)?.webView
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && Prefs.pauseBg && customView == null) { w?.onPause(); w?.pauseTimers() }
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && Prefs.pauseBg && customView == null && !YtMedia.playing) { w?.onPause(); w?.pauseTimers() }
             else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) { w?.resumeTimers(); w?.onResume() }
         }
         activity.lifecycle.addObserver(obs)
@@ -595,6 +648,23 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             openTab = { openInNewTab(it) },
             showCustom = { v, cb -> customView = v; customCb = cb },
             hideCustom = { customView = null; customCb = null },
+            onLoginForm = { t, _, host ->
+                if (t === tabs.getOrNull(current)) {
+                    val cs = Vault.forHost(host)
+                    if (cs.isNotEmpty()) fillOffer = FillOffer(t.id, host, cs)
+                }
+            },
+            onCredential = { host, user, pass ->
+                if (pass.isNotEmpty() && !Vault.isNever(host)) {
+                    val k = Vault.classify(host, user, pass)
+                    if (k != SaveKind.SAME) pendingSave = PendingSave(host, user, pass, k)
+                }
+            },
+            onYtState = {
+                if (Build.VERSION.SDK_INT >= 33 && !askedNotif && !granted(Manifest.permission.POST_NOTIFICATIONS)) {
+                    askedNotif = true; notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            },
             onDownload = { u, ua, cd, mime, ref ->
                 if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, L("هذا النوع من التنزيل غير مدعوم بعد"))
                 else {
@@ -634,7 +704,16 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     BackHandler(enabled = editing) { editing = false }
     BackHandler(enabled = showDownloads) { showDownloads = false }
     BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = showPasswords) { showPasswords = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
+
+    // ربط الـ Activity: مزوّد الـ WebView الحالي + تفعيل الدخول التلقائي للنافذة المنبثقة أثناء تشغيل فيديو يوتيوب
+    val mainAct = activity as? MainActivity
+    SideEffect {
+        mainAct?.wvProvider = { tabs.getOrNull(current)?.webView }
+        val want = Prefs.autoPip && tab.ytPlaying && isYtVideo(tab.url)
+        if (mainAct != null && mainAct.pipAuto != want) { mainAct.pipAuto = want; mainAct.refreshPip() }
+    }
 
     val primaryInt = cs.primary.toArgb()
     val bgInt = cs.surfaceContainerHigh.toArgb()
@@ -642,7 +721,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = cs.background) {
             Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = 63.dp).background(cs.background)) {
+                Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -689,7 +768,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                         }
                     }
                 }
-                Box(Modifier.align(Alignment.BottomCenter)) {
+                if (!inPip) Box(Modifier.align(Alignment.BottomCenter)) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
                     tab = tab, tabCount = tabs.size, editing = editing, setEditing = { editing = it },
                     onGo = { go(tab, it) }, onTabs = { showTabs = true }, onNewTab = { newTab() }, onHome = { home(tab) },
@@ -711,7 +790,27 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             visible = showSettings,
             enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
-        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }) }
+        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }, onPasswords = { showPasswords = true }) }
+        AnimatedVisibility(
+            visible = showPasswords,
+            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+        ) { PasswordsScreen(onBack = { showPasswords = false }) }
+        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
+            FillBanner(
+                o, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
+                onClose = { fillOffer = null },
+                onFill = { c ->
+                    Auth.run(activity, L("تأكيد الهوية لتعبئة كلمة المرور")) { tab.webView?.let { PasswordBridge.fill(it, c) }; fillOffer = null }
+                }
+            )
+        }
+        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && isYtVideo(tab.url)) {
+            YtBar(
+                onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
+                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(bottom = 76.dp, end = 12.dp)
+            )
+        }
         customView?.let { v ->
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -727,6 +826,19 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             confirmButton = { TextButton(onClick = { sitePrompt = null; p.onAllow() }) { Text(L("سماح")) } },
             dismissButton = { TextButton(onClick = { sitePrompt = null; p.onDeny() }) { Text(L("رفض")) } }
         )
+    }
+    pendingSave?.let { p ->
+        SavePasswordDialog(
+            p,
+            onSave = { Vault.upsert("", p.host, p.user, p.pass); pendingSave = null; toast(activity, L("تم حفظ كلمة المرور")) },
+            onNever = { Vault.neverSave(p.host); pendingSave = null },
+            onDismiss = { pendingSave = null }
+        )
+    }
+    ytUrl?.let { u ->
+        YtDownloadSheet(u, onDismiss = { ytUrl = null }, onStarted = {
+            if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS)) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        })
     }
     settingsMsg?.let { m ->
         AlertDialog(
