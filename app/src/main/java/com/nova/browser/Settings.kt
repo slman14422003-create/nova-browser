@@ -50,6 +50,10 @@ object Prefs {
     var pwMode by mutableIntStateOf(0); private set         // كلمات المرور: 0 مدمج، 1 تعبئة النظام (Samsung Pass…)، 2 معطّل
     var autoPip by mutableStateOf(true); private set        // نافذة منبثقة تلقائياً لفيديو يوتيوب عند الخروج
     var ytBg by mutableStateOf(true); private set           // متابعة تشغيل يوتيوب في الخلفية
+    var autoUpdate by mutableStateOf(true); private set     // فحص التحديثات تلقائياً
+    var adaptive by mutableStateOf(true); private set       // التكيف مع حرارة الجهاز/توفير الطاقة
+    var smoothAnim by mutableStateOf(true); private set     // الأنيميشن
+    var cap60 by mutableStateOf(true); private set          // تحديد 60Hz عند السخونة
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -73,6 +77,8 @@ object Prefs {
         textZoom = p.getInt("zoom", 1).coerceIn(0, zoomValues.lastIndex); siteDark = p.getBoolean("sitedark", false)
         pwMode = if (p.contains("pwmode")) p.getInt("pwmode", 0).coerceIn(0, 2) else defaultPwMode(c)
         autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
+        autoUpdate = p.getBoolean("autoupd", true); adaptive = p.getBoolean("adaptive", true)
+        smoothAnim = p.getBoolean("anim", true); cap60 = p.getBoolean("cap60", true)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -102,6 +108,10 @@ object Prefs {
     fun pickPwMode(v: Int) { pwMode = v; sp?.edit()?.putInt("pwmode", v)?.apply() }
     fun pickAutoPip(v: Boolean) { autoPip = v; sp?.edit()?.putBoolean("autopip", v)?.apply() }
     fun pickYtBg(v: Boolean) { ytBg = v; sp?.edit()?.putBoolean("ytbg", v)?.apply() }
+    fun pickAutoUpdate(v: Boolean) { autoUpdate = v; sp?.edit()?.putBoolean("autoupd", v)?.apply() }
+    fun pickAdaptive(v: Boolean) { adaptive = v; sp?.edit()?.putBoolean("adaptive", v)?.apply(); Adaptive.refresh() }
+    fun pickSmoothAnim(v: Boolean) { smoothAnim = v; sp?.edit()?.putBoolean("anim", v)?.apply() }
+    fun pickCap60(v: Boolean) { cap60 = v; sp?.edit()?.putBoolean("cap60", v)?.apply() }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -176,6 +186,12 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val zoomNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
     val connOpts = listOf(0, 4, 8, 16)
     val connNames = listOf(L("تلقائي (حتى 16)"), "4", "8", "16")
+    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { u ->
+        if (u != null) {
+            val n = ChromeImport.importPasswords(ctx, u)
+            toast(ctx, if (n < 0) L("ملف غير صالح. صدّر كلمات المرور من Chrome بصيغة CSV") else L("تم استيراد ") + n)
+        }
+    }
     val pwNames = listOf(L("مدمج في المتصفح"), L("خدمة النظام (Samsung Pass وغيرها)"), L("متوقف"))
 
     Surface(Modifier.fillMaxSize(), color = cs.background) {
@@ -204,7 +220,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Group(L("كلمات المرور وتسجيل الدخول"), listOf(
                     RowSpec(L("كلمات المرور المحفوظة"), Vault.items.size.toString(), Icons.Default.Lock, { onPasswords() }),
                     RowSpec(L("وضع التعبئة التلقائية"), pwNames[Prefs.pwMode.coerceIn(0, 2)], Icons.Default.Person, { dialog = "pwmode" }),
-                    RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) })
+                    RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) }),
+                    RowSpec(L("استيراد من Chrome"), L("ملف CSV مُصدَّر من كلمات مرور Chrome"), Icons.Default.Add, { importPicker.launch("*/*") })
                 ))
                 Group(L("يوتيوب"), listOf(
                     RowSpec(L("متابعة التشغيل في الخلفية"), L("مع أزرار التحكم في الإشعار وشاشة القفل"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
@@ -245,11 +262,27 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("توفير البيانات"), L("عدم تحميل الصور (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Info, { Prefs.pickDataSaver(!Prefs.dataSaver) },
                         { Switch(checked = Prefs.dataSaver, onCheckedChange = null) })
                 ))
+                Group(L("الحرارة والسلاسة"), listOf(
+                    RowSpec(L("التكيف مع حرارة الجهاز"), L("يخفّف الحركة ويحرّر التبويبات الخلفية عند السخونة أو توفير الطاقة"), Icons.Default.Warning, { Prefs.pickAdaptive(!Prefs.adaptive) },
+                        { Switch(checked = Prefs.adaptive, onCheckedChange = null) }),
+                    RowSpec(L("تحديد 60Hz عند السخونة"), L("يقلل استهلاك الشاشة والمعالج"), Icons.Default.Refresh, { Prefs.pickCap60(!Prefs.cap60) },
+                        { Switch(checked = Prefs.cap60, onCheckedChange = null) }),
+                    RowSpec(L("حركات الواجهة"), L("إيقافها يجعل التنقل فورياً ويوفر الطاقة"), Icons.Default.Star, { Prefs.pickSmoothAnim(!Prefs.smoothAnim) },
+                        { Switch(checked = Prefs.smoothAnim, onCheckedChange = null) })
+                ))
                 Group(L("التنزيلات"), listOf(
                     RowSpec(L("الحد الأقصى للاتصالات"), connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec(L("مكان الحفظ"), "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group(L("حول"), listOf(RowSpec("Nova Browser", L("الإصدار 1.6"), Icons.Default.Star, {})))
+                Group(L("حول"), listOf(
+                    RowSpec("Nova Browser", L("الإصدار ") + BuildConfig.VERSION_NAME, Icons.Default.Star, {}),
+                    RowSpec(L("التحديث التلقائي"), L("فحص الإصدارات الجديدة من GitHub كل 12 ساعة"), Icons.Default.Refresh, { Prefs.pickAutoUpdate(!Prefs.autoUpdate) },
+                        { Switch(checked = Prefs.autoUpdate, onCheckedChange = null) }),
+                    RowSpec(L("التحقق من تحديث الآن"), Updater.available?.let { L("إصدار جديد: ") + it.version } ?: if (Updater.checking) "…" else L("اضغط للفحص"), Icons.Default.Info, {
+                        val a = Updater.available
+                        if (a != null) Updater.open(ctx) else Updater.check(ctx, true) { r -> android.os.Handler(android.os.Looper.getMainLooper()).post { toast(ctx, if (r == true) L("يوجد إصدار جديد") else L("أنت على أحدث إصدار")) } }
+                    })
+                ))
             }
         }
     }

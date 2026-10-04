@@ -26,8 +26,10 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 7
-        versionName = System.getenv("VERSION_NAME") ?: "1.7.0"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 8
+        versionName = System.getenv("VERSION_NAME") ?: "1.8.0"
+        // مستودع التحديثات: يُملأ تلقائياً في GitHub Actions (owner/repo)، فارغ محلياً = التحديث معطّل
+        buildConfigField("String", "UPDATE_REPO", "\"" + (System.getenv("GITHUB_REPOSITORY") ?: "") + "\"")
         ndk { abiFilters += listOf("arm64-v8a") }   // يقلّل حجم الـ APK كثيراً (مكتبات FFmpeg)
     }
     signingConfigs {
@@ -61,7 +63,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true      // مطلوب لمكتبة NewPipeExtractor
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }   // BuildConfig مطلوب لـ Updater (كان سبب الخطأ)
 }
 
 // بديل kotlinOptions { jvmTarget } المحذوف في Kotlin 2.2+

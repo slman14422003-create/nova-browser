@@ -80,6 +80,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -144,6 +145,8 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var lastUsed = 0L
     var ytPlaying by mutableStateOf(false)
     var thumb by mutableStateOf<Bitmap?>(null)   // معاينة مصغّرة للصفحة تظهر في شاشة التبويبات
+    var tag by mutableIntStateOf(0)        // علامة لونية: 0 بلا، 1..6 ألوان
+    var pinned by mutableStateOf(false)    // تبويب مثبّت (لا يُحرَّر ولا يُغلق بـ"إغلاق الكل")
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
 }
@@ -411,6 +414,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
+        Adaptive.init(this)
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
@@ -430,8 +434,18 @@ class MainActivity : ComponentActivity() {
         } else showUi(start)
     }
 
+    /** عند السخونة/توفير الطاقة: تحديد معدل التحديث 60Hz (يخفض حرارة الشاشة والمعالج على شاشات 90/120Hz). */
+    private fun applyRefreshCap(level: Int) {
+        val want = if (Prefs.cap60 && level >= 1) 60f else 0f
+        val lp = window.attributes
+        if (lp.preferredRefreshRate != want) { lp.preferredRefreshRate = want; window.attributes = lp }
+    }
+
     private fun showUi(start: String) {
         setContent {
+            val lvl = Adaptive.level
+            LaunchedEffect(lvl, Prefs.cap60) { applyRefreshCap(lvl) }
+            LaunchedEffect(Unit) { Updater.check(applicationContext) }
             val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
             SideEffect {
                 enableEdgeToEdge(
@@ -485,6 +499,10 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                 .forEachIndexed { i, u -> add(BrowserTab(i, if (u == "-") "" else u)) }
             if (startUrl.isNotBlank()) add(BrowserTab(size, startUrl))
             if (isEmpty()) add(BrowserTab(0, ""))
+            if (Prefs.restore) prefs.getString("meta", "")!!.split(",").forEachIndexed { i, m ->
+                val t = getOrNull(i) ?: return@forEachIndexed
+                t.tag = m.substringBefore(':').toIntOrNull()?.coerceIn(0, 6) ?: 0; t.pinned = m.substringAfter(':', "0") == "1"
+            }
         }
     }
     var nextId by remember { mutableIntStateOf(tabs.size + 1000) }
@@ -507,8 +525,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val tab = tabs[current.coerceIn(0, tabs.lastIndex)]
 
     LaunchedEffect(Unit) {
-        snapshotFlow { tabs.joinToString("\n") { it.url.ifBlank { "-" } } to current }
-            .debounce(700).collect { (s, c) -> prefs.edit().putString("tabs", s).putInt("cur", c).apply() }
+        snapshotFlow { Triple(tabs.joinToString("\n") { it.url.ifBlank { "-" } }, current, tabs.joinToString(",") { it.tag.toString() + ":" + (if (it.pinned) "1" else "0") }) }
+            .debounce(700).collect { (s, c, m) -> prefs.edit().putString("tabs", s).putInt("cur", c).putString("meta", m).apply() }
     }
 
     var fileCb by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
@@ -536,6 +554,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     fun snap(t: BrowserTab) {   // لقطة مصغّرة (40%) للتبويب الظاهر قبل مغادرته
         val w = t.webView ?: return
         if (t.url.isBlank() || w.width <= 0 || w.height <= 0) return
+        if (Adaptive.level >= 2 && t.thumb != null) return   // وفّر المعالج عند السخونة
         runCatching {
             val k = 0.4f
             val bmp = Bitmap.createBitmap((w.width * k).toInt().coerceAtLeast(1), (w.height * k).toInt().coerceAtLeast(1), Bitmap.Config.RGB_565)
@@ -561,8 +580,21 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         current = current.coerceIn(0, tabs.lastIndex)
     }
     fun closeAll() {
-        tabs.toList().forEach { dispose(it) }
-        tabs.clear(); tabs.add(BrowserTab(nextId++)); current = 0; showTabs = false
+        tabs.toList().filter { !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
+        current = current.coerceIn(0, tabs.lastIndex); showTabs = false
+    }
+    fun duplicate(i: Int) { val o = tabs[i]; snap(o); tabs.add(i + 1, BrowserTab(nextId++, o.url).also { it.tag = o.tag }); current = i + 1; showTabs = false }
+    fun closeOthers(i: Int) {
+        val keep = tabs[i]
+        tabs.toList().filter { it !== keep && !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        current = tabs.indexOf(keep).coerceAtLeast(0)
+    }
+    fun closeByTag(tag: Int) {
+        val cur = tabs.getOrNull(current)
+        tabs.toList().filter { it.tag == tag && !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
+        current = (cur?.let { tabs.indexOf(it) } ?: -1).let { if (it < 0) 0 else it }
     }
     fun home(t: BrowserTab) {
         dispose(t); t.saved = null
@@ -633,13 +665,14 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         val am = activity.getSystemService(android.app.ActivityManager::class.java)
         if (am.isLowRamDevice) 2 else if (am.memoryClass >= 256) 5 else 3
     }
-    LaunchedEffect(current, tabs.size) {
+    LaunchedEffect(current, tabs.size, Adaptive.level) {
+        val cap = Adaptive.liveCap(maxLive)
         val cur = tabs.getOrNull(current)
         cur?.lastUsed = android.os.SystemClock.elapsedRealtime()
         kotlinx.coroutines.delay(1200)   // بعد إنشاء الـ WebView الجديد
         val live = tabs.filter { it.webView != null }
-        if (live.size > maxLive)
-            live.filter { it !== cur }.sortedBy { it.lastUsed }.take(live.size - maxLive).forEach { discard(it) }
+        if (live.size > cap)
+            live.filter { it !== cur }.sortedWith(compareBy({ it.pinned }, { it.lastUsed })).take(live.size - cap).forEach { discard(it) }
     }
     // عند الخروج من التطبيق: إيقاف مؤقتات الصفحات لتوفير المعالج والبطارية
     DisposableEffect(Unit) {
@@ -788,7 +821,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
-                            if (targetState.second) fadeIn(tween(160)) togetherWith fadeOut(tween(100))
+                            if (targetState.second) fadeIn(tween(Adaptive.ms(140))) togetherWith fadeOut(tween(Adaptive.ms(90)))
                             else EnterTransition.None togetherWith ExitTransition.None
                         },
                         label = "page"
@@ -846,28 +879,29 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         }
         AnimatedVisibility(
             visible = showDownloads,
-            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
-            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
+            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
         ) { DownloadsScreen(onBack = { showDownloads = false }) }
         AnimatedVisibility(
             visible = showSettings,
-            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
-            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
+            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
         ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }, onPasswords = { showPasswords = true }) }
         AnimatedVisibility(
             visible = showPasswords,
-            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
-            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
+            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
         ) { PasswordsScreen(onBack = { showPasswords = false }) }
         AnimatedVisibility(
             visible = showTabs,
-            enter = fadeIn(tween(200)) + slideInVertically(tween(260)) { it / 8 },
-            exit = fadeOut(tween(150)) + slideOutVertically(tween(200)) { it / 8 }
+            enter = fadeIn(tween(Adaptive.ms(180))) + slideInVertically(tween(Adaptive.ms(240), easing = FastOutSlowInEasing)) { it / 12 },
+            exit = fadeOut(tween(Adaptive.ms(130))) + slideOutVertically(tween(Adaptive.ms(180), easing = FastOutSlowInEasing)) { it / 12 }
         ) {
             TabSwitcher(
                 tabs = tabs, current = current.coerceIn(0, tabs.lastIndex),
                 onSelect = { i -> if (i != current) snap(tab); current = i; showTabs = false },
-                onClose = { i -> closeTab(i) }, onNew = { newTab() }, onCloseAll = { closeAll() }, onBack = { showTabs = false }
+                onClose = { i -> closeTab(i) }, onNew = { newTab() }, onCloseAll = { closeAll() }, onBack = { showTabs = false },
+                onDuplicate = { i -> duplicate(i) }, onCloseOthers = { i -> closeOthers(i) }, onCloseTag = { g -> closeByTag(g) }
             )
         }
         fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
@@ -992,7 +1026,7 @@ fun BottomPill(
 
             AnimatedContent(
                 targetState = editing,
-                transitionSpec = { fadeIn(tween(140)) togetherWith fadeOut(tween(90)) },
+                transitionSpec = { fadeIn(tween(Adaptive.ms(120))) togetherWith fadeOut(tween(Adaptive.ms(80))) },
                 label = "bar"
             ) { isEditing ->
                 Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1085,7 +1119,7 @@ fun RoundBtn(onClick: () -> Unit, enabled: Boolean = true, content: @Composable 
 fun Reveal(shown: Boolean, delay: Int, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(tween(420, delay)) + slideInVertically(tween(420, delay)) { it / 6 }
+        enter = fadeIn(tween(Adaptive.ms(320), delay.coerceAtMost(240))) + slideInVertically(tween(Adaptive.ms(320), delay.coerceAtMost(240), FastOutSlowInEasing)) { it / 8 }
     ) { content() }
 }
 
@@ -1216,7 +1250,7 @@ fun StartPage(
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     // حركة دخول واحدة تُنفَّذ في طبقة الرسم (بدون إعادة تركيب) لمنع التقطيع
-    val appear by animateFloatAsState(if (shown) 1f else 0f, tween(340), label = "appear")
+    val appear by animateFloatAsState(if (shown) 1f else 0f, tween(Adaptive.ms(280)), label = "appear")
     val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
     val greet = when { hour < 5 -> L("ليلة هادئة"); hour < 12 -> L("صباح الخير"); hour < 18 -> L("طاب يومك"); else -> L("مساء الخير") }
     val date = remember { java.text.SimpleDateFormat(L("EEEE، d MMMM"), java.util.Locale.forLanguageTag(I18n.code())).format(java.util.Date()) }
