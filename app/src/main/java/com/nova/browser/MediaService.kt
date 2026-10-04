@@ -25,6 +25,18 @@ import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.net.URL
 
+/** سجل تشخيص تشغيل يوتيوب (يُعرض في الإعدادات ويمكن نسخه). */
+object YtLog {
+    private val lines = ArrayDeque<String>()
+    private val fmt = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+    @Synchronized fun add(m: String) {
+        lines.addLast(fmt.format(java.util.Date()) + "  " + m)
+        while (lines.size > 160) lines.removeFirst()
+    }
+    @Synchronized fun text(): String = lines.joinToString("\n")
+    @Synchronized fun clear() = lines.clear()
+}
+
 /** حالة تشغيل يوتيوب الحالية + أوامر التحكم من إشعار الوسائط/شاشة القفل/Now Bar. */
 object YtMedia {
     @Volatile var playing = false
@@ -101,7 +113,9 @@ object YtBridge {
                 val data = message.data ?: return@WebMessageListener
                 if (data.length > 6000) return@WebMessageListener
                 val o = runCatching { JSONObject(data) }.getOrNull() ?: return@WebMessageListener
-                if (o.optString("t") != "state") return@WebMessageListener
+                val type = o.optString("t")
+                if (type == "log") { YtLog.add(o.optString("m")); return@WebMessageListener }
+                if (type != "state") return@WebMessageListener
                 tab.ytPlaying = o.optBoolean("playing")
                 if (!isYtVideo(view.url ?: "")) return@WebMessageListener   // لا إشعار لمعاينات الصفحة الرئيسية
                 YtMedia.update(view.context.applicationContext, tab, view, o)

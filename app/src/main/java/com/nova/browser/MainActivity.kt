@@ -360,6 +360,7 @@ class MainActivity : ComponentActivity() {
     // ---- نافذة منبثقة (Picture-in-Picture) ----
     var inPip by mutableStateOf(false)
     var pipAuto = false
+    var fullscreenActive = false
     var wvProvider: () -> WebView? = { null }
 
     private fun pipParams(): android.app.PictureInPictureParams = android.app.PictureInPictureParams.Builder()
@@ -373,6 +374,20 @@ class MainActivity : ComponentActivity() {
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
     }
 
+    // أثناء أي إيقاف مؤقت للـ Activity (زر الرئيسية/المنبثق) نعلم الصفحة أنها في الخلفية قبل أن يتصرف يوتيوب
+    override fun onPause() {
+        super.onPause()
+        if (Prefs.ytBg && YtMedia.owner != null) {
+            YtLog.add("native onPause")
+            wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!inPip) wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null)
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipAuto && Build.VERSION.SDK_INT < 31) enterPip()
@@ -383,7 +398,9 @@ class MainActivity : ComponentActivity() {
         inPip = isInPictureInPictureMode
         wvProvider()?.let { w ->
             if (isInPictureInPictureMode) { w.resumeTimers(); w.onResume() }   // تأكد أن الصفحة غير مجمّدة داخل النافذة المنبثقة
-            w.evaluateJavascript("window.__novaPip&&window.__novaPip($isInPictureInPictureMode);window.__novaBg&&window.__novaBg($isInPictureInPictureMode)", null)
+            YtLog.add("native pip=$isInPictureInPictureMode fullscreen=$fullscreenActive")
+            val css = if (fullscreenActive) "" else "window.__novaPip&&window.__novaPip($isInPictureInPictureMode);"
+            w.evaluateJavascript(css + "window.__novaBg&&window.__novaBg($isInPictureInPictureMode)", null)
         }
     }
 
@@ -730,7 +747,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val mainAct = activity as? MainActivity
     SideEffect {
         mainAct?.wvProvider = { tabs.getOrNull(current)?.webView }
-        val want = Prefs.autoPip && tab.ytPlaying && isYtVideo(tab.url)
+        mainAct?.fullscreenActive = customView != null
+        val want = Prefs.autoPip && ((tab.ytPlaying && isYtVideo(tab.url)) || customView != null)
         if (mainAct != null && mainAct.pipAuto != want) { mainAct.pipAuto = want; mainAct.refreshPip() }
     }
 
@@ -831,10 +849,22 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             )
         }
         customView?.let { v ->
-            AndroidView(
-                modifier = Modifier.fillMaxSize().background(Color.Black),
-                factory = { ctx -> FrameLayout(ctx).apply { setBackgroundColor(android.graphics.Color.BLACK); (v.parent as? ViewGroup)?.removeView(v); addView(v) } }
-            )
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx -> FrameLayout(ctx).apply { setBackgroundColor(android.graphics.Color.BLACK); (v.parent as? ViewGroup)?.removeView(v); addView(v) } }
+                )
+                // زر النافذة المنبثقة فوق الفيديو في وضع ملء الشاشة (الأكثر موثوقية)
+                if (!inPip) Surface(
+                    onClick = { mainAct?.enterPip() }, shape = CircleShape, color = Color.Black.copy(alpha = 0.5f),
+                    modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                ) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = Color.White); Spacer(Modifier.width(6.dp))
+                        Text(L("منبثق"), style = MaterialTheme.typography.labelLarge, color = Color.White)
+                    }
+                }
+            }
         }
     }
 

@@ -14,3 +14,8 @@
 -dontwarn com.google.re2j.**
 -dontwarn edu.umd.cs.findbugs.annotations.**
 -dontwarn javax.annotation.**
+-dontwarn com.google.protobuf.**
+-dontwarn sun.misc.Unsafe
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn org.checkerframework.**
+-dontwarn javax.lang.model.**

@@ -11,6 +11,9 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "سجل التشخيص" to "Diagnostics log",
+        "يساعد في معرفة سبب توقف الفيديو (انسخه وأرسله)" to "Helps find why the video stops (copy and send it)",
+        "لا يوجد سجل بعد" to "No log yet",
         "إخفاء" to "Hide",
         "إضافة" to "Add",
         "إضافة كلمة مرور" to "Add password",

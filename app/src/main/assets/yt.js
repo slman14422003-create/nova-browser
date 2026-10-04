@@ -2,9 +2,16 @@
   if (window.__novaYt || window.top !== window || !window.NovaYt) return;
   window.__novaYt = 1;
   var BG = __BG__;
+  var bg = false, userPaused = false, lastResume = 0, nlog = 0;
 
-  function v() { return document.querySelector('video'); }
   function send(o) { try { window.NovaYt.postMessage(JSON.stringify(o)); } catch (e) {} }
+  function log(m) { if (nlog++ < 150) send({ t: 'log', m: String(m).slice(0, 400) }); }
+  function v() { return document.querySelector('video'); }
+
+  // القيمة الحقيقية لرؤية الصفحة (قبل التمويه) للتشخيص
+  var realVis = function () { try { return Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState').get.call(document); } catch (e) { return '?'; } };
+  log('script loaded ' + location.pathname + ' BG=' + BG);
+
   function meta() {
     var m = navigator.mediaSession && navigator.mediaSession.metadata;
     var t = (m && m.title) || document.title.replace(/ - YouTube$/, '');
@@ -27,6 +34,12 @@
   ['play', 'pause', 'ended', 'seeked', 'loadedmetadata'].forEach(function (n) {
     document.addEventListener(n, function () { setTimeout(state, 50); }, true);
   });
+  ['play', 'pause', 'waiting', 'stalled', 'ended', 'error', 'emptied'].forEach(function (n) {
+    document.addEventListener(n, function (ev) {
+      if (ev.target && ev.target.tagName === 'VIDEO')
+        log('event ' + n + ' t=' + Math.round(ev.target.currentTime) + ' vis=' + realVis() + ' bg=' + bg);
+    }, true);
+  });
   setInterval(function () { var e = v(); if (e && !e.paused) state(); }, 5000);
 
   // تشغيل في الخلفية: إخفاء تغيّر الرؤية عن الصفحة حتى لا يوقف يوتيوب التشغيل
@@ -34,13 +47,31 @@
     try {
       Object.defineProperty(document, 'hidden', { get: function () { return false; }, configurable: true });
       Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; }, configurable: true });
-      document.addEventListener('visibilitychange', function (e) { e.stopImmediatePropagation(); }, true);
+      Object.defineProperty(document, 'webkitHidden', { get: function () { return false; }, configurable: true });
+      Object.defineProperty(document, 'webkitVisibilityState', { get: function () { return 'visible'; }, configurable: true });
+      ['visibilitychange', 'webkitvisibilitychange', 'pagehide', 'freeze', 'blur'].forEach(function (n) {
+        window.addEventListener(n, function (e) { if (bg) e.stopImmediatePropagation(); }, true);
+        document.addEventListener(n, function (e) { if (bg) e.stopImmediatePropagation(); }, true);
+      });
+    } catch (e) {}
+
+    // يمنع كود يوتيوب نفسه من إيقاف الفيديو أثناء الخلفية/المنبثق إلا إذا طلب المستخدم الإيقاف
+    try {
+      var origPause = HTMLMediaElement.prototype.pause;
+      HTMLMediaElement.prototype.pause = function () {
+        if (bg && !userPaused && !this.ended) {
+          log('blocked page pause');
+          return;
+        }
+        return origPause.apply(this, arguments);
+      };
+      window.__novaOrigPause = origPause;
     } catch (e) {}
   }
 
-  // الخلفية/النافذة المنبثقة: إن أوقف يوتيوب أو المتصفح الفيديو من تلقاء نفسه نستأنفه (ما لم يطلب المستخدم الإيقاف)
-  var bg = false, userPaused = false, lastResume = 0;
-  window.__novaBg = function (b) { bg = !!b; };
+  window.__novaBg = function (b) { bg = !!b; log('bg=' + bg); };
+
+  // إيقاف جاء من خارج الصفحة (نظام/WebView): نستأنف ما لم يطلب المستخدم الإيقاف
   document.addEventListener('play', function () { userPaused = false; }, true);
   document.addEventListener('pause', function (ev) {
     var e = v();
@@ -48,7 +79,8 @@
     var now = Date.now();
     if (now - lastResume < 400) return;
     lastResume = now;
-    setTimeout(function () { if (bg && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function () {}); } }, 120);
+    log('resuming after external pause');
+    setTimeout(function () { if (bg && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function (x) { log('play rejected ' + x); }); } }, 120);
   }, true);
   function clickPlay() {
     var b = document.querySelector('.ytp-play-button,button.player-control-play-pause-icon,[aria-label="Play"]');
@@ -57,22 +89,24 @@
 
   // أوامر من إشعار الوسائط
   window.__novaYtCtl = function (a) {
-    var e = v(); if (!e) return;
+    var e = v(); if (!e) { log('ctl ' + a + ' but no video'); return; }
+    log('ctl ' + a);
     if (a === 'play') {
       userPaused = false;
       var p = e.play();
-      if (p && p.catch) p.catch(function () { clickPlay(); });
+      if (p && p.catch) p.catch(function (x) { log('ctl play rejected ' + x); clickPlay(); });
     }
-    else if (a === 'pause') { userPaused = true; e.pause(); }
+    else if (a === 'pause') { userPaused = true; (window.__novaOrigPause || e.pause).call(e); }
     else if (a === 'fwd') e.currentTime = Math.min(e.duration || 1e9, e.currentTime + 10);
     else if (a === 'back') e.currentTime = Math.max(0, e.currentTime - 10);
     else if (a.indexOf('seek:') === 0) e.currentTime = parseFloat(a.slice(5)) / 1000;
     setTimeout(state, 50);
   };
 
-  // النافذة المنبثقة: يملأ الفيديو الشاشة ويُخفى كل ما عداه
+  // النافذة المنبثقة (بديل عند عدم استخدام ملء الشاشة): يملأ الفيديو الشاشة ويُخفى كل ما عداه
   window.__novaPip = function (on) {
     var id = '__nova_pip_css', old = document.getElementById(id), e = v();
+    log('pip css ' + on);
     if (!on) {
       if (old) old.remove();
       if (e) e.classList.remove('__nova_v');

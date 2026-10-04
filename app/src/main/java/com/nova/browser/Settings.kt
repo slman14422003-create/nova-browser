@@ -210,7 +210,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("متابعة التشغيل في الخلفية"), L("مع أزرار التحكم في الإشعار وشاشة القفل"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
                         { Switch(checked = Prefs.ytBg, onCheckedChange = null) }),
                     RowSpec(L("نافذة منبثقة تلقائية"), L("عند الخروج من التطبيق أثناء تشغيل فيديو"), Icons.Default.Share, { Prefs.pickAutoPip(!Prefs.autoPip) },
-                        { Switch(checked = Prefs.autoPip, onCheckedChange = null) })
+                        { Switch(checked = Prefs.autoPip, onCheckedChange = null) }),
+                    RowSpec(L("سجل التشخيص"), L("يساعد في معرفة سبب توقف الفيديو (انسخه وأرسله)"), Icons.Default.Info, { dialog = "ytlog" })
                 ))
                 Group(L("اللغة والعرض"), listOf(
                     RowSpec(L("لغة التطبيق"), langNames[Prefs.lang.coerceIn(0, 2)], Icons.Default.Settings, { dialog = "lang" }),
@@ -254,6 +255,17 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     }
 
     when (dialog) {
+        "ytlog" -> AlertDialog(
+            onDismissRequest = { dialog = null }, title = { Text(L("سجل التشخيص")) },
+            text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                Text(YtLog.text().ifBlank { L("لا يوجد سجل بعد") }, style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = { copyText(ctx, YtLog.text()) }) { Text(L("نسخ")) } },
+            dismissButton = { Row {
+                TextButton(onClick = { YtLog.clear() ; dialog = null }) { Text(L("مسح السجل")) }
+                TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) }
+            } }
+        )
         "pwmode" -> ChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), { Prefs.pickPwMode(it) }) { dialog = null }
         "lang" -> ChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), { Prefs.pickLang(it) }) { dialog = null }
         "sitelang" -> ChoiceDialog(L("لغة المواقع"), Prefs.siteLangs.map { if (it.first.isEmpty()) L(it.second) else it.second }, Prefs.siteLang, { Prefs.pickSiteLang(it) }) { dialog = null }

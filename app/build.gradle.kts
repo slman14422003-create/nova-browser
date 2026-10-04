@@ -77,7 +77,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
     implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.24.8") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
 }
