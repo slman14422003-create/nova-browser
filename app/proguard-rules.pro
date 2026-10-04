@@ -1,4 +1,18 @@
 -keepattributes *Annotation*
+
+# ---- تصغير أقصى (R8) ----
+-optimizationpasses 5
+-allowaccessmodification
+-repackageclasses ''
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}
+-assumenosideeffects class kotlin.jvm.internal.Intrinsics {
+    public static void checkNotNullParameter(...);
+    public static void checkNotNullExpressionValue(...);
+    public static void checkParameterIsNotNull(...);
+}
 -dontwarn java.lang.invoke.StringConcatFactory
 
 # NewPipeExtractor + Rhino + jsoup

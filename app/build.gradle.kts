@@ -19,6 +19,14 @@ val ksAlias = signingValue("KEY_ALIAS", "keyAlias")
 val ksKeyPass = signingValue("KEY_PASSWORD", "keyPassword") ?: ksPass
 val hasReleaseSigning = ksPath != null && ksPass != null && ksAlias != null && rootProject.file(ksPath).exists()
 
+// اسم الإصدار بلا حرف v، ورمز الإصدار يُشتق منه (1.6.3 → 10603) ليرتفع دائماً مع الوسم ويصلح للتحديث من داخل التطبيق
+val appVersionName = (System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() } ?: "1.7.0").removePrefix("v")
+val appVersionCode = appVersionName.substringBefore('-').split('.').let { p ->
+    (p.getOrNull(0)?.toIntOrNull() ?: 0) * 10000 + (p.getOrNull(1)?.toIntOrNull() ?: 0) * 100 + (p.getOrNull(2)?.toIntOrNull() ?: 0)
+}
+// مستودع GitHub الذي يُفحص منه التحديث: يُؤخذ تلقائياً من GitHub Actions، أو من gradle.properties (updateRepo)، أو عدّله هنا
+val updateRepo = System.getenv("GITHUB_REPOSITORY")?.takeIf { it.contains('/') } ?: (project.findProperty("updateRepo") as String?) ?: "OWNER/NovaBrowser"
+
 android {
     namespace = "com.nova.browser"
     compileSdk = 35
@@ -26,8 +34,9 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 7
-        versionName = System.getenv("VERSION_NAME") ?: "1.6.3"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
         ndk { abiFilters += listOf("arm64-v8a") }   // يقلّل حجم الـ APK كثيراً (مكتبات FFmpeg)
     }
     signingConfigs {
@@ -41,7 +50,7 @@ android {
     androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
     lint { abortOnError = false; checkReleaseBuilds = false }
     packaging { jniLibs { pickFirsts += "**/libc++_shared.so" } }
-    packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
+    packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST", "DebugProbesKt.bin", "kotlin-tooling-metadata.json", "META-INF/*.version") } }
     testOptions { unitTests.isReturnDefaultValues = true }
     buildTypes {
         debug {
@@ -61,7 +70,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
         isCoreLibraryDesugaringEnabled = true      // مطلوب لمكتبة NewPipeExtractor
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
+    dependenciesInfo { includeInApk = false; includeInBundle = false }   // يحذف كتلة بيانات الاعتماديات (حجم أصغر)
 }
 
 // بديل kotlinOptions { jvmTarget } المحذوف في Kotlin 2.2+

@@ -50,6 +50,8 @@ object Prefs {
     var pwMode by mutableIntStateOf(0); private set         // كلمات المرور: 0 مدمج، 1 تعبئة النظام (Samsung Pass…)، 2 معطّل
     var autoPip by mutableStateOf(true); private set        // نافذة منبثقة تلقائياً لفيديو يوتيوب عند الخروج
     var ytBg by mutableStateOf(true); private set           // متابعة تشغيل يوتيوب في الخلفية
+    var autoUpdate by mutableStateOf(true); private set     // فحص التحديثات تلقائياً من GitHub
+    var fastMode by mutableStateOf(false); private set      // وضع السلاسة: مستمعون سلبيون وبلا تأثيرات ثقيلة
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -73,6 +75,7 @@ object Prefs {
         textZoom = p.getInt("zoom", 1).coerceIn(0, zoomValues.lastIndex); siteDark = p.getBoolean("sitedark", false)
         pwMode = if (p.contains("pwmode")) p.getInt("pwmode", 0).coerceIn(0, 2) else defaultPwMode(c)
         autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
+        autoUpdate = p.getBoolean("autoupd", true); fastMode = p.getBoolean("fastmode", false)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -102,6 +105,8 @@ object Prefs {
     fun pickPwMode(v: Int) { pwMode = v; sp?.edit()?.putInt("pwmode", v)?.apply() }
     fun pickAutoPip(v: Boolean) { autoPip = v; sp?.edit()?.putBoolean("autopip", v)?.apply() }
     fun pickYtBg(v: Boolean) { ytBg = v; sp?.edit()?.putBoolean("ytbg", v)?.apply() }
+    fun pickFastMode(v: Boolean) { fastMode = v; sp?.edit()?.putBoolean("fastmode", v)?.apply() }
+    fun pickAutoUpdate(v: Boolean) { autoUpdate = v; sp?.edit()?.putBoolean("autoupd", v)?.apply() }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -242,6 +247,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.pauseBg, onCheckedChange = null) }),
                     RowSpec(L("تحميل كسول للصور"), L("تحميل الصور عند الاقتراب منها فقط"), Icons.Default.KeyboardArrowDown, { Prefs.pickLazyMedia(!Prefs.lazyMedia) },
                         { Switch(checked = Prefs.lazyMedia, onCheckedChange = null) }),
+                    RowSpec(L("وضع السلاسة"), L("تمرير أنعم: مستمعو لمس سلبيون وبلا ضبابية ثقيلة (قد يؤثر على قلة من المواقع؛ للتبويبات الجديدة)"), Icons.Default.PlayArrow, { Prefs.pickFastMode(!Prefs.fastMode) },
+                        { Switch(checked = Prefs.fastMode, onCheckedChange = null) }),
                     RowSpec(L("توفير البيانات"), L("عدم تحميل الصور (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Info, { Prefs.pickDataSaver(!Prefs.dataSaver) },
                         { Switch(checked = Prefs.dataSaver, onCheckedChange = null) })
                 ))
@@ -249,7 +256,23 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("الحد الأقصى للاتصالات"), connNames[connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0)], Icons.Default.KeyboardArrowDown, { dialog = "conns" }),
                     RowSpec(L("مكان الحفظ"), "Download/Nova", Icons.Default.Info, {})
                 ))
-                Group(L("حول"), listOf(RowSpec("Nova Browser", L("الإصدار 1.6"), Icons.Default.Star, {})))
+                Group(L("المكتبة والاستيراد"), listOf(
+                    RowSpec(L("المفضلة والسجل"), "${Library.bookmarks.size} / ${Library.history.size}", Icons.Default.Star, { Library.show = true }),
+                    RowSpec(L("استيراد بيانات كروم"), L("كلمات المرور والمفضلة والسجل"), Icons.Default.KeyboardArrowDown, { Library.show = true })
+                ))
+                Group(L("التحديثات"), listOf(
+                    RowSpec(L("البحث عن تحديث"), updateStatus(), Icons.Default.Refresh, {
+                        when (Updater.phase) {
+                            UpdPhase.AVAILABLE -> Updater.download(ctx)
+                            UpdPhase.READY -> Updater.install(ctx)
+                            UpdPhase.DOWNLOADING, UpdPhase.INSTALLING, UpdPhase.CHECKING -> {}
+                            else -> Updater.check(ctx)
+                        }
+                    }),
+                    RowSpec(L("فحص تلقائي"), L("عند تشغيل التطبيق من إصدارات GitHub"), Icons.Default.Check, { Prefs.pickAutoUpdate(!Prefs.autoUpdate) },
+                        { Switch(checked = Prefs.autoUpdate, onCheckedChange = null) })
+                ))
+                Group(L("حول"), listOf(RowSpec("Nova Browser", L("الإصدار") + " " + Updater.currentVersion(ctx), Icons.Default.Star, {})))
             }
         }
     }

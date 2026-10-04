@@ -254,6 +254,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             Perf.onPageDone(v)
+            Library.visit(u, v.title)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             YtBridge.onPageDone(v)
@@ -414,6 +415,8 @@ class MainActivity : ComponentActivity() {
         Perf.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
+        Library.init(this)
+        Updater.autoCheck(applicationContext)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
@@ -579,7 +582,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
         tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
-        decisions.clear()
+        decisions.clear(); Library.clearHistory()
         toast(activity, L("تم مسح بيانات التصفح"))
     }
 
@@ -741,6 +744,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     BackHandler(enabled = showDownloads) { showDownloads = false }
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = showPasswords) { showPasswords = false }
+    BackHandler(enabled = Library.show) { Library.show = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
     // ربط الـ Activity: مزوّد الـ WebView الحالي + تفعيل الدخول التلقائي للنافذة المنبثقة أثناء تشغيل فيديو يوتيوب
@@ -833,7 +837,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
             exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
         ) { PasswordsScreen(onBack = { showPasswords = false }) }
-        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
+        AnimatedVisibility(
+            visible = Library.show,
+            enter = slideInVertically(tween(280)) { it / 6 } + fadeIn(tween(220)),
+            exit = slideOutVertically(tween(220)) { it / 6 } + fadeOut(tween(160))
+        ) { LibraryScreen(onBack = { Library.show = false }, onOpen = { Library.show = false; showSettings = false; go(tab, it) }) }
+        if (Updater.promptVisible && Updater.info != null && !inPip) UpdateDialog()
+        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords && !Library.show }?.let { o ->
             FillBanner(
                 o, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
                 onClose = { fillOffer = null },
@@ -842,7 +852,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                 }
             )
         }
-        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && isYtVideo(tab.url)) {
+        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && !Library.show && isYtVideo(tab.url)) {
             YtBar(
                 onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
                 modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(bottom = 76.dp, end = 12.dp)
@@ -1170,9 +1180,14 @@ fun MenuSheet(
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 3), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(1, 3), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
-                ListRow(groupShape(2, 3), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
+                val menuCtx = androidx.compose.ui.platform.LocalContext.current
+                val marked = Library.isBookmarked(tab.url)
+                ListRow(groupShape(0, 5), if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"), null,
+                    { act { val added = Library.toggleBookmark(tab.url, tab.webView?.title ?: tab.title); toast(menuCtx, if (added) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) } }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Star, null) } }
+                ListRow(groupShape(1, 5), L("المكتبة"), L("المفضلة والسجل واستيراد كروم"), { act { Library.show = true } }) { IconCircle { Icon(Icons.Default.Refresh, null) } }
+                ListRow(groupShape(2, 5), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(3, 5), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
+                ListRow(groupShape(4, 5), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
             }
         }
     }
