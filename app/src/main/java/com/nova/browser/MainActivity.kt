@@ -262,6 +262,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             YtBridge.onPageDone(v)
+            Library.visit(u, v.title)   // سجل التصفح
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
             Perf.intercept(r.url, r.isForMainFrame)
@@ -415,6 +416,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         Prefs.init(this)
         Adaptive.init(this)
+        Library.init(this)
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
@@ -445,7 +447,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val lvl = Adaptive.level
             LaunchedEffect(lvl, Prefs.cap60) { applyRefreshCap(lvl) }
-            LaunchedEffect(Unit) { Updater.check(applicationContext) }
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); Updater.check(applicationContext) }   // بعد استقرار الواجهة
             val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
             SideEffect {
                 enableEdgeToEdge(
@@ -635,7 +637,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
         tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
-        decisions.clear()
+        decisions.clear(); Library.clearHistory()
         toast(activity, L("تم مسح بيانات التصفح"))
     }
 
@@ -797,6 +799,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
     BackHandler(enabled = showDownloads) { showDownloads = false }
+    BackHandler(enabled = Library.show) { Library.show = false }
     BackHandler(enabled = showSettings) { showSettings = false }
     BackHandler(enabled = showPasswords) { showPasswords = false }
     BackHandler(enabled = showTabs) { showTabs = false }
@@ -892,6 +895,17 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
             exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
         ) { PasswordsScreen(onBack = { showPasswords = false }) }
+        AnimatedVisibility(
+            visible = Library.show,
+            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
+            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
+        ) {
+            LibraryScreen(onBack = { Library.show = false }, onOpen = { u ->
+                Library.show = false; showSettings = false
+                if (tab.url.isBlank()) go(tab, u) else openInNewTab(u)
+            })
+        }
+        if (Updater.prompt) UpdateDialog()
         AnimatedVisibility(
             visible = showTabs,
             enter = fadeIn(tween(Adaptive.ms(180))) + slideInVertically(tween(Adaptive.ms(240), easing = FastOutSlowInEasing)) { it / 12 },
@@ -1208,9 +1222,15 @@ fun MenuSheet(
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 3), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(1, 3), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
-                ListRow(groupShape(2, 3), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val marked = hasPage && Library.isBookmarked(tab.url)
+                ListRow(groupShape(0, 5), if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"), null, {
+                    act { toast(ctx, if (Library.toggleBookmark(tab.url, tab.title)) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) }
+                }, enabled = hasPage) { IconCircle { Icon(if (marked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) } }
+                ListRow(groupShape(1, 5), L("المكتبة"), L("المفضلة") + " • " + L("السجل"), { act { Library.show = true } }) { IconCircle { Icon(Icons.Default.Star, null) } }
+                ListRow(groupShape(2, 5), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(3, 5), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
+                ListRow(groupShape(4, 5), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
             }
         }
     }

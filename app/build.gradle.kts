@@ -26,8 +26,8 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 8
-        versionName = System.getenv("VERSION_NAME") ?: "1.8.0"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 9
+        versionName = System.getenv("VERSION_NAME") ?: "1.8.1"
         // مستودع التحديثات: يُملأ تلقائياً في GitHub Actions (owner/repo)، فارغ محلياً = التحديث معطّل
         buildConfigField("String", "UPDATE_REPO", "\"" + (System.getenv("GITHUB_REPOSITORY") ?: "") + "\"")
         ndk { abiFilters += listOf("arm64-v8a") }   // يقلّل حجم الـ APK كثيراً (مكتبات FFmpeg)

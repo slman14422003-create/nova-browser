@@ -186,12 +186,6 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val zoomNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
     val connOpts = listOf(0, 4, 8, 16)
     val connNames = listOf(L("تلقائي (حتى 16)"), "4", "8", "16")
-    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { u ->
-        if (u != null) {
-            val n = ChromeImport.importPasswords(ctx, u)
-            toast(ctx, if (n < 0) L("ملف غير صالح. صدّر كلمات المرور من Chrome بصيغة CSV") else L("تم استيراد ") + n)
-        }
-    }
     val pwNames = listOf(L("مدمج في المتصفح"), L("خدمة النظام (Samsung Pass وغيرها)"), L("متوقف"))
 
     Surface(Modifier.fillMaxSize(), color = cs.background) {
@@ -205,6 +199,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Group(L("عام"), listOf(
                     RowSpec(L("محرك البحث"), Prefs.engines[Prefs.engine].first, Icons.Default.Search, { dialog = "engine" }),
                     RowSpec(L("المظهر"), themeNames[Prefs.theme], Icons.Default.Star, { dialog = "theme" }),
+                    RowSpec(L("المكتبة"), L("المفضلة") + " " + Library.bookmarks.size + " • " + L("السجل") + " " + Library.history.size, Icons.Default.Favorite, { Library.show = true }),
                     RowSpec(L("نسخة سطح المكتب افتراضياً"), L("للتبويبات الجديدة"), Icons.Default.Build, { Prefs.pickDesktop(!Prefs.desktop) },
                         { Switch(checked = Prefs.desktop, onCheckedChange = null) })
                 ))
@@ -220,8 +215,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Group(L("كلمات المرور وتسجيل الدخول"), listOf(
                     RowSpec(L("كلمات المرور المحفوظة"), Vault.items.size.toString(), Icons.Default.Lock, { onPasswords() }),
                     RowSpec(L("وضع التعبئة التلقائية"), pwNames[Prefs.pwMode.coerceIn(0, 2)], Icons.Default.Person, { dialog = "pwmode" }),
-                    RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) }),
-                    RowSpec(L("استيراد من Chrome"), L("ملف CSV مُصدَّر من كلمات مرور Chrome"), Icons.Default.Add, { importPicker.launch("*/*") })
+                    RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) })
                 ))
                 Group(L("يوتيوب"), listOf(
                     RowSpec(L("متابعة التشغيل في الخلفية"), L("مع أزرار التحكم في الإشعار وشاشة القفل"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
@@ -278,9 +272,12 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec("Nova Browser", L("الإصدار ") + BuildConfig.VERSION_NAME, Icons.Default.Star, {}),
                     RowSpec(L("التحديث التلقائي"), L("فحص الإصدارات الجديدة من GitHub كل 12 ساعة"), Icons.Default.Refresh, { Prefs.pickAutoUpdate(!Prefs.autoUpdate) },
                         { Switch(checked = Prefs.autoUpdate, onCheckedChange = null) }),
-                    RowSpec(L("التحقق من تحديث الآن"), Updater.available?.let { L("إصدار جديد: ") + it.version } ?: if (Updater.checking) "…" else L("اضغط للفحص"), Icons.Default.Info, {
-                        val a = Updater.available
-                        if (a != null) Updater.open(ctx) else Updater.check(ctx, true) { r -> android.os.Handler(android.os.Looper.getMainLooper()).post { toast(ctx, if (r == true) L("يوجد إصدار جديد") else L("أنت على أحدث إصدار")) } }
+                    RowSpec(L("التحقق من تحديث الآن"), updateStatus(), Icons.Default.Info, {
+                        when (Updater.phase) {
+                            UpdPhase.AVAILABLE -> Updater.showPrompt()
+                            UpdPhase.READY -> Updater.install(ctx)
+                            else -> Updater.check(ctx, true)
+                        }
                     })
                 ))
             }

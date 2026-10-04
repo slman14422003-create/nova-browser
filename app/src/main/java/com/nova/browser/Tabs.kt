@@ -54,10 +54,10 @@ fun TabSwitcher(
     onDuplicate: (Int) -> Unit = {}, onCloseOthers: (Int) -> Unit = {}, onCloseTag: (Int) -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
-    var filter by remember { mutableIntStateOf(-1) }   // -1 الكل، -2 المثبّتة، 1..6 علامة
+    var picked by remember { mutableIntStateOf(-1) }   // -1 الكل، -2 المثبّتة، 1..6 علامة
     val usedTags = tabs.map { it.tag }.filter { it > 0 }.distinct().sorted()
-    if (filter > 0 && filter !in usedTags) filter = -1
-    if (filter == -2 && tabs.none { it.pinned }) filter = -1
+    // إن اختفى آخر تبويب بتلك العلامة نعود إلى «الكل» دون كتابة حالة أثناء التركيب
+    val filter = if ((picked > 0 && picked !in usedTags) || (picked == -2 && tabs.none { it.pinned })) -1 else picked
     val shown = tabs.withIndex().filter { (_, t) -> when (filter) { -1 -> true; -2 -> t.pinned; else -> t.tag == filter } }
     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = (current / 2) * 2)
     Surface(Modifier.fillMaxSize(), color = cs.background) {
@@ -78,11 +78,11 @@ fun TabSwitcher(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
             ) {
-                FilterChip(selected = filter == -1, onClick = { filter = -1 }, label = { Text(L("الكل")) })
-                if (tabs.any { it.pinned }) FilterChip(selected = filter == -2, onClick = { filter = -2 }, label = { Text("📌 " + L("المثبّتة")) })
+                FilterChip(selected = filter == -1, onClick = { picked = -1 }, label = { Text(L("الكل")) })
+                if (tabs.any { it.pinned }) FilterChip(selected = filter == -2, onClick = { picked = -2 }, label = { Text("📌 " + L("المثبّتة")) })
                 usedTags.forEach { g ->
                     FilterChip(
-                        selected = filter == g, onClick = { filter = g }, label = { Text(tabs.count { it.tag == g }.toString()) },
+                        selected = filter == g, onClick = { picked = g }, label = { Text(tabs.count { it.tag == g }.toString()) },
                         leadingIcon = { Box(Modifier.size(14.dp).clip(CircleShape).background(TabTagColors[g])) }
                     )
                 }
