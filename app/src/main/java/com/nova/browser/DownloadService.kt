@@ -47,7 +47,7 @@ class DownloadService : Service() {
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val b = Notification.Builder(this, "dl").setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle(if (act.size == 1) act[0].name else "${act.size} تنزيلات")
+            .setContentTitle(if (act.size == 1) act[0].name else ("" + (act.size) + L(" تنزيلات")))
             .setContentText("${fmtSize(done)} • ${fmtSpeed(speed)}")
             .setContentIntent(pi).setOngoing(true).setOnlyAlertOnce(true)
         if (total > 0) b.setProgress(1000, (done * 1000 / total).toInt().coerceIn(0, 1000), false) else b.setProgress(0, 0, true)

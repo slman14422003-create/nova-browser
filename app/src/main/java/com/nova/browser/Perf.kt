@@ -15,7 +15,13 @@ object Perf {
     fun init(c: Context) { app = c.applicationContext }
 
     /** ترويسات الخصوصية للتحميلات التي يبدؤها التطبيق (Do Not Track + Global Privacy Control). */
-    val privacyHeaders = mapOf("DNT" to "1", "Sec-GPC" to "1")
+    val privacyHeaders: Map<String, String>
+        get() {
+            val h = linkedMapOf("DNT" to "1", "Sec-GPC" to "1")
+            val al = LangUtil.acceptLanguage(Prefs.siteLangCode())   // لغة المواقع المفضّلة
+            if (al.isNotEmpty()) h["Accept-Language"] = al
+            return h
+        }
 
     /** قائمة النطاقات تُقرأ مرة واحدة من assets/blocklist.txt. */
     private val blocked: Set<String> by lazy {
@@ -57,6 +63,8 @@ object Perf {
         s.loadsImagesAutomatically = !Prefs.dataSaver
         s.blockNetworkImage = Prefs.dataSaver
         s.setOffscreenPreRaster(false)   // يوفر الذاكرة للتبويبات الخلفية
+        s.textZoom = Prefs.zoomValues[Prefs.textZoom]
+        applyDark(wv)
         wv.isScrollbarFadingEnabled = true
         wv.overScrollMode = android.view.View.OVER_SCROLL_NEVER
         // ملاحظة: لا نستخدم LAYER_TYPE_HARDWARE؛ يضيف مخزناً خارج الشاشة ويزيد الذاكرة
@@ -65,22 +73,32 @@ object Perf {
     // ---------- الحماية من البصمة ----------
     private val seed: Long = java.security.SecureRandom().nextLong() and 0xFFFFFFFFL
 
-    private val fpScript: String? by lazy {
-        runCatching { app.assets.open("privacy.js").bufferedReader().use { it.readText() }.replace("__SEED__", seed.toString()) }.getOrNull()
+    private val fpTemplate: String? by lazy {
+        runCatching { app.assets.open("privacy.js").bufferedReader().use { it.readText() } }.getOrNull()
     }
+    private fun fpScript(): String? = fpTemplate?.replace("__SEED__", seed.toString())?.replace("__LANG__", Prefs.siteLangCode())
+
+    /** الوضع الداكن للمواقع (يتبع وضع النظام الداكن). */
+    fun applyDark(wv: WebView) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING))
+            runCatching { androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(wv.settings, Prefs.siteDark) }
+    }
+
+    /** تطبيق حجم الخط والوضع الداكن على تبويب موجود. */
+    fun applyDisplay(wv: WebView) { wv.settings.textZoom = Prefs.zoomValues[Prefs.textZoom]; applyDark(wv) }
 
     private val docStartSupported by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) }
 
     /** يحقن سكربت الحماية قبل أي سكربت للصفحة (إن كان مدعوماً). */
     fun installPrivacy(wv: WebView) {
-        val js = fpScript ?: return
+        val js = fpScript() ?: return
         if (Prefs.antiFingerprint && docStartSupported)
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*")) }
     }
 
     /** احتياطي للأجهزة التي لا تدعم الحقن المبكر: يُنفَّذ عند بدء الصفحة. */
     fun onPageStart(wv: WebView) {
-        if (Prefs.antiFingerprint && !docStartSupported) fpScript?.let { wv.evaluateJavascript(it, null) }
+        if (Prefs.antiFingerprint && !docStartSupported) fpScript()?.let { wv.evaluateJavascript(it, null) }
     }
 
     /** تحميل كسول للصور والإطارات التي لا تحدد loading، لتسريع الصفحات الثقيلة. */

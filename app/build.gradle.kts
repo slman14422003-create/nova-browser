@@ -1,8 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// ---------- التوقيع: متغيرات بيئة (CI) أو ملف keystore.properties محلي (غير مرفوع) ----------
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(env: String, key: String): String? = System.getenv(env)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(key)
+val ksPath = signingValue("KEYSTORE_PATH", "storeFile")
+val ksPass = signingValue("KEYSTORE_PASSWORD", "storePassword")
+val ksAlias = signingValue("KEY_ALIAS", "keyAlias")
+val ksKeyPass = signingValue("KEY_PASSWORD", "keyPassword") ?: ksPass
+val hasReleaseSigning = ksPath != null && ksPass != null && ksAlias != null && rootProject.file(ksPath).exists()
 
 android {
     namespace = "com.nova.browser"
@@ -11,14 +25,31 @@ android {
         applicationId = "com.nova.browser"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 6
+        versionName = System.getenv("VERSION_NAME") ?: "1.5"
     }
+    signingConfigs {
+        if (hasReleaseSigning) create("release") {
+            storeFile = rootProject.file(ksPath!!)
+            storePassword = ksPass
+            keyAlias = ksAlias
+            keyPassword = ksKeyPass
+        }
+    }
+    androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
+    lint { abortOnError = false; checkReleaseBuilds = false }
+    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    testOptions { unitTests.isReturnDefaultValues = true }
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"      // يتعايش مع نسخة الإصدار على نفس الجهاز
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            // بلا مفاتيح (مثل طلبات الدمج من forks) يُوقَّع بمفتاح debug كي لا يفشل البناء
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -40,5 +71,7 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
+    implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
+    testImplementation("junit:junit:4.13.2")
 }

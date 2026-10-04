@@ -38,8 +38,8 @@ object Security {
     fun summary(): String {
         val lines = (sp?.getString("log", "") ?: "").split("\n").filter { it.isNotBlank() }
         val total = persisted + session.get()
-        return "متتبعات/إعلانات محجوبة: $total\nتنبيهات مسجّلة: ${lines.size}\n\n" +
-            (if (lines.isEmpty()) "لا توجد أحداث أمنية." else lines.reversed().joinToString("\n"))
+        return (L("متتبعات/إعلانات محجوبة: ") + total + L("\nتنبيهات مسجّلة: ") + (lines.size) + "\n\n") +
+            (if (lines.isEmpty()) L("لا توجد أحداث أمنية.") else lines.reversed().joinToString("\n"))
     }
 
     fun clearLog() { sp?.edit()?.putString("log", "")?.apply() }
@@ -59,7 +59,7 @@ object Security {
         if (names.none { isTracking(it) }) return u
         val b = u.buildUpon().clearQuery()
         names.filter { !isTracking(it) }.forEach { n -> u.getQueryParameters(n).forEach { b.appendQueryParameter(n, it) } }
-        log("تتبع", "أُزيلت معرّفات من ${u.host}")
+        log(L("تتبع"), (L("أُزيلت معرّفات من ") + (u.host)))
         return b.build()
     }
 
@@ -72,12 +72,12 @@ object Security {
     /** فحوصات إرشادية (heuristic) — لا تُعدّ إثباتاً قاطعاً. */
     fun deviceWarnings(c: Context): List<String> {
         val w = mutableListOf<String>()
-        if (android.os.Debug.isDebuggerConnected()) w += "مصحّح أخطاء (Debugger) متصل بالتطبيق"
-        if (c.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) w += "التطبيق في وضع التطوير (debuggable)"
+        if (android.os.Debug.isDebuggerConnected()) w += L("مصحّح أخطاء (Debugger) متصل بالتطبيق")
+        if (c.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) w += L("التطبيق في وضع التطوير (debuggable)")
         val su = listOf("/system/bin/su", "/system/xbin/su", "/sbin/su", "/su/bin/su", "/system/app/Superuser.apk")
-        if (su.any { File(it).exists() }) w += "الجهاز يبدو مُجذَّراً (Root)"
+        if (su.any { File(it).exists() }) w += L("الجهاز يبدو مُجذَّراً (Root)")
         val tools = listOf("/data/local/tmp/frida-server", "/data/local/tmp/re.frida.server")
-        if (tools.any { File(it).exists() }) w += "أداة اعتراض/حقن (Frida) على الجهاز"
+        if (tools.any { File(it).exists() }) w += L("أداة اعتراض/حقن (Frida) على الجهاز")
         return w
     }
 }

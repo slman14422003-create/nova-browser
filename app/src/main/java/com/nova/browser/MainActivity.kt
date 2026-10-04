@@ -130,7 +130,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var noUpgradeHost: String? = null
     var lastUpgrade: Pair<String, Long>? = null
     var url by mutableStateOf(startUrl)
-    var title by mutableStateOf("تبويب جديد")
+    var title by mutableStateOf(L("تبويب جديد"))
     var progress by mutableFloatStateOf(0f)
     var loading by mutableStateOf(false)
     var canBack by mutableStateOf(false)
@@ -180,7 +180,7 @@ fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show
 
 fun copyText(c: Context, t: String) {
     (c.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("url", t))
-    toast(c, "تم النسخ")
+    toast(c, L("تم النسخ"))
 }
 
 fun shareText(c: Context, t: String) {
@@ -195,12 +195,12 @@ fun choose(c: Context, items: List<Pair<String, () -> Unit>>) {
 fun errorHtml(url: String, desc: String): String = """
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 :root{color-scheme:light dark}body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
-justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:rtl}
+justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:${if (I18n.isEnglish()) "ltr" else "rtl"}}
 h2{margin:8px}p{opacity:.65;word-break:break-all;margin:4px}
 button{margin-top:22px;padding:12px 30px;border:0;border-radius:24px;background:#3D5AFE;color:#fff;font-size:16px}
-</style></head><body><div style="font-size:56px">📡</div><h2>تعذّر فتح الصفحة</h2>
+</style></head><body><div style="font-size:56px">📡</div><h2>${L("تعذّر فتح الصفحة")}</h2>
 <p>${android.text.TextUtils.htmlEncode(desc)}</p><p>${android.text.TextUtils.htmlEncode(url)}</p>
-<button onclick='location.replace(${JSONObject.quote(url)})'>إعادة المحاولة</button></body></html>"""
+<button onclick='location.replace(${JSONObject.quote(url)})'>${L("إعادة المحاولة")}</button></body></html>"""
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView(ctx).apply {
@@ -225,11 +225,11 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         val ex = r.extra ?: return@setOnLongClickListener false
         when (r.type) {
             WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
-                choose(ctx, listOf("فتح في تبويب جديد" to { h.openTab(ex) }, "نسخ الرابط" to { copyText(ctx, ex) }, "مشاركة الرابط" to { shareText(ctx, ex) }))
+                choose(ctx, listOf(L("فتح في تبويب جديد") to { h.openTab(ex) }, L("نسخ الرابط") to { copyText(ctx, ex) }, L("مشاركة الرابط") to { shareText(ctx, ex) }))
                 true
             }
             WebView.HitTestResult.IMAGE_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                choose(ctx, listOf("تنزيل الصورة" to { h.onDownload(ex, settings.userAgentString, null, null, this.url) }, "فتح الصورة في تبويب جديد" to { h.openTab(ex) }))
+                choose(ctx, listOf(L("تنزيل الصورة") to { h.onDownload(ex, settings.userAgentString, null, null, this.url) }, L("فتح الصورة في تبويب جديد") to { h.openTab(ex) }))
                 true
             }
             else -> false
@@ -255,14 +255,14 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
         override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
             h.cancel()   // لا نتجاوز أخطاء الشهادات أبداً
-            Security.log("شهادة", "رُفض اتصال غير موثوق: ${e.url?.let { hostOf(it) }}")
+            Security.log(L("شهادة"), (L("رُفض اتصال غير موثوق: ") + (e.url?.let { hostOf(it) })))
             val u = e.url ?: v.url ?: ""
-            v.loadDataWithBaseURL(u, errorHtml(u, "شهادة أمان الموقع غير صالحة — تم حظر الاتصال لحمايتك"), "text/html", "UTF-8", u)
+            v.loadDataWithBaseURL(u, errorHtml(u, L("شهادة أمان الموقع غير صالحة — تم حظر الاتصال لحمايتك")), "text/html", "UTF-8", u)
         }
         override fun onSafeBrowsingHit(v: WebView, r: WebResourceRequest, threatType: Int, cb: SafeBrowsingResponse) {
             cb.backToSafety(true)
-            Security.log("Safe Browsing", "حُظر موقع خطير: ${r.url.host}")
-            toast(ctx, "تم حظر موقع خطير وإعادتك إلى صفحة آمنة")
+            Security.log("Safe Browsing", (L("حُظر موقع خطير: ") + (r.url.host)))
+            toast(ctx, L("تم حظر موقع خطير وإعادتك إلى صفحة آمنة"))
         }
         override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
             if (r.isForMainFrame && tab.upgradedFrom != null && r.url.toString() == tab.upgradedTo) {
@@ -290,7 +290,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                             else {
                                 tab.upgradedFrom = t.toString(); t = t.buildUpon().scheme("https").build()
                                 tab.upgradedTo = t.toString(); tab.lastUpgrade = host to now
-                                Security.log("HTTPS", "رُقّي $host")
+                                Security.log("HTTPS", (L("رُقّي ") + host))
                             }
                         }
                         if (t != u) { v.loadUrl(t.toString(), Perf.privacyHeaders); true } else false
@@ -324,13 +324,13 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPermissionRequest(req: PermissionRequest) = h.permission(req)
         override fun onGeolocationPermissionsShowPrompt(origin: String, cb: GeolocationPermissions.Callback) = h.geo(origin, cb)
         override fun onJsAlert(v: WebView, url: String, msg: String, r: JsResult): Boolean {
-            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton("حسناً") { _, _ -> r.confirm() }
+            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton(L("حسناً")) { _, _ -> r.confirm() }
                 .setOnCancelListener { r.cancel() }.show()
             return true
         }
         override fun onJsConfirm(v: WebView, url: String, msg: String, r: JsResult): Boolean {
-            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton("موافق") { _, _ -> r.confirm() }
-                .setNegativeButton("إلغاء") { _, _ -> r.cancel() }.setOnCancelListener { r.cancel() }.show()
+            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton(L("موافق")) { _, _ -> r.confirm() }
+                .setNegativeButton(L("إلغاء")) { _, _ -> r.cancel() }.setOnCancelListener { r.cancel() }.show()
             return true
         }
     }
@@ -349,7 +349,7 @@ class MainActivity : ComponentActivity() {
         Prefs.init(this)
         Security.init(this)
         Perf.init(this)
-        Security.deviceWarnings(this).forEach { Security.log("الجهاز", it) }
+        Security.deviceWarnings(this).forEach { Security.log(L("الجهاز"), it) }
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
@@ -374,7 +374,13 @@ class MainActivity : ComponentActivity() {
                     navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
                 )
             }
-            MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) { BrowserApp(start, dlTrigger) }
+            MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) {
+                // اتجاه الواجهة يتبع لغة التطبيق (العربية RTL، الإنجليزية LTR)
+                CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides
+                    if (I18n.isEnglish()) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl) {
+                    BrowserApp(start, dlTrigger)
+                }
+            }
         }
         ready = true
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
@@ -409,7 +415,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     var showSettings by remember { mutableStateOf(false) }
     LaunchedEffect(dlTrigger) { if (dlTrigger > 0) showDownloads = true }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (!ok) toast(activity, "فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية")
+        if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية"))
     }
     var customView by remember { mutableStateOf<View?>(null) }
     var customCb by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
@@ -433,7 +439,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         val cb = permCallback; permCallback = null
         val denied = m.filter { !it.value }.keys
         if (denied.any { !ActivityCompat.shouldShowRequestPermissionRationale(activity, it) })
-            settingsMsg = "تم رفض الإذن بشكل دائم. فعّله من إعدادات التطبيق ليعمل هذا الموقع."
+            settingsMsg = L("تم رفض الإذن بشكل دائم. فعّله من إعدادات التطبيق ليعمل هذا الموقع.")
         cb?.invoke()
     }
     fun askPerms(perms: List<String>, cb: () -> Unit) {
@@ -459,12 +465,32 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
     }
     fun home(t: BrowserTab) {
         dispose(t); t.saved = null
-        t.url = ""; t.title = "تبويب جديد"; t.canBack = false; t.canForward = false; t.loading = false; t.finding = false
+        t.url = ""; t.title = L("تبويب جديد"); t.canBack = false; t.canForward = false; t.loading = false; t.finding = false
     }
 
     LaunchedEffect(Prefs.secureScreen) {
         val f = android.view.WindowManager.LayoutParams.FLAG_SECURE
         if (Prefs.secureScreen) activity.window.setFlags(f, f) else activity.window.clearFlags(f)
+    }
+    LaunchedEffect(Prefs.textZoom, Prefs.siteDark) { tabs.forEach { t -> t.webView?.let { Perf.applyDisplay(it) } } }
+    fun printPage(t: BrowserTab) {
+        val w = t.webView ?: return
+        val pm = activity.getSystemService(Context.PRINT_SERVICE) as android.print.PrintManager
+        val name = (t.title.ifBlank { "Nova" } + " - " + hostOf(t.url)).take(60)
+        runCatching { pm.print(name, w.createPrintDocumentAdapter(name), android.print.PrintAttributes.Builder().build()) }
+    }
+    fun openCustomTab(t: BrowserTab) {
+        val pkg = androidx.browser.customtabs.CustomTabsClient.getPackageName(activity, null)
+        if (pkg == null) { toast(activity, L("لا يوجد متصفح يدعم Custom Tabs")); return }
+        val ci = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+        ci.intent.setPackage(pkg)
+        runCatching { ci.launchUrl(activity, Uri.parse(t.url)) }
+    }
+    fun translatePage(t: BrowserTab) {
+        if (t.url.isBlank()) return
+        val target = Prefs.siteLangCode().ifEmpty { I18n.code() }
+        go(t, "https://translate.google.com/translate?sl=auto&tl=" + target + "&u=" + Uri.encode(t.url))
+        toast(activity, L("سيُرسل عنوان الصفحة إلى Google Translate لترجمتها."))
     }
     LaunchedEffect(Prefs.js) { tabs.forEach { it.webView?.settings?.javaScriptEnabled = Prefs.js } }
     fun clearData() {
@@ -472,13 +498,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         WebStorage.getInstance().deleteAllData()
         tabs.forEach { t -> t.webView?.let { it.clearCache(true); it.clearHistory(); it.clearFormData() } }
         decisions.clear()
-        toast(activity, "تم مسح بيانات التصفح")
+        toast(activity, L("تم مسح بيانات التصفح"))
     }
 
     fun clearCacheNow() {
         tabs.forEach { it.webView?.clearCache(true) }
         Thread { runCatching { CacheCleaner.clean(activity.applicationContext) } }.start()
-        toast(activity, "تم مسح الذاكرة المؤقتة")
+        toast(activity, L("تم مسح الذاكرة المؤقتة"))
     }
     // عند ضغط الذاكرة: نحرر الـ WebView للتبويبات الخلفية (تُعاد عند الرجوع لها)
     DisposableEffect(Unit) {
@@ -533,7 +559,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                     val av = req.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE || it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }
                     if (av.isEmpty()) { req.deny(); return@runOnUiThread }
                     fun perm(r: String) = if (r == PermissionRequest.RESOURCE_VIDEO_CAPTURE) Manifest.permission.CAMERA else Manifest.permission.RECORD_AUDIO
-                    val label = av.joinToString(" و") { if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE) "الكاميرا" else "الميكروفون" }
+                    val label = av.joinToString(L(" و")) { if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE) L("الكاميرا") else L("الميكروفون") }
                     fun finish(allow: Boolean) {
                         if (!allow) { req.deny(); return }
                         askPerms(av.map { perm(it) }) {
@@ -545,7 +571,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                     when (decisions[key]) {
                         true -> finish(true)
                         false -> req.deny()
-                        null -> sitePrompt = SitePrompt("السماح بالوصول؟", "${hostOf(req.origin.toString())} يريد استخدام $label",
+                        null -> sitePrompt = SitePrompt(L("السماح بالوصول؟"), ("" + (hostOf(req.origin.toString())) + L(" يريد استخدام ") + label),
                             { decisions[key] = true; finish(true) }, { decisions[key] = false; finish(false) })
                     }
                 }
@@ -561,7 +587,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                     when (decisions[key]) {
                         true -> finish(true)
                         false -> cb.invoke(origin, false, false)
-                        null -> sitePrompt = SitePrompt("السماح بالموقع؟", "${hostOf(origin)} يريد معرفة موقعك",
+                        null -> sitePrompt = SitePrompt(L("السماح بالموقع؟"), ("" + (hostOf(origin)) + L(" يريد معرفة موقعك")),
                             { decisions[key] = true; finish(true) }, { decisions[key] = false; finish(false) })
                     }
                 }
@@ -570,20 +596,20 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
             showCustom = { v, cb -> customView = v; customCb = cb },
             hideCustom = { customView = null; customCb = null },
             onDownload = { u, ua, cd, mime, ref ->
-                if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, "هذا النوع من التنزيل غير مدعوم بعد")
+                if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, L("هذا النوع من التنزيل غير مدعوم بعد"))
                 else {
                     val start = {
                         Downloader.start(activity, u, ua, cd, mime, ref)
-                        toast(activity, "بدأ التنزيل — القائمة ⋮ ثم التنزيلات")
+                        toast(activity, L("بدأ التنزيل — القائمة ⋮ ثم التنزيلات"))
                         if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
                             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         Unit
                     }
                     if (Security.isRiskyFile(u, cd)) {
-                        Security.log("تنزيل", "تحذير ملف تنفيذي من ${hostOf(u)}")
-                        AlertDialog.Builder(activity).setTitle("ملف قد يكون خطيراً")
-                            .setMessage("هذا النوع من الملفات (تطبيق/ملف تنفيذي) قد يضر بجهازك. نزّله فقط من مصدر تثق به.\n\n${hostOf(u)}")
-                            .setPositiveButton("تنزيل") { _, _ -> start() }.setNegativeButton("إلغاء", null).show()
+                        Security.log(L("تنزيل"), (L("تحذير ملف تنفيذي من ") + (hostOf(u))))
+                        AlertDialog.Builder(activity).setTitle(L("ملف قد يكون خطيراً"))
+                            .setMessage((L("هذا النوع من الملفات (تطبيق/ملف تنفيذي) قد يضر بجهازك. نزّله فقط من مصدر تثق به.\n\n") + (hostOf(u))))
+                            .setPositiveButton(L("تنزيل")) { _, _ -> start() }.setNegativeButton(L("إلغاء"), null).show()
                     } else start()
                 }
             }
@@ -670,7 +696,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { showDownloads = true }, onSettings = { showSettings = true },
+                    onDownloads = { showDownloads = true }, onSettings = { showSettings = true }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
                     onSwitch = { d -> current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
@@ -698,21 +724,21 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         AlertDialog(
             onDismissRequest = { sitePrompt = null; p.onDeny() },
             title = { Text(p.title) }, text = { Text(p.message) },
-            confirmButton = { TextButton(onClick = { sitePrompt = null; p.onAllow() }) { Text("سماح") } },
-            dismissButton = { TextButton(onClick = { sitePrompt = null; p.onDeny() }) { Text("رفض") } }
+            confirmButton = { TextButton(onClick = { sitePrompt = null; p.onAllow() }) { Text(L("سماح")) } },
+            dismissButton = { TextButton(onClick = { sitePrompt = null; p.onDeny() }) { Text(L("رفض")) } }
         )
     }
     settingsMsg?.let { m ->
         AlertDialog(
             onDismissRequest = { settingsMsg = null },
-            title = { Text("الإذن مطلوب") }, text = { Text(m) },
+            title = { Text(L("الإذن مطلوب")) }, text = { Text(m) },
             confirmButton = {
                 TextButton(onClick = {
                     settingsMsg = null
                     activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.packageName, null)))
-                }) { Text("فتح الإعدادات") }
+                }) { Text(L("فتح الإعدادات")) }
             },
-            dismissButton = { TextButton(onClick = { settingsMsg = null }) { Text("لاحقاً") } }
+            dismissButton = { TextButton(onClick = { settingsMsg = null }) { Text(L("لاحقاً")) } }
         )
     }
 
@@ -720,8 +746,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
         ModalBottomSheet(onDismissRequest = { showTabs = false }, containerColor = cs.surface) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("التبويبات", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    FilledTonalButton(onClick = { newTab() }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("جديد") }
+                    Text(L("التبويبات"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    FilledTonalButton(onClick = { newTab() }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(L("جديد")) }
                 }
                 Spacer(Modifier.height(14.dp))
                 LazyVerticalGrid(columns = GridCells.Fixed(2), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -735,11 +761,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int) {
                             Box(Modifier.fillMaxSize().padding(14.dp)) {
                                 Column(Modifier.align(Alignment.BottomStart).padding(end = 4.dp)) {
                                     Text(t.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                                    Text(if (t.url.isBlank()) "صفحة البداية" else hostOf(t.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    Text(if (t.url.isBlank()) L("صفحة البداية") else hostOf(t.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
                                 IconButton(onClick = { closeTab(i) }, modifier = Modifier.align(Alignment.TopEnd).size(28.dp)) {
-                                    Icon(Icons.Default.Close, "إغلاق", Modifier.size(18.dp))
+                                    Icon(Icons.Default.Close, L("إغلاق"), Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -764,15 +790,15 @@ fun FindBar(tab: BrowserTab) {
                 modifier = Modifier.weight(1f).padding(start = 12.dp).focusRequester(fr),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.CenterStart) {
-                        if (q.isEmpty()) Text("بحث في الصفحة", color = cs.onSurfaceVariant)
+                        if (q.isEmpty()) Text(L("بحث في الصفحة"), color = cs.onSurfaceVariant)
                         inner()
                     }
                 }
             )
             Text(tab.findInfo, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-            IconButton(onClick = { tab.webView?.findNext(false) }) { Icon(Icons.Default.KeyboardArrowUp, "السابق") }
-            IconButton(onClick = { tab.webView?.findNext(true) }) { Icon(Icons.Default.KeyboardArrowDown, "التالي") }
-            IconButton(onClick = { tab.webView?.clearMatches(); tab.finding = false }) { Icon(Icons.Default.Close, "إغلاق") }
+            IconButton(onClick = { tab.webView?.findNext(false) }) { Icon(Icons.Default.KeyboardArrowUp, L("السابق")) }
+            IconButton(onClick = { tab.webView?.findNext(true) }) { Icon(Icons.Default.KeyboardArrowDown, L("التالي")) }
+            IconButton(onClick = { tab.webView?.clearMatches(); tab.finding = false }) { Icon(Icons.Default.Close, L("إغلاق")) }
         }
     }
 }
@@ -784,7 +810,8 @@ fun BottomPill(
     tab: BrowserTab, tabCount: Int, editing: Boolean, setEditing: (Boolean) -> Unit,
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
     onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit,
-    onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit
+    onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit, onTranslate: () -> Unit = {},
+    onPrint: () -> Unit = {}, onCustomTab: () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
@@ -822,18 +849,18 @@ fun BottomPill(
                             modifier = Modifier.weight(1f).focusRequester(fr).onFocusChanged { if (it.isFocused) got = true else if (got) setEditing(false) },
                             decorationBox = { inner ->
                                 Box(contentAlignment = Alignment.CenterStart) {
-                                    if (field.text.isEmpty()) Text("ابحث أو اكتب عنوان", color = cs.onSurfaceVariant)
+                                    if (field.text.isEmpty()) Text(L("ابحث أو اكتب عنوان"), color = cs.onSurfaceVariant)
                                     inner()
                                 }
                             }
                         )
-                        IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Close, "مسح") }
+                        IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Close, L("مسح")) }
                     } else {
                         RoundBtn(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
-                            Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, null)
+                            Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, if (tab.canBack) L("رجوع") else L("الرئيسية"))
                         }
                         Row(
-                            Modifier.weight(1f).height(44.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
+                            Modifier.weight(1f).height(48.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
                                 .pointerInput(Unit) {
                                     var dx = 0f; var dy = 0f
                                     detectDragGestures(
@@ -851,20 +878,25 @@ fun BottomPill(
                                 .clickable { setEditing(true) }.padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(if (tab.url.startsWith("https")) Icons.Default.Lock else Icons.Default.Search, null, Modifier.size(15.dp), tint = cs.onSurfaceVariant)
+                            val insecure = tab.url.startsWith("http://")
+                            Icon(
+                                if (insecure) Icons.Default.Warning else if (tab.url.startsWith("https")) Icons.Default.Lock else Icons.Default.Search,
+                                if (insecure) L("اتصال غير مشفّر") else null, Modifier.size(15.dp),
+                                tint = if (insecure) cs.error else cs.onSurfaceVariant
+                            )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (!hasPage) "ابحث أو اكتب عنوان" else hostOf(tab.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                if (!hasPage) L("ابحث أو اكتب عنوان") else hostOf(tab.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium, color = if (hasPage) cs.onSurface else cs.onSurfaceVariant
                             )
                         }
                         RoundBtn(onClick = onTabs) {
                             Box(Modifier.size(24.dp).border(2.dp, cs.onSurface, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
-                                Text("$tabCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                Text(if (tabCount > 99) "99+" else "$tabCount", maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             }
                         }
-                        RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "المزيد") }
-                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome)
+                        RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, L("المزيد")) }
+                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome, onTranslate, onPrint, onCustomTab)
                     }
                 }
             }
@@ -878,8 +910,8 @@ private class Site(val name: String, val url: String, val glyph: String, val col
 fun RoundBtn(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(
-        Modifier.padding(horizontal = 3.dp).size(44.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
-            .clickable(enabled = enabled, onClick = onClick),
+        Modifier.padding(horizontal = 2.dp).size(48.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
+            .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
     ) { CompositionLocalProvider(LocalContentColor provides cs.onSurface) { content() } }
 }
@@ -946,7 +978,8 @@ private fun RowScope.QuickTile(label: String, icon: ImageVector, enabled: Boolea
 @Composable
 fun MenuSheet(
     tab: BrowserTab, onDismiss: () -> Unit, onNewTab: () -> Unit, onFind: () -> Unit, onDesktop: () -> Unit,
-    onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit, onHome: () -> Unit
+    onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit, onHome: () -> Unit, onTranslate: () -> Unit = {},
+    onPrint: () -> Unit = {}, onCustomTab: () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -955,27 +988,30 @@ fun MenuSheet(
     fun act(a: () -> Unit) { scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); a() } }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.background) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 20.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 20.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickTile("التالي", Icons.AutoMirrored.Filled.ArrowForward, tab.canForward) { act { tab.webView?.goForward() } }
-                QuickTile(if (tab.loading) "إيقاف" else "تحديث", if (tab.loading) Icons.Default.Close else Icons.Default.Refresh, hasPage) {
+                QuickTile(L("التالي"), Icons.AutoMirrored.Filled.ArrowForward, tab.canForward) { act { tab.webView?.goForward() } }
+                QuickTile(if (tab.loading) L("إيقاف") else L("تحديث"), if (tab.loading) Icons.Default.Close else Icons.Default.Refresh, hasPage) {
                     act { if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() }
                 }
-                QuickTile("مشاركة", Icons.Default.Share, hasPage) { act(onShare) }
-                QuickTile("نسخ", Icons.Default.Edit, hasPage) { act(onCopy) }
+                QuickTile(L("مشاركة"), Icons.Default.Share, hasPage) { act(onShare) }
+                QuickTile(L("نسخ"), Icons.Default.Edit, hasPage) { act(onCopy) }
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 3), "تبويب جديد", null, { act(onNewTab) }) { IconCircle { Icon(Icons.Default.Add, null) } }
-                ListRow(groupShape(1, 3), "بحث في الصفحة", null, { act(onFind) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Search, null) } }
-                ListRow(groupShape(2, 3), "نسخة سطح المكتب", null, { onDesktop() }, enabled = hasPage,
+                ListRow(groupShape(0, 6), L("تبويب جديد"), null, { act(onNewTab) }) { IconCircle { Icon(Icons.Default.Add, null) } }
+                ListRow(groupShape(1, 6), L("بحث في الصفحة"), null, { act(onFind) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Search, null) } }
+                ListRow(groupShape(2, 6), L("ترجمة الصفحة"), null, { act(onTranslate) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Share, null) } }
+                ListRow(groupShape(3, 6), L("طباعة / حفظ PDF"), null, { act(onPrint) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Create, null) } }
+                ListRow(groupShape(4, 6), L("فتح في Chrome"), null, { act(onCustomTab) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.ExitToApp, null) } }
+                ListRow(groupShape(5, 6), L("نسخة سطح المكتب"), null, { onDesktop() }, enabled = hasPage,
                     trailing = { Switch(checked = tab.desktop, onCheckedChange = null) }) { IconCircle { Icon(Icons.Default.Build, null) } }
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 3), "التنزيلات", null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(1, 3), "الإعدادات", null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
-                ListRow(groupShape(2, 3), "الرئيسية", null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
+                ListRow(groupShape(0, 3), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(1, 3), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
+                ListRow(groupShape(2, 3), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
             }
         }
     }
@@ -990,20 +1026,20 @@ fun StartPage(
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-    val greet = when { hour < 5 -> "ليلة هادئة"; hour < 12 -> "صباح الخير"; hour < 18 -> "طاب يومك"; else -> "مساء الخير" }
-    val date = remember { java.text.SimpleDateFormat("EEEE، d MMMM", java.util.Locale.forLanguageTag("ar")).format(java.util.Date()) }
+    val greet = when { hour < 5 -> L("ليلة هادئة"); hour < 12 -> L("صباح الخير"); hour < 18 -> L("طاب يومك"); else -> L("مساء الخير") }
+    val date = remember { java.text.SimpleDateFormat(L("EEEE، d MMMM"), java.util.Locale.forLanguageTag(I18n.code())).format(java.util.Date()) }
     val sites = remember {
         listOf(
             Site("Google", "google.com", "G", 0xFF4285F4), Site("YouTube", "youtube.com", "▶", 0xFFFF4D4D),
             Site("Wikipedia", "wikipedia.org", "W", 0xFF8A8F9E), Site("GitHub", "github.com", "</>", 0xFFA78BFA),
-            Site("Gmail", "mail.google.com", "✉", 0xFFEA4335), Site("الخرائط", "maps.google.com", "📍", 0xFF34A853)
+            Site("Gmail", "mail.google.com", "✉", 0xFFEA4335), Site(L("الخرائط"), "maps.google.com", "📍", 0xFF34A853)
         )
     }
     val latest = Downloader.tasks.firstOrNull()
     val dlSub = when {
-        activeDl > 0 -> "$activeDl قيد التنزيل"
+        activeDl > 0 -> ("" + activeDl + L(" قيد التنزيل"))
         latest != null -> latest.name
-        else -> "لا توجد تنزيلات بعد"
+        else -> L("لا توجد تنزيلات بعد")
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp)) {
@@ -1035,7 +1071,7 @@ fun StartPage(
         Reveal(shown, 120) {
             Surface(onClick = onSearchClick, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
-                    Text("ابحث في الويب أو اكتب رابطاً", style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+                    Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
                     Spacer(Modifier.height(28.dp))
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
@@ -1050,14 +1086,14 @@ fun StartPage(
         Spacer(Modifier.height(24.dp))
         Reveal(shown, 180) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                ListRow(groupShape(0, 2), "التنزيلات", dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-                ListRow(groupShape(1, 2), "التبويبات", "$tabsCount مفتوحة", onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
+                ListRow(groupShape(0, 2), L("التنزيلات"), dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
+                ListRow(groupShape(1, 2), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
             }
         }
         Spacer(Modifier.height(24.dp))
         Reveal(shown, 240) {
             Column {
-                Text("وصول سريع", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+                Text(L("وصول سريع"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     sites.forEachIndexed { i, st ->
                         ListRow(groupShape(i, sites.size), st.name, st.url, { onOpen(st.url) }) {

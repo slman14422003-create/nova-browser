@@ -86,8 +86,8 @@ object Downloader {
         app = c.applicationContext
         System.setProperty("http.maxConnections", "32")
         val nm = app.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("dl", "التنزيلات الجارية", NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel("done", "اكتمال التنزيل", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel("dl", L("التنزيلات الجارية"), NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel("done", L("اكتمال التنزيل"), NotificationManager.IMPORTANCE_DEFAULT))
         load()
         Executors.newSingleThreadScheduledExecutor()
             .scheduleWithFixedDelay({ runCatching { tick() } }, 400, 400, TimeUnit.MILLISECONDS)
@@ -127,7 +127,7 @@ object Downloader {
                 if (t.uri == null) { prepare(t, null); return@execute }
                 if (!t.resumable) buildSegs(t)
                 run(t)
-            } catch (e: Exception) { fail(t, e.message ?: "خطأ") }
+            } catch (e: Exception) { fail(t, e.message ?: L("خطأ")) }
         }
     }
 
@@ -157,7 +157,7 @@ object Downloader {
             save()
             if (t.stopReason != 0) { finish(t); return }
             run(t)
-        } catch (e: Exception) { fail(t, e.message ?: "خطأ") }
+        } catch (e: Exception) { fail(t, e.message ?: L("خطأ")) }
     }
 
     private val sinkFd = HashMap<String, ParcelFileDescriptor>()
@@ -211,7 +211,7 @@ object Downloader {
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Nova")
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
-        val uri = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IOException("تعذّر إنشاء الملف")
+        val uri = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IOException(L("تعذّر إنشاء الملف"))
         t.uri = uri
         app.contentResolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) t.name = it.getString(0)
@@ -219,7 +219,7 @@ object Downloader {
     }
 
     private fun openSink(t: DlTask) {
-        val pfd = app.contentResolver.openFileDescriptor(t.uri!!, "rw") ?: throw IOException("تعذّر فتح الملف")
+        val pfd = app.contentResolver.openFileDescriptor(t.uri!!, "rw") ?: throw IOException(L("تعذّر فتح الملف"))
         sinkFd[t.id] = pfd
         t.channel = ParcelFileDescriptor.AutoCloseOutputStream(pfd).channel
     }
@@ -262,10 +262,10 @@ object Downloader {
             val ch = t.channel!!
             while (t.stopReason == 0) {
                 val seg = claim(t) ?: break
-                try { fetch(t, seg, ch) } catch (e: Exception) { t.error = e.message ?: "خطأ"; seg.busy = false; break }
+                try { fetch(t, seg, ch) } catch (e: Exception) { t.error = e.message ?: L("خطأ"); seg.busy = false; break }
                 seg.busy = false
             }
-        } catch (e: Exception) { t.error = e.message ?: "خطأ" }
+        } catch (e: Exception) { t.error = e.message ?: L("خطأ") }
         finally { if (t.active.decrementAndGet() == 0) finish(t) }
     }
 
@@ -337,7 +337,7 @@ object Downloader {
             else -> {
                 val complete = t.segs.isNotEmpty() && t.segs.all { it.remaining <= 0 } &&
                     (t.total <= 0 || downloadedOf(t) >= t.total)
-                if (complete) markDone(t) else fail(t, t.error.ifBlank { "فشل التنزيل" })
+                if (complete) markDone(t) else fail(t, t.error.ifBlank { L("فشل التنزيل") })
             }
         }
     }
@@ -357,7 +357,7 @@ object Downloader {
             app.getSystemService(NotificationManager::class.java).notify(
                 t.id.hashCode(),
                 Notification.Builder(app, "done").setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .setContentTitle("اكتمل التنزيل").setContentText(t.name).setContentIntent(pi).setAutoCancel(true).build()
+                    .setContentTitle(L("اكتمل التنزيل")).setContentText(t.name).setContentIntent(pi).setAutoCancel(true).build()
             )
         }
     }

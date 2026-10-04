@@ -10,13 +10,21 @@ SRC = ROOT / "app/src/main/java/com/nova/browser"
 errors = []
 warnings = []
 
+_TOKEN = re.compile("|".join([
+    r'"""[\s\S]*?"""',               # نص خام
+    r'"(?:\\.|[^"\\\n])*"',            # نص عادي
+    r"/\*[\s\S]*?\*/",                 # تعليق كتلي
+    r"//[^\n]*",                       # تعليق سطري
+    r"'(?:\\.|[^'\\\n])'",             # محرف
+]))
+
 def strip(code: str) -> str:
-    code = re.sub(r'"""[\s\S]*?"""', '""', code)          # نصوص ثلاثية
-    code = re.sub(r"/\*[\s\S]*?\*/", "", code)            # تعليقات كتلية
-    code = re.sub(r"//[^\n]*", "", code)                  # تعليقات سطرية
-    code = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', code)     # نصوص عادية
-    code = re.sub(r"'(?:\\.|[^'\\\n])'", "''", code)      # محارف
-    return code
+    """يزيل النصوص والتعليقات بمرور واحد (حتى لا يُفهم // داخل رابط كتعليق)."""
+    def repl(m):
+        t = m.group(0)
+        if t.startswith("//") or t.startswith("/*"): return ""
+        return "''" if t.startswith("'") else '""'
+    return _TOKEN.sub(repl, code)
 
 # 1) توازن الأقواس
 for f in sorted(SRC.glob("*.*")):
@@ -57,9 +65,40 @@ if bl.exists():
 if (AS / "privacy.js").exists() and "__SEED__" not in (AS / "privacy.js").read_text(encoding="utf-8"):
     errors.append("privacy.js: العلامة __SEED__ مفقودة")
 
+# 2.8) كل نص L("...") له ترجمة إنجليزية في I18n.kt
+i18n = (SRC / "I18n.kt").read_text(encoding="utf-8")
+keys = set(re.findall(r'^\s+"((?:\\.|[^"\\])*)" to "', i18n, re.M))
+used = set()
+for f in SRC.glob("*.kt"):
+    if f.name == "I18n.kt": continue
+    used |= set(re.findall(r'\bL\("((?:\\.|[^"\\])*)"\)', f.read_text(encoding="utf-8")))
+for u in sorted(used - keys): errors.append(f"i18n: لا ترجمة إنجليزية للنص: {u}")
+for k in sorted(keys - used): warnings.append(f"i18n: ترجمة غير مستخدمة: {k}")
+if "__LANG__" not in (AS / "privacy.js").read_text(encoding="utf-8"): errors.append("privacy.js: العلامة __LANG__ مفقودة")
+
+# 2.9) أسرار وملفات GitHub
+for pat in ("*.jks", "*.keystore", "keystore.properties"):
+    for f in ROOT.rglob(pat):
+        if ".git" not in f.parts and "build" not in f.parts and f.name != "keystore.properties.example":
+            errors.append(f"أمان: ملف توقيع داخل المشروع ({f.relative_to(ROOT)}) — لا ترفعه إلى git")
+gi = (ROOT / ".gitignore").read_text(encoding="utf-8") if (ROOT / ".gitignore").exists() else ""
+for need in ("*.jks", "keystore.properties"):
+    if need not in gi: errors.append(f".gitignore ينقصه: {need}")
+try:
+    import yaml
+    for f in (ROOT / ".github").rglob("*.y*ml"):
+        try: yaml.safe_load(f.read_text(encoding="utf-8"))
+        except Exception as e: errors.append(f"YAML غير صالح: {f.relative_to(ROOT)}: {e}")
+except ImportError:
+    warnings.append("PyYAML غير مثبّت: تخطّي فحص ملفات YAML")
+for wf in (ROOT / ".github/workflows").glob("*.yml"):
+    t = wf.read_text(encoding="utf-8")
+    if re.search(r"uses:\s*[\w./-]+@(main|master)\b", t): warnings.append(f"{wf.name}: action مثبّت على main/master")
+    if "permissions:" not in t: warnings.append(f"{wf.name}: بلا permissions صريحة")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
-defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s+by\s+mutable|fun\s+(\w+)\(", prefs))
+defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))
 defined = {x for t in defined for x in t if x}
 for f in SRC.glob("*.kt"):
     for m in set(re.findall(r"\bPrefs\.(\w+)", f.read_text(encoding="utf-8"))):
