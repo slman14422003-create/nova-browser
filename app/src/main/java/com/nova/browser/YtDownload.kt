@@ -78,7 +78,7 @@ class NpDownloader : org.schabi.newpipe.extractor.downloader.Downloader() {
 }
 
 /** خيار تنزيل: audioUrl غير فارغ = فيديو بلا صوت يُدمج مع هذا الصوت بعد التنزيل. */
-class YtOpt(val label: String, val sub: String, val url: String, val ext: String, val mime: String, val audioUrl: String? = null)
+class YtOpt(val label: String, val sub: String, val url: String, val ext: String, val mime: String, val audioUrl: String? = null, val fmt: AudioFmt? = null)
 class YtInfo(val title: String, val author: String, val videos: List<YtOpt>, val audios: List<YtOpt>)
 
 object YtFetch {
@@ -125,8 +125,15 @@ object YtFetch {
             .forEach { videos.add(YtOpt(it.resolution + " MP4", L("فيديو + صوت جاهز"), it.content, "mp4", "video/mp4")) }
 
         val audios = ArrayList<YtOpt>()
-        if (aac != null) audios.add(YtOpt("M4A • ${aac.averageBitrate} kbps", "AAC", aac.content, "m4a", "audio/mp4"))
-        if (opus != null) audios.add(YtOpt("Opus • ${opus.averageBitrate} kbps", "WebM", opus.content, "webm", "audio/webm"))
+        // الملفان الأصليان بلا تحويل (الأسرع)
+        if (aac != null) audios.add(YtOpt("M4A • ${aac.averageBitrate} kbps", L("الملف الأصلي AAC بلا تحويل"), aac.content, "m4a", "audio/mp4"))
+        if (opus != null) audios.add(YtOpt("WebM Opus • ${opus.averageBitrate} kbps", L("الملف الأصلي Opus بلا تحويل"), opus.content, "webm", "audio/webm"))
+        // صيغ محوَّلة بعد التنزيل (MP3 وغيرها) من أفضل مصدر متاح
+        val srcUrl = aac?.content ?: opus?.content
+        if (srcUrl != null) {
+            val ext = if (aac != null) "m4a" else "webm"; val mime = if (aac != null) "audio/mp4" else "audio/webm"
+            AudioFormats.all.forEach { f -> audios.add(YtOpt(f.label, f.sub, srcUrl, ext, mime, null, f)) }
+        }
         return YtInfo(si.name, si.uploaderName ?: "", videos, audios)
     }
 }
@@ -137,6 +144,14 @@ object YtDownload {
     fun start(ctx: Context, info: YtInfo, o: YtOpt) {
         val base = safeName(info.title)
         val ref = "https://www.youtube.com/"
+        val f = o.fmt
+        if (f != null) {
+            // تنزيل المصدر ثم التحويل إلى الصيغة المطلوبة (يُستدعى الـ callback على خيط خلفي)
+            Downloader.startNamed(ctx, o.url, YT_UA, ref, "$base [source].${o.ext}", o.mime) { t ->
+                AudioConvert.run(ctx.applicationContext, base, info.title, info.author, t, f)
+            }
+            return
+        }
         if (o.audioUrl == null) {
             Downloader.startNamed(ctx, o.url, YT_UA, ref, "$base.${o.ext}", o.mime)
             return

@@ -19,3 +19,8 @@
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn org.checkerframework.**
 -dontwarn javax.lang.model.**
+
+# FFmpegKit
+-keep class com.arthenica.ffmpegkit.** { *; }
+-keep class com.arthenica.smartexception.** { *; }
+-dontwarn com.arthenica.**

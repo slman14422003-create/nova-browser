@@ -27,7 +27,8 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 7
-        versionName = System.getenv("VERSION_NAME") ?: "1.6"
+        versionName = System.getenv("VERSION_NAME") ?: "1.6.3"
+        ndk { abiFilters += listOf("arm64-v8a") }   // يقلّل حجم الـ APK كثيراً (مكتبات FFmpeg)
     }
     signingConfigs {
         if (hasReleaseSigning) create("release") {
@@ -39,6 +40,7 @@ android {
     }
     androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
     lint { abortOnError = false; checkReleaseBuilds = false }
+    packaging { jniLibs { pickFirsts += "**/libc++_shared.so" } }
     packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     testOptions { unitTests.isReturnDefaultValues = true }
     buildTypes {
@@ -77,6 +79,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
     implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
+    implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")   // تحويل الصوت إلى MP3 وغيره (FFmpeg)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")

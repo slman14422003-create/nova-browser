@@ -11,6 +11,18 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "أعلى جودة MP3 (متوافق مع كل الأجهزة)" to "Best MP3 quality (works on every device)",
+        "جودة عالية وحجم معتدل" to "High quality, moderate size",
+        "حجم صغير" to "Small size",
+        "ترميز مفتوح" to "Open codec",
+        "أفضل جودة بأقل حجم" to "Best quality for the size",
+        "تحويل إلى AAC" to "Convert to AAC",
+        "بلا فقد إضافي (حجم كبير)" to "No extra loss (large size)",
+        "غير مضغوط (حجم كبير جداً)" to "Uncompressed (very large)",
+        "الملف الأصلي AAC بلا تحويل" to "Original AAC file, no conversion",
+        "الملف الأصلي Opus بلا تحويل" to "Original Opus file, no conversion",
+        "جارٍ التحويل…" to "Converting…",
+        "فشل التحويل — حُفظ الملف الأصلي" to "Conversion failed — the original file was kept",
         "سجل التشخيص" to "Diagnostics log",
         "يساعد في معرفة سبب توقف الفيديو (انسخه وأرسله)" to "Helps find why the video stops (copy and send it)",
         "لا يوجد سجل بعد" to "No log yet",
