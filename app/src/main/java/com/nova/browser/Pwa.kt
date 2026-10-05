@@ -17,7 +17,7 @@ class SiteInfo(val kind: SiteKind, val name: String, val host: String)
  * - يحقن pwa.js على هذه النطاقات فقط (محاكاة standalone، إخفاء لافتة «افتح التطبيق»، مظهر تطبيق).
  */
 object Pwa {
-    const val BAR_H = 48   // dp: ارتفاع الشريط العلوي (يشمل خط التقدّم)
+    const val BAR_H = UiLayout.BAR_DP   // dp: ارتفاع الشريط العلوي (يشمل خط التقدّم) — القيمة في UiLayout
 
     private val aiNames = mapOf(
         "gemini.google.com" to "Gemini", "chatgpt.com" to "ChatGPT", "chat.openai.com" to "ChatGPT",
@@ -61,6 +61,22 @@ object Pwa {
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, base.replace("__CFG__", cfg), origins) }
         }
     }
+
+    /**
+     * احتياطي للأجهزة التي لا تدعم الحقن قبل الصفحة (DOCUMENT_START_SCRIPT): كان pwa.js لا يعمل عليها إطلاقاً.
+     * يُنفَّذ عند بدء الصفحة وللنطاقات المسموحة فقط؛ السكربت نفسه يحمي من التنفيذ المزدوج (__novaPwa).
+     */
+    fun onPageStart(wv: WebView, url: String) {
+        if (docStart || !Prefs.pwaMode) return
+        val base = js ?: return
+        val o = runCatching { Uri.parse(url) }.getOrNull() ?: return
+        if (o.scheme != "https" || "https://${o.host}" !in origins) return
+        val cfg = "{\"v\":2,\"anim\":${Prefs.smoothAnim && Adaptive.level == 0},\"hap\":${Prefs.pwaHaptics}}"
+        wv.evaluateJavascript(base.replace("__CFG__", cfg), null)
+    }
+
+    /** يمرّر الصفحة (أو أكبر حاوية تمرير فيها) إلى الأعلى بحركة ناعمة — عند الضغط على اسم الموقع في الشريط. */
+    fun scrollTop(wv: WebView?) { wv?.evaluateJavascript("window.__novaTop&&window.__novaTop()", null) }
 
     @Volatile private var lastUrl: String? = null
     @Volatile private var lastInfo: SiteInfo? = null

@@ -263,7 +263,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); YtMedia.pageChanged(tab, u) }
+        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); YtMedia.pageChanged(tab, u) }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             // تنقّلات الصفحات أحادية الصفحة (مثل يوتيوب) لا تستدعي onPageStarted
             if (u.startsWith("http")) { tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u) }
@@ -834,6 +834,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val imeInsets = WindowInsets.ime
     val navInsets = WindowInsets.navigationBars
     val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
+    val imeSettled = rememberSettledIme(imeInsets)   // ارتفاع الكيبورد بعد استقراره (تغيير واحد للـ WebView بدل ~20)
     var pageTyping by remember { mutableStateOf(false) }
     var wasBlocked by remember { mutableStateOf(false) }
     LaunchedEffect(imeVisible, editing, tab.finding) {
@@ -851,7 +852,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
-                Box(Modifier.fillMaxSize().padding(top = barH).pageInsets(imeInsets, navInsets, pageTyping, inPip).background(cs.background)) {
+                Box(Modifier.fillMaxSize().padding(top = barH).pageInsets({ imeSettled.value }, navInsets, pageTyping, inPip).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -908,7 +909,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                     shown.value?.let { si ->
                         SiteBar(
                             info = si, progress = tab.progress, loading = tab.loading,
-                            onReload = { tab.webView?.reload() }, onShare = { shareText(activity, tab.url) },
+                            onReload = { tab.webView?.reload() }, onShare = { shareText(activity, tab.url) }, onTitleTap = { Pwa.scrollTop(tab.webView) },
                             onPip = if (si.kind == SiteKind.YT_VIDEO) ({ mainAct?.enterPip() }) else null,
                             onDownload = if (si.kind == SiteKind.YT_VIDEO) ({ ytUrl = tab.url }) else null
                         )

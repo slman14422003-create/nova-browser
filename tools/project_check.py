@@ -96,6 +96,17 @@ for wf in (ROOT / ".github/workflows").glob("*.yml"):
     if re.search(r"uses:\s*[\w./-]+@(main|master)\b", t): warnings.append(f"{wf.name}: action مثبّت على main/master")
     if "permissions:" not in t: warnings.append(f"{wf.name}: بلا permissions صريحة")
 
+
+# 2.95) تنظيم الواجهة: القياسات تأتي من UiLayout فقط
+if not (SRC / "UiLayout.kt").exists():
+    errors.append("UiLayout.kt مفقود (ملف تنظيم الواجهة)")
+else:
+    sb = (SRC / "SiteBar.kt").read_text(encoding="utf-8")
+    if re.search(r"height\((45|48|3)\.dp\)", sb): errors.append("SiteBar.kt: ارتفاع الشريط مكتوب رقماً — استخدم UiLayout.BAR_ROW_DP / PROGRESS_DP")
+    if re.search(r"BAR_H\s*=\s*\d", (SRC / "Pwa.kt").read_text(encoding="utf-8")): errors.append("Pwa.kt: BAR_H يجب أن يشير إلى UiLayout.BAR_DP")
+    if "fun Modifier.pageInsets" in (SRC / "Motion.kt").read_text(encoding="utf-8"): errors.append("Motion.kt: pageInsets مكرّرة — مكانها UiLayout.kt")
+    if not (AS / "pwa.js").exists(): errors.append("assets/pwa.js مفقود")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))

@@ -81,9 +81,10 @@
     // ───────────── 3) مظهر وإحساس التطبيق (CSS) ─────────────
     var css =
       '*{-webkit-tap-highlight-color:transparent}' +
-      'html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}' +   // بلا تأخير نقرتين ولا ارتداد التمرير
+      'html{--nova-sat:env(safe-area-inset-top,0px);--nova-sab:env(safe-area-inset-bottom,0px);touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}' +   // بلا تأخير نقرتين ولا ارتداد التمرير
       'body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overscroll-behavior-y:none}' +
       '::-webkit-scrollbar{display:none}' +
+      'input,textarea{-webkit-user-select:text;user-select:text}' +
       'button,[role=button],[role=tab],summary,select{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}' +
       'img,video,canvas{-webkit-user-drag:none}' +
       (CFG.anim ? '@keyframes novaIn{from{opacity:.01}to{opacity:1}}html{animation:novaIn .18s ease-out both}' : '') +
@@ -120,8 +121,8 @@
         var a = document.activeElement;
         if (!editable(a)) return;
         var r = a.getBoundingClientRect(), vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-        if (r.bottom > vh - 12 || r.top < 8) safe(function () { a.scrollIntoView({ block: 'center', behavior: CFG.anim ? 'smooth' : 'auto' }); });
-      }, 260);
+        if (r.bottom > vh - 12 || r.top < 8) safe(function () { a.scrollIntoView({ block: 'center', behavior: 'auto' }); });
+      }, 90);
     }
     document.addEventListener('focusin', function (e) { if (editable(e.target)) reveal(); }, true);
     safe(function () { window.visualViewport.addEventListener('resize', reveal); });
@@ -162,10 +163,48 @@
     }
     function startSweep() {
       sweep();
-      new MutationObserver(function () { if (!sweepT) sweepT = setTimeout(sweep, 500); })
+      new MutationObserver(function () { if (!sweepT && !document.hidden) sweepT = setTimeout(sweep, 900); })
         .observe(root, { childList: true, subtree: true });
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startSweep); else startSweep();
+
+    // ───────────── 8) انتقال ناعم عند التنقل داخل الصفحة (SPA) + العودة للأعلى ─────────────
+    // يوتيوب وصفحات الذكاء الاصطناعي تتنقل بلا إعادة تحميل (pushState) فتبدو التبديلات فجائية.
+    // نُخفت المحتوى قليلاً ثم نُظهره (opacity فقط: لا يكسر العناصر الثابتة ولا مشغّل الفيديو).
+    var lastRoute = location.pathname + location.search, navT = 0;
+    function pageEl() { return document.querySelector('ytm-app') || document.querySelector('main') || document.body; }
+    function routeChanged() {
+      clearTimeout(navT);
+      navT = setTimeout(function () {
+        var r = location.pathname + location.search;
+        if (r === lastRoute) return;
+        lastRoute = r;
+        if (!CFG.anim) return;
+        safe(function () {
+          var el = pageEl();
+          if (el && el.animate) el.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 190, easing: 'cubic-bezier(.2,0,0,1)' });
+        });
+      }, 30);
+    }
+    safe(function () {
+      ['pushState', 'replaceState'].forEach(function (k) {
+        var o = history[k];
+        history[k] = function () { var r = o.apply(this, arguments); routeChanged(); return r; };
+      });
+      window.addEventListener('popstate', routeChanged);
+    });
+    // اسم الموقع في الشريط الأصلي يستدعيها: أكبر حاوية قابلة للتمرير → للأعلى بحركة ناعمة
+    window.__novaTop = function () {
+      safe(function () {
+        var best = document.scrollingElement || root, bh = best.scrollTop;
+        var l = document.querySelectorAll('main,[role=main],div,section');
+        for (var i = 0; i < l.length && i < 400; i++) {
+          var e = l[i];
+          if (e.scrollTop > bh && e.scrollHeight > e.clientHeight + 50) { var o = getComputedStyle(e).overflowY; if (o === 'auto' || o === 'scroll') { best = e; bh = e.scrollTop; } }
+        }
+        best.scrollTo({ top: 0, behavior: CFG.anim ? 'smooth' : 'auto' });
+      });
+    };
 
     // واجهة عامة صغيرة يمكن للصفحات (أو سكربتاتك لاحقاً) استخدامها
     window.NovaApp = { version: CFG.v, share: navigator.share, haptic: function () { send({ t: 'hap' }); } };

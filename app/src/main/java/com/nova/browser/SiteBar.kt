@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -58,6 +59,7 @@ fun SiteBar(
     info: SiteInfo, progress: Float, loading: Boolean,
     onReload: () -> Unit, onShare: () -> Unit,
     onPip: (() -> Unit)? = null, onDownload: (() -> Unit)? = null,
+    onTitleTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
@@ -67,7 +69,7 @@ fun SiteBar(
 
     Column(modifier.fillMaxWidth().background(cs.background)) {
         Row(
-            Modifier.fillMaxWidth().height(45.dp).background(wash).padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(UiLayout.BAR_ROW_DP.dp).background(wash).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // شارة الهوية
@@ -79,7 +81,10 @@ fun SiteBar(
                 if (info.kind == SiteKind.AI) SparkGlyph(cs.onTertiary, Modifier.size(18.dp))
                 else PlayGlyph(cs.onTertiary, cs.tertiary, Modifier.size(19.dp))
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Column(
+                Modifier.weight(1f).then(if (onTitleTap != null) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = tap(onTitleTap)) else Modifier),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
                 Text(info.name, fontSize = 14.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Icon(Icons.Default.Lock, null, Modifier.size(10.dp), tint = cs.tertiary)
@@ -98,7 +103,7 @@ fun SiteBar(
         }
         // خط التقدّم + الفاصل
         val p by animateFloatAsState(if (loading) progress.coerceIn(0.06f, 1f) else 0f, tween(Adaptive.ms(180)), label = "p")
-        Box(Modifier.fillMaxWidth().height(3.dp)) {
+        Box(Modifier.fillMaxWidth().height(UiLayout.PROGRESS_DP.dp)) {
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(cs.outlineVariant.copy(alpha = 0.7f)))
             if (p in 0.001f..0.999f)
                 Box(Modifier.fillMaxWidth(p).height(2.dp).align(Alignment.BottomStart)
