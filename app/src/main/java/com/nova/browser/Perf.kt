@@ -115,6 +115,13 @@ object Perf {
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*")) }
     }
 
+    /** قراءة ملف نصي من assets. */
+    fun asset(name: String): String = app.assets.open(name).bufferedReader().use { it.readText() }
+
+    /** User-Agent الافتراضي للـ WebView: استدعاؤه مكلف (يهيّئ محرك الويب)، فيُحسب مرة واحدة فقط لا مع كل تبويب. */
+    private var defUa: String? = null
+    fun defaultUa(c: Context): String = defUa ?: WebSettings.getDefaultUserAgent(c.applicationContext).also { defUa = it }
+
     private val renderJs: String? by lazy {
         runCatching { app.assets.open("render.js").bufferedReader().use { it.readText() } }.getOrNull()
     }
@@ -142,5 +149,6 @@ object Perf {
     /** تسخين محرك الويب وفحص الأمان مبكراً لتسريع أول تصفح. */
     fun warmUp(ctx: Context) {
         runCatching { WebView.startSafeBrowsing(ctx.applicationContext, null) }
+        runCatching { defaultUa(ctx) }
     }
 }

@@ -11,6 +11,15 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "تطبيق" to "App",
+        "وضع التطبيق (PWA)" to "App mode (PWA)",
+        "شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)" to "Top bar and app-like experience for YouTube and AI sites (applies to new tabs)",
+        "محرك العرض" to "Rendering engine",
+        "غير معروف" to "Unknown",
+        "محدّث" to "Up to date",
+        "يتوفر إصدار أحدث" to "Newer version available",
+        "اضغط للتحديث" to "Tap to update",
+        "محرك العرض قديم — حدّث Android System WebView لأفضل أداء وتوافق (الإعدادات ← محرك العرض)" to "Rendering engine is outdated — update Android System WebView for best speed and compatibility (Settings → Rendering engine)",
         "أندرويد يمنع أي تطبيق من قراءة بيانات كروم مباشرة، لذلك يُستورد من ملفات يصدّرها كروم نفسه. اختر ملفاً أو عدة ملفات دفعة واحدة:" to "Android prevents apps from reading Chrome data directly, so import from files exported by Chrome itself. Pick one or several files at once:",
         "أُزيلت من المفضلة" to "Removed from favorites",
         "أُضيفت إلى المفضلة" to "Added to favorites",

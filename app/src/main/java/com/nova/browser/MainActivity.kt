@@ -177,12 +177,16 @@ fun normalize(input: String): String {
 
 fun hostOf(u: String): String = runCatching { java.net.URI(u).host?.removePrefix("www.") }.getOrNull() ?: u
 
+private val UA_VERSION_RE = Regex("Version/\\S+ ")
+private val UA_ANDROID_RE = Regex("Android [^;)]+; [^)]*\\)")
+private val UA_CHROME_RE = Regex("Chrome/(\\d+)\\.[\\d.]+")
 const val DESKTOP_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
 fun applyUa(wv: WebView, desktop: Boolean) {
     val s = wv.settings
-    s.userAgentString = if (desktop) DESKTOP_UA
-    else reduceUa(WebSettings.getDefaultUserAgent(wv.context).replace("; wv", "").replace(Regex("Version/\\S+ "), ""))
+    s.userAgentString = if (desktop) WebEngine.desktopUa()
+    else reduceUa(Perf.defaultUa(wv.context).replace("; wv", "").replace(UA_VERSION_RE, ""))
+    WebEngine.applyMetadata(wv, desktop)
     s.useWideViewPort = true
     s.loadWithOverviewMode = true   // الصفحات الأعرض من الشاشة (بلا viewport) تُصغَّر لتناسب العرض
 }
@@ -234,6 +238,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     Perf.tune(this)
     Perf.installPrivacy(this)
     Perf.installRender(this)
+    Pwa.install(this)
     PasswordBridge.install(this, tab, h)
     YtBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -428,6 +433,7 @@ class MainActivity : ComponentActivity() {
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
+        WebEngine.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
         val start = intent?.data?.toString() ?: ""
@@ -455,7 +461,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val lvl = Adaptive.level
             LaunchedEffect(lvl, Prefs.cap60) { applyRefreshCap(lvl) }
-            LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); Updater.check(applicationContext) }   // بعد استقرار الواجهة
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); Updater.check(applicationContext); WebEngine.checkLatest(applicationContext) }   // بعد استقرار الواجهة
             val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
             SideEffect {
                 enableEdgeToEdge(
@@ -490,8 +496,7 @@ class MainActivity : ComponentActivity() {
 /** وكيل مستخدم مختصر مثل Chrome: بلا موديل الجهاز ولا رقم الإصدار الكامل، فيتطابق مع ملايين المستخدمين (يقلّل التفرّد). */
 fun reduceUa(ua: String): String {
     if (!Prefs.antiFingerprint) return ua
-    return ua.replace(Regex("Android [^;)]+; [^)]*\\)"), "Android 10; K)")
-        .replace(Regex("Chrome/(\\d+)\\.[\\d.]+"), "Chrome/\$1.0.0.0")
+    return ua.replace(UA_ANDROID_RE, "Android 10; K)").replace(UA_CHROME_RE, "Chrome/\$1.0.0.0")
 }
 
 @OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
@@ -824,10 +829,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
 
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = cs.background) {
-            val showYtBar = !inPip && customView == null && isYtVideo(tab.url)
-            val ytBarH by animateDpAsState(if (showYtBar) 48.dp else 0.dp, tween(Adaptive.ms(160)), label = "ytBarH")
+            // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
+            val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
+            val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
-                Box(Modifier.fillMaxSize().padding(top = ytBarH).navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
+                Box(Modifier.fillMaxSize().padding(top = barH).navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -859,7 +865,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                                         SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                                             setOnRefreshListener { wv.reload() }
-                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || isYtHost(wv.url) }
+                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || isYtHost(wv.url) || Pwa.kind(wv.url) != SiteKind.NONE }
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
                                         }
@@ -874,11 +880,21 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                         }
                     }
                 }
-                if (showYtBar && !showSettings && !showPasswords && !showDownloads) {
-                    YtBar(
-                        onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
-                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 12.dp)
-                    )
+                AnimatedVisibility(
+                    visible = site != null && !showSettings && !showPasswords && !showDownloads,
+                    enter = NovaMotion.barEnter, exit = NovaMotion.barExit, modifier = Modifier.align(Alignment.TopCenter)
+                ) {
+                    // آخر معلومات صالحة تبقى أثناء حركة الخروج كي لا يفرغ الشريط فجأة
+                    val shown = remember { mutableStateOf(site) }
+                    if (site != null) shown.value = site
+                    shown.value?.let { si ->
+                        SiteBar(
+                            info = si, progress = tab.progress, loading = tab.loading,
+                            onReload = { tab.webView?.reload() }, onShare = { shareText(activity, tab.url) },
+                            onPip = if (si.kind == SiteKind.YT_VIDEO) ({ mainAct?.enterPip() }) else null,
+                            onDownload = if (si.kind == SiteKind.YT_VIDEO) ({ ytUrl = tab.url }) else null
+                        )
+                    }
                 }
                 if (!inPip) Box(Modifier.align(Alignment.BottomCenter)) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
@@ -895,23 +911,19 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
         }
         AnimatedVisibility(
             visible = showDownloads,
-            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
-            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
+            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
         ) { DownloadsScreen(onBack = { showDownloads = false }) }
         AnimatedVisibility(
             visible = showSettings,
-            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
-            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
+            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
         ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }, onPasswords = { showPasswords = true }) }
         AnimatedVisibility(
             visible = showPasswords,
-            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
-            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
+            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
         ) { PasswordsScreen(onBack = { showPasswords = false }) }
         AnimatedVisibility(
             visible = Library.show,
-            enter = slideInVertically(tween(Adaptive.ms(260), easing = FastOutSlowInEasing)) { it / 10 } + fadeIn(tween(Adaptive.ms(200))),
-            exit = slideOutVertically(tween(Adaptive.ms(200), easing = FastOutSlowInEasing)) { it / 10 } + fadeOut(tween(Adaptive.ms(140)))
+            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
         ) {
             LibraryScreen(onBack = { Library.show = false }, onOpen = { u ->
                 Library.show = false; showSettings = false
