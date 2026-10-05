@@ -1249,21 +1249,14 @@ const val AI_MODE_URL = "https://www.google.com/search?udm=50"
 @Composable
 private fun SiteTile(st: Site, modifier: Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    val c = Color(st.color)
-    val wash = remember(st.color) { Brush.verticalGradient(listOf(c.copy(alpha = 0.22f), Color.Transparent)) }
-    Surface(
-        onClick = onClick, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh,
-        border = BorderStroke(1.dp, c.copy(alpha = 0.28f)), modifier = modifier.height(108.dp)
-    ) {
-        Box(Modifier.fillMaxSize().background(wash).padding(16.dp)) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(c.copy(alpha = 0.24f)).align(Alignment.TopStart), contentAlignment = Alignment.Center) {
-                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = c)
-                else Text(st.glyph, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c)
+    Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), color = cs.surfaceContainerHigh, modifier = modifier) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            IconCircle {
+                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = cs.onSurface)
+                else Text(st.glyph, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
             }
-            Column(Modifier.align(Alignment.BottomStart)) {
-                Text(st.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(st.host, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(st.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -1291,7 +1284,6 @@ fun StartPage(
             Site("GitHub", "github.com", "https://github.com", "</>", 0xFFA78BFA, null)
         )
     }
-    val aiBrush = remember { Brush.linearGradient(listOf(Color(0xFF3B6EF6), Color(0xFF8B5CF6), Color(0xFFE8579B))) }
     val latest = Downloader.tasks.firstOrNull()
     val dlSub = when {
         activeDl > 0 -> ("" + activeDl + L(" قيد التنزيل"))
@@ -1301,77 +1293,60 @@ fun StartPage(
 
     Column(
         Modifier.fillMaxSize().graphicsLayer { alpha = appear; translationY = (1f - appear) * 36f }
-            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 14.dp, bottom = 24.dp)
+            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 24.dp)
     ) {
+        // أعلى الصفحة: شريط البحث + زر التبويبات
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = cs.surfaceContainerHigh) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, null, Modifier.size(18.dp), tint = cs.tertiary)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Nova", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surfaceContainerHigh, modifier = Modifier.weight(1f).height(52.dp)) {
+                Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
+                    Spacer(Modifier.width(12.dp))
+                    Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
             RoundBtn(onClick = onTabs) {
                 Box(Modifier.size(22.dp).border(2.dp, cs.onSurface, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
                     Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }
         }
-        Spacer(Modifier.height(28.dp))
-        Column(Modifier.padding(horizontal = 8.dp)) {
-            Text(greet, style = MaterialTheme.typography.displaySmall)
-            Text(date, style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
-        }
-        Spacer(Modifier.height(22.dp))
-
-        // بطاقة وضع الذكاء الاصطناعي: تفتح AI Mode في بحث جوجل
-        Surface(onClick = onAi, shape = RoundedCornerShape(32.dp), color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.background(aiBrush).padding(horizontal = 22.dp, vertical = 22.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
-                        Text("✦", color = Color.White, fontSize = 17.sp)
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text(L("وضع الذكاء الاصطناعي"), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.92f))
-                }
-                Spacer(Modifier.height(16.dp))
-                Text(L("اسأل Google أي شيء"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(Modifier.height(4.dp))
-                Text(L("اطرح سؤالك كاملاً واحصل على إجابة مفصّلة"), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.88f))
-                Spacer(Modifier.height(18.dp))
-                Row(
-                    Modifier.fillMaxWidth().clip(CircleShape).background(Color.White.copy(alpha = 0.20f)).padding(horizontal = 16.dp, vertical = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Search, null, tint = Color.White)
-                    Spacer(Modifier.width(10.dp))
-                    Text(L("اسأل أي شيء…"), color = Color.White.copy(alpha = 0.92f), modifier = Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Color.White)
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        // بحث عادي أو رابط
-        Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
-                Spacer(Modifier.width(12.dp))
-                Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
-            }
-        }
-
         Spacer(Modifier.height(24.dp))
+        Column(Modifier.padding(horizontal = 8.dp)) {
+            Text(greet, style = MaterialTheme.typography.headlineMedium)
+            Text(date, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(18.dp))
+
+        // وضع الذكاء الاصطناعي: بطاقة هادئة بألوان التطبيق فقط (لمسة التمييز tertiary)
+        Surface(onClick = onAi, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(44.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                    Text("✦", color = cs.tertiary, fontSize = 20.sp)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(L("وضع الذكاء الاصطناعي"), style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
+                    Text(L("اسأل Google أي شيء"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(L("اطرح سؤالك كاملاً واحصل على إجابة مفصّلة"), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(10.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = cs.onSurfaceVariant)
+            }
+        }
+
+        Spacer(Modifier.height(22.dp))
         Text(L("وصول سريع"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            sites.chunked(2).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    pair.forEach { st -> SiteTile(st, Modifier.weight(1f)) { onOpen(st.url) } }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            sites.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { st -> SiteTile(st, Modifier.weight(1f)) { onOpen(st.url) } }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(18.dp))
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             ListRow(groupShape(0, 2), L("التنزيلات"), dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
             ListRow(groupShape(1, 2), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
