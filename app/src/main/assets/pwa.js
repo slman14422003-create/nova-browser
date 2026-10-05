@@ -1,65 +1,173 @@
-// وضع التطبيق (PWA) ليوتيوب ومواقع الذكاء الاصطناعي. يُحقن قبل سكربتات الصفحة، فقط على النطاقات المسموح بها من Pwa.kt.
+// Nova PWA Runtime v2 — يحوّل يوتيوب ومواقع الذكاء الاصطناعي إلى تجربة تطبيق.
+// يُحقن قبل سكربتات الصفحة (document-start) على النطاقات المسموحة فقط. __CFG__ يستبدلها Pwa.kt بإعدادات التشغيل.
 (function () {
+  'use strict';
   try {
     if (window.__novaPwa || window.top !== window) return;
-    var h = location.hostname;
-    var yt = /(^|\.)youtube\.com$/.test(h);
-    // google.com: نفعّل فقط على وضع الذكاء الاصطناعي (udm=50) وليس على البحث العادي
-    if (/(^|\.)google\.[a-z.]+$/.test(h) && !/[?&]udm=50(&|$)/.test(location.search) && !/^\/ai(\/|$)/.test(location.pathname) && !/^gemini\./.test(h)) return;
+    var H = location.hostname;
+    var YT = /(^|\.)youtube\.com$/.test(H);
+    var GOOGLE = /(^|\.)google\.[a-z.]+$/.test(H);
+    // google.com: فقط وضع الذكاء الاصطناعي (udm=50)، أما البحث العادي فلا يُمسّ
+    if (GOOGLE && !/[?&]udm=50(&|$)/.test(location.search) && !/^\/ai(\/|$)/.test(location.pathname)) return;
     window.__novaPwa = 1;
 
-    // 1) محاكاة التثبيت: المواقع ترى display-mode: standalone فتخفي لافتات «افتح في التطبيق/ثبّت»
-    try {
+    var CFG = { v: 2, anim: true, hap: true };
+    try { CFG = Object.assign(CFG, __CFG__); } catch (e) {}
+
+    var root = document.documentElement;
+    function def(o, k, v) { try { Object.defineProperty(o, k, { get: function () { return v; }, configurable: true }); } catch (e) {} }
+    function safe(f) { try { f(); } catch (e) {} }
+    function send(o) { try { if (window.NovaPwa) window.NovaPwa.postMessage(JSON.stringify(o)); } catch (e) {} }
+
+    // ───────────── 1) هوية التطبيق المثبّت ─────────────
+    // المواقع ترى أنها تعمل كتطبيق مثبّت فتخفي لافتات «ثبّت/افتح في التطبيق»
+    safe(function () {
       var mm = window.matchMedia.bind(window);
       window.matchMedia = function (q) {
-        if (/display-mode\s*:\s*(standalone|minimal-ui)/i.test(String(q))) {
-          return { matches: true, media: String(q), onchange: null,
+        var s = String(q);
+        var hit = /display-mode\s*:\s*(standalone|minimal-ui)/i.test(s);
+        var miss = /display-mode\s*:\s*(browser|fullscreen)/i.test(s);
+        if (hit || miss) {
+          return { matches: hit, media: s, onchange: null,
             addListener: function () {}, removeListener: function () {},
-            addEventListener: function () {}, removeEventListener: function () {}, dispatchEvent: function () { return false; } };
+            addEventListener: function () {}, removeEventListener: function () {},
+            dispatchEvent: function () { return false; } };
         }
         return mm(q);
       };
-      Object.defineProperty(navigator, 'standalone', { get: function () { return true; }, configurable: true });
-    } catch (e) {}
+    });
+    def(navigator, 'standalone', true);
+    safe(function () {
+      navigator.getInstalledRelatedApps = function () { return Promise.resolve([{ platform: 'webapp', url: location.origin }]); };
+      navigator.setAppBadge = navigator.clearAppBadge = function () { return Promise.resolve(); };
+      window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    });
 
-    // 2) مظهر التطبيق: بلا وميض لمس ولا أشرطة تمرير، ومنع ارتداد التمرير الذي يتعارض مع واجهات الدردشة
+    // ───────────── 2) ميزات أصلية مفقودة في WebView ─────────────
+    // Web Share API → نافذة المشاركة الأصلية للنظام
+    safe(function () {
+      navigator.share = function (d) {
+        d = d || {};
+        var t = [d.title, d.text, d.url].filter(Boolean).join('\n');
+        if (!t) return Promise.reject(new TypeError('Nothing to share'));
+        send({ t: 'share', text: t });
+        return Promise.resolve();
+      };
+      navigator.canShare = function () { return true; };
+    });
+    // زر «نسخ» في الدردشات وأكواد الذكاء الاصطناعي: احتياطي عند رفض Clipboard API
+    safe(function () {
+      function legacyCopy(t) {
+        return new Promise(function (ok, no) {
+          try {
+            var a = document.createElement('textarea');
+            a.value = t; a.setAttribute('readonly', '');
+            a.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+            (document.body || root).appendChild(a);
+            a.select(); a.setSelectionRange(0, t.length);
+            var r = document.execCommand('copy');
+            a.remove();
+            r ? ok() : no(new Error('copy failed'));
+          } catch (e) { no(e); }
+        });
+      }
+      var cb = navigator.clipboard;
+      if (cb && cb.writeText) {
+        var w = cb.writeText.bind(cb);
+        cb.writeText = function (t) { return w(t).catch(function () { return legacyCopy(String(t)); }); };
+      }
+    });
+
+    // ───────────── 3) مظهر وإحساس التطبيق (CSS) ─────────────
     var css =
       '*{-webkit-tap-highlight-color:transparent}' +
-      'html,body{overscroll-behavior-y:none;-webkit-font-smoothing:antialiased}' +
+      'html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}' +   // بلا تأخير نقرتين ولا ارتداد التمرير
+      'body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overscroll-behavior-y:none}' +
       '::-webkit-scrollbar{display:none}' +
-      (yt ? 'ytm-open-app-promo-renderer,ytm-mealbar-promo-renderer,ytm-app-install-promo-renderer{display:none!important}' : '');
-    try {
+      'button,[role=button],[role=tab],summary,select{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}' +
+      'img,video,canvas{-webkit-user-drag:none}' +
+      (CFG.anim ? '@keyframes novaIn{from{opacity:.01}to{opacity:1}}html{animation:novaIn .18s ease-out both}' : '') +
+      (YT ? 'ytm-open-app-promo-renderer,ytm-mealbar-promo-renderer,ytm-app-install-promo-renderer,ytm-promoted-sparkles-web-renderer{display:none!important}' : '');
+    safe(function () {
       var sh = new CSSStyleSheet();
       sh.replaceSync(css);
       document.adoptedStyleSheets = document.adoptedStyleSheets.concat([sh]);
-    } catch (e) {}
+    });
 
-    // 3) يوتيوب: إخفاء زر «Open App / فتح التطبيق» (التطبيق نفسه هو المتصفح)
-    if (yt) {
-      var re = /^(open app|open in app|فتح التطبيق|افتح التطبيق|ouvrir l.application|abrir app|app öffnen)$/i;
-      var t = 0;
-      var sweep = function () {
-        t = 0;
-        try {
-          var l = document.querySelectorAll('a,button,ytm-button-renderer,yt-button-shape');
-          for (var i = 0; i < l.length; i++) {
-            var e = l[i];
-            if (e.__novaHid) continue;
-            var s = (e.innerText || e.getAttribute('aria-label') || '').trim();
-            if (s && s.length < 24 && re.test(s)) {
-              var box = e.closest('ytm-button-renderer') || e;
-              box.style.setProperty('display', 'none', 'important');
-              e.__novaHid = 1;
-            }
-          }
-        } catch (er) {}
-      };
-      var start = function () {
-        sweep();
-        new MutationObserver(function () { if (!t) t = setTimeout(sweep, 400); })
-          .observe(document.documentElement, { childList: true, subtree: true });
-      };
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+    // ───────────── 4) أداء: اتصالات مسبقة بخوادم الموقع ─────────────
+    safe(function () {
+      var hosts = YT ? ['https://i.ytimg.com', 'https://yt3.ggpht.com', 'https://www.gstatic.com', 'https://fonts.gstatic.com']
+                     : GOOGLE ? ['https://www.gstatic.com', 'https://lh3.googleusercontent.com', 'https://fonts.gstatic.com']
+                     : ['https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'];
+      hosts.forEach(function (h) {
+        var l = document.createElement('link');
+        l.rel = 'preconnect'; l.href = h; l.crossOrigin = '';
+        root.appendChild(l);
+      });
+    });
+
+    // ───────────── 5) لوحة المفاتيح: يبقى حقل الكتابة ظاهراً ─────────────
+    // التطبيق يصغّر مساحة الصفحة عند ظهور الكيبورد؛ هنا نمرّر الحقل لمنتصف الرؤية بعد استقرار الحجم
+    function editable(e) {
+      if (!e || e.nodeType !== 1) return false;
+      var t = e.tagName;
+      return t === 'TEXTAREA' || e.isContentEditable || (t === 'INPUT' && !/^(checkbox|radio|button|submit|reset|file|range|color|image)$/i.test(e.type));
     }
-  } catch (e) {}
+    var kbT = 0;
+    function reveal() {
+      clearTimeout(kbT);
+      kbT = setTimeout(function () {
+        var a = document.activeElement;
+        if (!editable(a)) return;
+        var r = a.getBoundingClientRect(), vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        if (r.bottom > vh - 12 || r.top < 8) safe(function () { a.scrollIntoView({ block: 'center', behavior: CFG.anim ? 'smooth' : 'auto' }); });
+      }, 260);
+    }
+    document.addEventListener('focusin', function (e) { if (editable(e.target)) reveal(); }, true);
+    safe(function () { window.visualViewport.addEventListener('resize', reveal); });
+
+    // ───────────── 6) لمسة اهتزاز خفيفة على الأزرار ─────────────
+    if (CFG.hap) {
+      var lastH = 0;
+      document.addEventListener('click', function (e) {
+        if (!e.isTrusted) return;
+        var n = e.target && e.target.closest && e.target.closest('button,[role=button],[role=tab],[role=switch],[role=menuitem],input[type=checkbox],input[type=radio]');
+        var now = Date.now();
+        if (n && now - lastH > 90) { lastH = now; send({ t: 'hap' }); }
+      }, true);
+    }
+
+    // ───────────── 7) إخفاء لافتات «حمّل التطبيق» ─────────────
+    var bannerRe = /^(open app|open in app|get the app|get app|download the app|install app|use the app|try the app|فتح التطبيق|افتح التطبيق|حمّل التطبيق|حمل التطبيق|تنزيل التطبيق|ouvrir l.application|abrir app|app öffnen)$/i;
+    var sweepT = 0;
+    function sweep() {
+      sweepT = 0;
+      safe(function () {
+        var l = document.querySelectorAll('a,button,[role=button],ytm-button-renderer,yt-button-shape');
+        for (var i = 0; i < l.length; i++) {
+          var e = l[i];
+          if (e.__novaHid) continue;
+          var s = (e.innerText || e.getAttribute('aria-label') || '').trim();
+          if (!s || s.length > 28 || !bannerRe.test(s)) continue;
+          e.__novaHid = 1;
+          var box = e.closest('ytm-button-renderer') || e;
+          // إن كان داخل شريط ثابت صغير (لافتة) نخفي الشريط كله
+          for (var p = box, d = 0; p && p !== document.body && d < 5; p = p.parentElement, d++) {
+            var cs = getComputedStyle(p);
+            if ((cs.position === 'fixed' || cs.position === 'sticky') && p.getBoundingClientRect().height < 140) { box = p; break; }
+          }
+          box.style.setProperty('display', 'none', 'important');
+        }
+      });
+    }
+    function startSweep() {
+      sweep();
+      new MutationObserver(function () { if (!sweepT) sweepT = setTimeout(sweep, 500); })
+        .observe(root, { childList: true, subtree: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startSweep); else startSweep();
+
+    // واجهة عامة صغيرة يمكن للصفحات (أو سكربتاتك لاحقاً) استخدامها
+    window.NovaApp = { version: CFG.v, share: navigator.share, haptic: function () { send({ t: 'hap' }); } };
+  } catch (e) { }
 })();

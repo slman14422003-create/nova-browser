@@ -11,7 +11,8 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
-        "تطبيق" to "App",
+        "اهتزاز الأزرار في وضع التطبيق" to "Button haptics in app mode",
+        "لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي" to "Light haptic tap on buttons inside YouTube and AI sites",
         "وضع التطبيق (PWA)" to "App mode (PWA)",
         "شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)" to "Top bar and app-like experience for YouTube and AI sites (applies to new tabs)",
         "محرك العرض" to "Rendering engine",

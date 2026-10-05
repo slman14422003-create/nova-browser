@@ -56,6 +56,7 @@ object Prefs {
     var cap60 by mutableStateOf(true); private set          // تحديد 60Hz عند السخونة
     var fitPages by mutableStateOf(true); private set       // تحسين عرض الصفحات (render.js)
     var pwaMode by mutableStateOf(true); private set        // وضع التطبيق (PWA) ليوتيوب ومواقع الذكاء الاصطناعي
+    var pwaHaptics by mutableStateOf(true); private set     // اهتزاز خفيف على أزرار صفحات وضع التطبيق
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -81,7 +82,7 @@ object Prefs {
         autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
         autoUpdate = p.getBoolean("autoupd", true); adaptive = p.getBoolean("adaptive", true)
         smoothAnim = p.getBoolean("anim", true); cap60 = p.getBoolean("cap60", true)
-        fitPages = p.getBoolean("fitpages", true); pwaMode = p.getBoolean("pwa", true)
+        fitPages = p.getBoolean("fitpages", true); pwaMode = p.getBoolean("pwa", true); pwaHaptics = p.getBoolean("pwahap", true)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -117,6 +118,7 @@ object Prefs {
     fun pickCap60(v: Boolean) { cap60 = v; sp?.putBoolean("cap60", v) }
     fun pickFitPages(v: Boolean) { fitPages = v; sp?.putBoolean("fitpages", v) }
     fun pickPwaMode(v: Boolean) { pwaMode = v; sp?.putBoolean("pwa", v) }
+    fun pickPwaHaptics(v: Boolean) { pwaHaptics = v; sp?.putBoolean("pwahap", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -257,6 +259,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.fitPages, onCheckedChange = null) }),
                     RowSpec(L("وضع التطبيق (PWA)"), L("شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Star, { Prefs.pickPwaMode(!Prefs.pwaMode) },
                         { Switch(checked = Prefs.pwaMode, onCheckedChange = null) }),
+                    RowSpec(L("اهتزاز الأزرار في وضع التطبيق"), L("لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي"), Icons.Default.Notifications, { Prefs.pickPwaHaptics(!Prefs.pwaHaptics) },
+                        { Switch(checked = Prefs.pwaHaptics, onCheckedChange = null) }),
                     RowSpec(L("محرك العرض"), WebEngine.summary(), Icons.Default.Refresh,
                         { if (WebEngine.behind > 0) WebEngine.openStore(ctx) else WebEngine.checkLatest(ctx, true) }),
                     RowSpec(L("مسح الذاكرة المؤقتة الآن"), (L("الحجم الحالي: ") + cacheSize), Icons.Default.Delete, { dialog = "cache" }),

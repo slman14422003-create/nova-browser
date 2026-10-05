@@ -17,7 +17,7 @@ class SiteInfo(val kind: SiteKind, val name: String, val host: String)
  * - يحقن pwa.js على هذه النطاقات فقط (محاكاة standalone، إخفاء لافتة «افتح التطبيق»، مظهر تطبيق).
  */
 object Pwa {
-    const val BAR_H = 54   // dp: ارتفاع الشريط العلوي (يشمل خط التقدّم)
+    const val BAR_H = 48   // dp: ارتفاع الشريط العلوي (يشمل خط التقدّم)
 
     private val aiNames = mapOf(
         "gemini.google.com" to "Gemini", "chatgpt.com" to "ChatGPT", "chat.openai.com" to "ChatGPT",
@@ -38,10 +38,28 @@ object Pwa {
     }
 
     private val docStart by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) }
+    private val listenerOk by lazy { WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) }
 
+    /** يثبّت جسر NovaPwa (مشاركة أصلية + اهتزاز) ثم يحقن pwa.js مع إعدادات التشغيل. */
     fun install(wv: WebView) {
-        val s = js ?: return
-        if (Prefs.pwaMode && docStart) runCatching { WebViewCompat.addDocumentStartJavaScript(wv, s, origins) }
+        val base = js ?: return
+        if (!Prefs.pwaMode) return
+        if (listenerOk) runCatching {
+            WebViewCompat.addWebMessageListener(wv, "NovaPwa", origins, WebViewCompat.WebMessageListener { view, message, _, isMain, _ ->
+                if (!isMain) return@WebMessageListener
+                val data = message.data ?: return@WebMessageListener
+                if (data.length > 4000) return@WebMessageListener
+                val o = runCatching { org.json.JSONObject(data) }.getOrNull() ?: return@WebMessageListener
+                when (o.optString("t")) {
+                    "share" -> { val t = o.optString("text").take(2000); if (t.isNotBlank()) runCatching { shareText(view.context, t) } }
+                    "hap" -> if (Prefs.pwaHaptics) view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                }
+            })
+        }
+        if (docStart) {
+            val cfg = "{\"v\":2,\"anim\":${Prefs.smoothAnim && Adaptive.level == 0},\"hap\":${Prefs.pwaHaptics}}"
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, base.replace("__CFG__", cfg), origins) }
+        }
     }
 
     @Volatile private var lastUrl: String? = null

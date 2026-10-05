@@ -19,6 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * مصدر واحد لكل حركات التطبيق: منحنيات Material "Emphasized" (دخول سريع وهبوط ناعم)،
@@ -59,3 +63,20 @@ fun Modifier.pressScale(source: MutableInteractionSource, pressed: Float = 0.94f
     )
     return this.graphicsLayer { scaleX = s.value; scaleY = s.value }
 }
+
+/**
+ * ارتفاع منطقة الصفحة (WebView) في طبقة التخطيط (بلا إعادة تركيب أثناء حركة الكيبورد):
+ * - كتابة داخل الصفحة: تنتهي الصفحة عند أعلى الكيبورد تماماً فيبقى حقل الإرسال ظاهراً فوقه.
+ * - الوضع العادي: تترك مكان شريط العنوان السفلي وشريط التنقل.
+ */
+fun Modifier.pageInsets(ime: WindowInsets, nav: WindowInsets, typing: Boolean, inPip: Boolean, pill: Dp = 63.dp): Modifier =
+    this.layout { m, c ->
+        val pad = when {
+            inPip -> 0
+            typing -> ime.getBottom(this)
+            else -> nav.getBottom(this) + pill.roundToPx()
+        }
+        val h = (c.maxHeight - pad).coerceAtLeast(0)
+        val p = m.measure(c.copy(minHeight = h, maxHeight = h))
+        layout(c.maxWidth, c.maxHeight) { p.placeRelative(0, 0) }
+    }

@@ -60,6 +60,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -827,13 +828,30 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     val primaryInt = cs.primary.toArgb()
     val bgInt = cs.surfaceContainerHigh.toArgb()
 
+    // الكيبورد أثناء الكتابة داخل صفحة (مثل خانة سؤال الذكاء الاصطناعي): تنكمش الصفحة فوق الكيبورد ويختفي شريط العنوان السفلي.
+    // derivedStateOf يتغيّر مرتين فقط (فتح/إغلاق) فلا إعادة تركيب أثناء حركة الكيبورد.
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val navInsets = WindowInsets.navigationBars
+    val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
+    var pageTyping by remember { mutableStateOf(false) }
+    var wasBlocked by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible, editing, tab.finding) {
+        val blocked = editing || tab.finding
+        if (imeVisible && !blocked) {
+            if (wasBlocked) kotlinx.coroutines.delay(700)   // بعد إنهاء كتابة العنوان: ننتظر إغلاق الكيبورد كي لا يومض الشريط
+            pageTyping = true
+        } else pageTyping = false
+        wasBlocked = blocked
+    }
+
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = cs.background) {
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
-                Box(Modifier.fillMaxSize().padding(top = barH).navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
+                Box(Modifier.fillMaxSize().padding(top = barH).pageInsets(imeInsets, navInsets, pageTyping, inPip).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -896,7 +914,10 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                         )
                     }
                 }
-                if (!inPip) Box(Modifier.align(Alignment.BottomCenter)) {
+                AnimatedVisibility(
+                    visible = !inPip && !pageTyping, modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = fadeIn(tween(Adaptive.ms(160))), exit = fadeOut(tween(Adaptive.ms(90)))
+                ) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
                     tab = tab, tabCount = tabs.size, editing = editing, setEditing = { editing = it },
                     onGo = { go(tab, it) }, onTabs = { openTabs() }, onNewTab = { newTab() }, onHome = { home(tab) },
