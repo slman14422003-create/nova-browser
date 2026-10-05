@@ -54,6 +54,7 @@ object Prefs {
     var adaptive by mutableStateOf(true); private set       // التكيف مع حرارة الجهاز/توفير الطاقة
     var smoothAnim by mutableStateOf(true); private set     // الأنيميشن
     var cap60 by mutableStateOf(true); private set          // تحديد 60Hz عند السخونة
+    var fitPages by mutableStateOf(true); private set       // تحسين عرض الصفحات (render.js)
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -79,6 +80,7 @@ object Prefs {
         autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
         autoUpdate = p.getBoolean("autoupd", true); adaptive = p.getBoolean("adaptive", true)
         smoothAnim = p.getBoolean("anim", true); cap60 = p.getBoolean("cap60", true)
+        fitPages = p.getBoolean("fitpages", true)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -112,6 +114,7 @@ object Prefs {
     fun pickAdaptive(v: Boolean) { adaptive = v; sp?.putBoolean("adaptive", v); Adaptive.refresh() }
     fun pickSmoothAnim(v: Boolean) { smoothAnim = v; sp?.putBoolean("anim", v) }
     fun pickCap60(v: Boolean) { cap60 = v; sp?.putBoolean("cap60", v) }
+    fun pickFitPages(v: Boolean) { fitPages = v; sp?.putBoolean("fitpages", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -248,6 +251,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Group(L("الأداء والذاكرة المؤقتة"), listOf(
                     RowSpec(L("مسح الكاش عند كل تشغيل"), L("يُحذف الكاش كلياً عند فتح التطبيق؛ تبقى كلمات المرور وإعدادات المواقع وتسجيلات الدخول"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
+                    RowSpec(L("تحسين عرض الصفحات"), L("يضبط الصور والأكواد على عرض الشاشة ويمنع التمرير الأفقي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Settings, { Prefs.pickFitPages(!Prefs.fitPages) },
+                        { Switch(checked = Prefs.fitPages, onCheckedChange = null) }),
                     RowSpec(L("مسح الذاكرة المؤقتة الآن"), (L("الحجم الحالي: ") + cacheSize), Icons.Default.Delete, { dialog = "cache" }),
                     RowSpec(L("إيقاف الصفحات في الخلفية"), L("يوفر المعالج والبطارية عند الخروج من التطبيق (يوقف الصوت أيضاً)"), Icons.Default.Refresh, { Prefs.pickPauseBg(!Prefs.pauseBg) },
                         { Switch(checked = Prefs.pauseBg, onCheckedChange = null) }),

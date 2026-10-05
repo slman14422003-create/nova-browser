@@ -233,6 +233,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     applyUa(this, tab.desktop)
     Perf.tune(this)
     Perf.installPrivacy(this)
+    Perf.installRender(this)
     PasswordBridge.install(this, tab, h)
     YtBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS

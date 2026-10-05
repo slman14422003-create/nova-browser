@@ -221,6 +221,8 @@ object I18n {
         "تم مسح بيانات التصفح" to "Browsing data cleared",
         "تنزيل" to "Download",
         "تنزيل الصورة" to "Download image",
+        "تحسين عرض الصفحات" to "Improve page rendering",
+        "يضبط الصور والأكواد على عرض الشاشة ويمنع التمرير الأفقي (يُطبَّق على التبويبات الجديدة)" to "Fits images and code blocks to the screen width and prevents sideways scrolling (applies to new tabs)",
         "مسح الكاش عند كل تشغيل" to "Clear cache on every launch",
         "توحيد وتشويش قيم Canvas وWebGL والصوت والجهاز (يُطبَّق على التبويبات الجديدة)" to "Unify and randomize Canvas, WebGL, audio and device values (applies to new tabs)",
         "توفير البيانات" to "Data saver",

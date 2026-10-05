@@ -115,9 +115,21 @@ object Perf {
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*")) }
     }
 
+    private val renderJs: String? by lazy {
+        runCatching { app.assets.open("render.js").bufferedReader().use { it.readText() } }.getOrNull()
+    }
+
+    /** يحقن سكربت/أنماط تحسين العرض (render.js) قبل سكربتات الصفحة. */
+    fun installRender(wv: WebView) {
+        val js = renderJs ?: return
+        if (Prefs.fitPages && docStartSupported)
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*")) }
+    }
+
     /** احتياطي للأجهزة التي لا تدعم الحقن المبكر: يُنفَّذ عند بدء الصفحة. */
     fun onPageStart(wv: WebView) {
         if (Prefs.antiFingerprint && !docStartSupported) fpScript()?.let { wv.evaluateJavascript(it, null) }
+        if (Prefs.fitPages && !docStartSupported) renderJs?.let { wv.evaluateJavascript(it, null) }
     }
 
     /** تحميل كسول للصور والإطارات التي لا تحدد loading، لتسريع الصفحات الثقيلة. */
