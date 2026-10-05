@@ -33,10 +33,10 @@ jobs:
 
       - if: matrix.build-mode == 'manual'
         uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: 21 }
+        with: { distribution: temurin, java-version: 25 }
       - if: matrix.build-mode == 'manual'
         uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.14.4', cache-read-only: true }
+        with: { gradle-version: '9.4.1', cache-read-only: true }
 
       - uses: github/codeql-action/init@v4
         with:

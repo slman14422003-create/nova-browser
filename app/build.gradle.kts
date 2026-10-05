@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -66,7 +65,7 @@ android {
     buildFeatures { compose = true; buildConfig = true }   // BuildConfig مطلوب لـ Updater (كان سبب الخطأ)
 }
 
-// بديل kotlinOptions { jvmTarget } المحذوف في Kotlin 2.2+
+// Kotlin مدمج في AGP 9؛ نثبّت هدف JVM صراحةً كي لا يتبع JDK البناء (25)
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 dependencies {
