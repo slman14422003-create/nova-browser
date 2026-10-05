@@ -35,6 +35,12 @@ public final class CacheCleaner {
         return freed;
     }
 
+    /**
+     * مسح كلي للكاش عند كل تشغيل (قبل إنشاء أي WebView): HTTP/Code/GPU/Shader/ServiceWorker + cacheDir.
+     * لا يحذف: الكوكيز وتسجيلات الدخول، التخزين المحلي للمواقع، أذونات المواقع، كلمات المرور (Vault)، nova.conf.
+     */
+    public static long cleanAll(Context ctx) { return clean(ctx); }
+
     /** الحدّ الذي يُنظَّف عنده الكاش تلقائياً. */
     private static final long LIMIT = 300L * 1024 * 1024;
 

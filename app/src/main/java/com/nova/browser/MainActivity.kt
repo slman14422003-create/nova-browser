@@ -27,6 +27,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -183,7 +184,13 @@ fun applyUa(wv: WebView, desktop: Boolean) {
     s.userAgentString = if (desktop) DESKTOP_UA
     else reduceUa(WebSettings.getDefaultUserAgent(wv.context).replace("; wv", "").replace(Regex("Version/\\S+ "), ""))
     s.useWideViewPort = true
-    s.loadWithOverviewMode = desktop
+    s.loadWithOverviewMode = true   // الصفحات الأعرض من الشاشة (بلا viewport) تُصغَّر لتناسب العرض
+}
+
+/** مواقع يوتيوب: التمرير فيها يتم داخل عناصر الصفحة (وليس scrollY للـ WebView) فيجب تعطيل السحب للتحديث عليها. */
+fun isYtHost(u: String?): Boolean {
+    val h = runCatching { Uri.parse(u ?: "").host }.getOrNull()?.removePrefix("www.") ?: return false
+    return h == "youtube.com" || h.endsWith(".youtube.com") || h == "youtu.be"
 }
 
 fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show()
@@ -426,11 +433,11 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
         splash.setKeepOnScreenCondition { !ready }
-        if (Prefs.autoClean && !cleanedThisProcess && CacheCleaner.pending(this)) {
+        if (Prefs.autoClean && !cleanedThisProcess) {
             cleanedThisProcess = true
             // التنظيف يجري قبل إنشاء أي WebView كي لا تكون ملفات الكاش مفتوحة
             Thread({
-                runCatching { CacheCleaner.cleanLarge(applicationContext) }
+                runCatching { CacheCleaner.cleanAll(applicationContext) }
                 runOnUiThread { if (!isFinishing && !isDestroyed) showUi(start) else ready = true }
             }, "nova-clean").start()
         } else showUi(start)
@@ -470,9 +477,6 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Perf.flushCookies(true)
-        // قياس الكاش في الخلفية؛ التنظيف لا يجري إلا عند تجاوز الحد (يحفظ سرعة المواقع وكاش الشيفرة)
-        if (Prefs.autoClean && !isChangingConfigurations)
-            Thread({ runCatching { CacheCleaner.markIfLarge(applicationContext) } }, "nova-cache").apply { priority = Thread.MIN_PRIORITY }.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -819,8 +823,10 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
 
     Box(Modifier.fillMaxSize()) {
         Surface(Modifier.fillMaxSize(), color = cs.background) {
-            Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                Box(Modifier.fillMaxSize().navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
+            val showYtBar = !inPip && customView == null && isYtVideo(tab.url)
+            val ytBarH by animateDpAsState(if (showYtBar) 48.dp else 0.dp, tween(Adaptive.ms(160)), label = "ytBarH")
+            Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
+                Box(Modifier.fillMaxSize().padding(top = ytBarH).navigationBarsPadding().padding(bottom = if (inPip) 0.dp else 63.dp).background(cs.background)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -852,7 +858,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                                         SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                                             setOnRefreshListener { wv.reload() }
-                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 }
+                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || isYtHost(wv.url) }
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
                                         }
@@ -866,6 +872,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                             }
                         }
                     }
+                }
+                if (showYtBar && !showSettings && !showPasswords && !showDownloads) {
+                    YtBar(
+                        onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 12.dp)
+                    )
                 }
                 if (!inPip) Box(Modifier.align(Alignment.BottomCenter)) {
                 if (tab.finding) key(tab.id) { FindBar(tab) } else BottomPill(
@@ -925,12 +937,6 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
                 onFill = { c ->
                     Auth.run(activity, L("تأكيد الهوية لتعبئة كلمة المرور")) { tab.webView?.let { PasswordBridge.fill(it, c) }; fillOffer = null }
                 }
-            )
-        }
-        if (!inPip && customView == null && !editing && !tab.finding && !showSettings && !showPasswords && !showDownloads && isYtVideo(tab.url)) {
-            YtBar(
-                onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() },
-                modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(bottom = 76.dp, end = 12.dp)
             )
         }
         customView?.let { v ->

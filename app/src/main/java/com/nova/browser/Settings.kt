@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 
 /** إعدادات التطبيق (محفوظة، وقابلة للقراءة من أي مكان كحالة Compose) */
 object Prefs {
-    private var sp: android.content.SharedPreferences? = null
+    private var sp: ConfStore? = null
     var engine by mutableIntStateOf(0); private set
     var theme by mutableIntStateOf(0); private set          // 0 نظام، 1 فاتح، 2 داكن
     var desktop by mutableStateOf(false); private set
@@ -64,7 +64,7 @@ object Prefs {
     )
 
     fun init(c: Context) {
-        val p = c.getSharedPreferences("settings", Context.MODE_PRIVATE); sp = p
+        val p = ConfStore.open(c); sp = p   // كل الإعدادات من ملف nova.conf دفعة واحدة إلى الرام
         engine = p.getInt("engine", 0).coerceIn(0, engines.lastIndex)
         theme = p.getInt("theme", 0); desktop = p.getBoolean("desktop", false)
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
@@ -86,36 +86,36 @@ object Prefs {
         val am = c.getSystemService(android.view.autofill.AutofillManager::class.java)
         if (am != null && am.isEnabled && am.hasEnabledAutofillServices()) 1 else 0
     }.getOrDefault(0)
-    fun pickEngine(v: Int) { engine = v; sp?.edit()?.putInt("engine", v)?.apply() }
-    fun pickTheme(v: Int) { theme = v; sp?.edit()?.putInt("theme", v)?.apply() }
-    fun pickDesktop(v: Boolean) { desktop = v; sp?.edit()?.putBoolean("desktop", v)?.apply() }
-    fun pickJs(v: Boolean) { js = v; sp?.edit()?.putBoolean("js", v)?.apply() }
-    fun pickRestore(v: Boolean) { restore = v; sp?.edit()?.putBoolean("restore", v)?.apply() }
-    fun pickMaxConns(v: Int) { maxConns = v; sp?.edit()?.putInt("maxc", v)?.apply() }
-    fun pickAutoClean(v: Boolean) { autoClean = v; sp?.edit()?.putBoolean("autoclean", v)?.apply() }
-    fun pickBlockAds(v: Boolean) { blockAds = v; sp?.edit()?.putBoolean("blockads", v)?.apply() }
-    fun pickDataSaver(v: Boolean) { dataSaver = v; sp?.edit()?.putBoolean("saver", v)?.apply() }
-    fun pickHttpsFirst(v: Boolean) { httpsFirst = v; sp?.edit()?.putBoolean("https1", v)?.apply() }
-    fun pickCleanUrls(v: Boolean) { cleanUrls = v; sp?.edit()?.putBoolean("cleanurl", v)?.apply() }
-    fun pickThirdCookies(v: Boolean) { blockThirdCookies = v; sp?.edit()?.putBoolean("c3p", v)?.apply() }
-    fun pickAntiFingerprint(v: Boolean) { antiFingerprint = v; sp?.edit()?.putBoolean("antifp", v)?.apply() }
-    fun pickLang(v: Int) { lang = v; sp?.edit()?.putInt("lang", v)?.apply() }
-    fun pickSiteLang(v: Int) { siteLang = v; sp?.edit()?.putInt("sitelang", v)?.apply() }
-    fun pickTextZoom(v: Int) { textZoom = v; sp?.edit()?.putInt("zoom", v)?.apply() }
-    fun pickSiteDark(v: Boolean) { siteDark = v; sp?.edit()?.putBoolean("sitedark", v)?.apply() }
-    fun pickPauseBg(v: Boolean) { pauseBg = v; sp?.edit()?.putBoolean("pausebg", v)?.apply() }
-    fun pickSecureScreen(v: Boolean) { secureScreen = v; sp?.edit()?.putBoolean("secscr", v)?.apply() }
-    fun pickPwMode(v: Int) { pwMode = v; sp?.edit()?.putInt("pwmode", v)?.apply() }
-    fun pickAutoPip(v: Boolean) { autoPip = v; sp?.edit()?.putBoolean("autopip", v)?.apply() }
-    fun pickYtBg(v: Boolean) { ytBg = v; sp?.edit()?.putBoolean("ytbg", v)?.apply() }
-    fun pickAutoUpdate(v: Boolean) { autoUpdate = v; sp?.edit()?.putBoolean("autoupd", v)?.apply() }
-    fun pickAdaptive(v: Boolean) { adaptive = v; sp?.edit()?.putBoolean("adaptive", v)?.apply(); Adaptive.refresh() }
-    fun pickSmoothAnim(v: Boolean) { smoothAnim = v; sp?.edit()?.putBoolean("anim", v)?.apply() }
-    fun pickCap60(v: Boolean) { cap60 = v; sp?.edit()?.putBoolean("cap60", v)?.apply() }
-    fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.edit()?.putBoolean("lazy", v)?.apply() }
+    fun pickEngine(v: Int) { engine = v; sp?.putInt("engine", v) }
+    fun pickTheme(v: Int) { theme = v; sp?.putInt("theme", v) }
+    fun pickDesktop(v: Boolean) { desktop = v; sp?.putBoolean("desktop", v) }
+    fun pickJs(v: Boolean) { js = v; sp?.putBoolean("js", v) }
+    fun pickRestore(v: Boolean) { restore = v; sp?.putBoolean("restore", v) }
+    fun pickMaxConns(v: Int) { maxConns = v; sp?.putInt("maxc", v) }
+    fun pickAutoClean(v: Boolean) { autoClean = v; sp?.putBoolean("autoclean", v) }
+    fun pickBlockAds(v: Boolean) { blockAds = v; sp?.putBoolean("blockads", v) }
+    fun pickDataSaver(v: Boolean) { dataSaver = v; sp?.putBoolean("saver", v) }
+    fun pickHttpsFirst(v: Boolean) { httpsFirst = v; sp?.putBoolean("https1", v) }
+    fun pickCleanUrls(v: Boolean) { cleanUrls = v; sp?.putBoolean("cleanurl", v) }
+    fun pickThirdCookies(v: Boolean) { blockThirdCookies = v; sp?.putBoolean("c3p", v) }
+    fun pickAntiFingerprint(v: Boolean) { antiFingerprint = v; sp?.putBoolean("antifp", v) }
+    fun pickLang(v: Int) { lang = v; sp?.putInt("lang", v) }
+    fun pickSiteLang(v: Int) { siteLang = v; sp?.putInt("sitelang", v) }
+    fun pickTextZoom(v: Int) { textZoom = v; sp?.putInt("zoom", v) }
+    fun pickSiteDark(v: Boolean) { siteDark = v; sp?.putBoolean("sitedark", v) }
+    fun pickPauseBg(v: Boolean) { pauseBg = v; sp?.putBoolean("pausebg", v) }
+    fun pickSecureScreen(v: Boolean) { secureScreen = v; sp?.putBoolean("secscr", v) }
+    fun pickPwMode(v: Int) { pwMode = v; sp?.putInt("pwmode", v) }
+    fun pickAutoPip(v: Boolean) { autoPip = v; sp?.putBoolean("autopip", v) }
+    fun pickYtBg(v: Boolean) { ytBg = v; sp?.putBoolean("ytbg", v) }
+    fun pickAutoUpdate(v: Boolean) { autoUpdate = v; sp?.putBoolean("autoupd", v) }
+    fun pickAdaptive(v: Boolean) { adaptive = v; sp?.putBoolean("adaptive", v); Adaptive.refresh() }
+    fun pickSmoothAnim(v: Boolean) { smoothAnim = v; sp?.putBoolean("anim", v) }
+    fun pickCap60(v: Boolean) { cap60 = v; sp?.putBoolean("cap60", v) }
+    fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
-    fun autoCleanEnabled(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("autoclean", true)
+    fun autoCleanEnabled(c: Context) = ConfStore.open(c).getBoolean("autoclean", true)
 }
 
 private class RowSpec(
@@ -246,7 +246,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("فحص سلامة الجهاز"), if (warnings.isEmpty()) L("لا مؤشرات مقلقة") else warnings.joinToString(" • "), Icons.Default.Warning, {})
                 ))
                 Group(L("الأداء والذاكرة المؤقتة"), listOf(
-                    RowSpec(L("تنظيف الكاش الذكي"), L("يُمسح فقط عند تجاوز 300 ميغابايت ويُبقي كاش الشيفرة لسرعة المواقع"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
+                    RowSpec(L("مسح الكاش عند كل تشغيل"), L("يُحذف الكاش كلياً عند فتح التطبيق؛ تبقى كلمات المرور وإعدادات المواقع وتسجيلات الدخول"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
                     RowSpec(L("مسح الذاكرة المؤقتة الآن"), (L("الحجم الحالي: ") + cacheSize), Icons.Default.Delete, { dialog = "cache" }),
                     RowSpec(L("إيقاف الصفحات في الخلفية"), L("يوفر المعالج والبطارية عند الخروج من التطبيق (يوقف الصوت أيضاً)"), Icons.Default.Refresh, { Prefs.pickPauseBg(!Prefs.pauseBg) },

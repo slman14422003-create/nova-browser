@@ -245,13 +245,13 @@ fun YtBar(onDownload: () -> Unit, onPip: () -> Unit, modifier: Modifier = Modifi
     val cs = MaterialTheme.colorScheme
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(onClick = onPip, shape = CircleShape, color = cs.primaryContainer, shadowElevation = 4.dp) {
-            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                 Text(L("منبثق"), style = MaterialTheme.typography.labelLarge)
             }
         }
         Surface(onClick = onDownload, shape = CircleShape, color = cs.primaryContainer, shadowElevation = 4.dp) {
-            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                 Text(L("تنزيل"), style = MaterialTheme.typography.labelLarge)
             }
