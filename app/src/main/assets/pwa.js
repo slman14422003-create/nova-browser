@@ -152,10 +152,18 @@
           if (!s || s.length > 28 || !bannerRe.test(s)) continue;
           e.__novaHid = 1;
           var box = e.closest('ytm-button-renderer') || e;
-          // إن كان داخل شريط ثابت صغير (لافتة) نخفي الشريط كله
-          for (var p = box, d = 0; p && p !== document.body && d < 5; p = p.parentElement, d++) {
-            var cs = getComputedStyle(p);
-            if ((cs.position === 'fixed' || cs.position === 'sticky') && p.getBoundingClientRect().height < 140) { box = p; break; }
+          // إن كان داخل شريط ثابت صغير (لافتة مخصصة) نخفي الشريط كله — إلا إذا كان شريط الصفحة نفسه
+          // (شعار/بحث/ترويسة): إخفاؤه كان يترك فراغاً بارتفاعه فوق الفيديو لأن يوتيوب يحجز مكانه.
+          // حينها نخفي الزر وحده.
+          var KEEP = 'input,ytm-searchbox,ytm-home-logo,ytm-topbar-logo-renderer,ytm-mobile-topbar-renderer,header,[role=search],a[href="/"]';
+          if (!(e.closest && e.closest('ytm-mobile-topbar-renderer,header'))) {
+            for (var p = box, d = 0; p && p !== document.body && d < 5; p = p.parentElement, d++) {
+              var cs = getComputedStyle(p);
+              if ((cs.position === 'fixed' || cs.position === 'sticky') && p.getBoundingClientRect().height < 140) {
+                if (!p.matches(KEEP) && !p.querySelector(KEEP)) box = p;
+                break;
+              }
+            }
           }
           box.style.setProperty('display', 'none', 'important');
         }

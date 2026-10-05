@@ -373,6 +373,9 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
 
 class MainActivity : ComponentActivity() {
     private var dlTrigger by mutableIntStateOf(0)
+    /** رابط وصل من تطبيق آخر والتطبيق شغّال: (رقم تسلسلي, عنوان). الرقم يجعل نفس الرابط يُفتح كل مرة. */
+    private var incoming by mutableStateOf<Pair<Int, String>?>(null)
+    private var incomingSeq = 0
     @Volatile private var ready = false
 
     companion object { private var cleanedThisProcess = false }
@@ -405,6 +408,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        DefaultBrowser.refresh(this)   // قد يغيّر المستخدم الافتراضي من إعدادات النظام
         if (!inPip) wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null)
     }
 
@@ -437,7 +441,9 @@ class MainActivity : ComponentActivity() {
         WebEngine.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
-        val start = intent?.data?.toString() ?: ""
+        DefaultBrowser.refresh(this)
+        // لا نعيد فتح الرابط عند إعادة إنشاء الـ Activity (تدوير/استعادة العملية)
+        val start = if (savedInstanceState == null) DefaultBrowser.urlFrom(intent) ?: "" else ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
         splash.setKeepOnScreenCondition { !ready }
@@ -474,7 +480,7 @@ class MainActivity : ComponentActivity() {
                 // اتجاه الواجهة يتبع لغة التطبيق (العربية RTL، الإنجليزية LTR)
                 CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides
                     if (I18n.isEnglish()) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl) {
-                    BrowserApp(start, dlTrigger, inPip)
+                    BrowserApp(start, dlTrigger, inPip, incoming)
                 }
             }
         }
@@ -491,6 +497,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("dl", false)) dlTrigger++
+        DefaultBrowser.urlFrom(intent)?.let { incoming = ++incomingSeq to it }   // رابط من واتساب/تيليجرام… والتطبيق مفتوح
     }
 }
 
@@ -502,7 +509,7 @@ fun reduceUa(ua: String): String {
 
 @OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
-fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
+fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incoming: Pair<Int, String>? = null) {
     val activity = LocalContext.current as ComponentActivity
     val cs = MaterialTheme.colorScheme
     val prefs = remember { activity.getSharedPreferences("nova", Context.MODE_PRIVATE) }
@@ -578,6 +585,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
     fun openTabs() { snap(tab); showTabs = true }
     fun newTab() { snap(tab); tabs.add(BrowserTab(nextId++)); current = tabs.lastIndex; showTabs = false; editing = true }
     fun openInNewTab(u: String) { tabs.add(BrowserTab(nextId++, u)); current = tabs.lastIndex }
+    // رابط جاء من تطبيق آخر: يُفتح في التبويب الحالي إن كان فارغاً وإلا في تبويب جديد، مع إغلاق أي لوحة مفتوحة
+    LaunchedEffect(incoming) {
+        val u = incoming?.second ?: return@LaunchedEffect
+        showSettings = false; showPasswords = false; showDownloads = false; showTabs = false; editing = false; Library.show = false
+        val t = tabs.getOrNull(current)
+        if (t != null && t.url.isBlank()) go(t, u) else openInNewTab(u)
+    }
     fun dispose(t: BrowserTab) {
         YtMedia.tabClosed(t)
         t.webView?.let { w -> (w.parent as? ViewGroup)?.removeView(w); w.destroy() }
@@ -851,6 +865,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false) {
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
+            // لون شريط الحالة يتبع لون شريط الموقع (كان خلفية سادة بينما الشريط مائل للون الهوية)
+            AnimatedVisibility(visible = site != null, enter = fadeIn(tween(Adaptive.ms(160))), exit = fadeOut(tween(Adaptive.ms(120)))) { StatusBarWash() }
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
                 Box(Modifier.fillMaxSize().padding(top = barH).pageInsets({ imeSettled.value }, navInsets, pageTyping, inPip).background(cs.background)) {
                     AnimatedContent(

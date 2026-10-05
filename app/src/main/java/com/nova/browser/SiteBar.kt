@@ -65,7 +65,7 @@ fun SiteBar(
     val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
     fun tap(a: () -> Unit): () -> Unit = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); a() }
-    val wash = Brush.horizontalGradient(listOf(cs.tertiary.copy(alpha = 0.12f), Color.Transparent))
+    val wash = siteWash(cs)
 
     Column(modifier.fillMaxWidth().background(cs.background)) {
         Row(
@@ -110,6 +110,17 @@ fun SiteBar(
                     .background(Brush.horizontalGradient(listOf(cs.tertiary.copy(alpha = 0.4f), cs.tertiary))))
         }
     }
+}
+
+/** تدرّج هوية الشريط العلوي (يُستخدم أيضاً خلف شريط حالة النظام كي يتطابق اللونان). */
+fun siteWash(cs: androidx.compose.material3.ColorScheme): Brush =
+    Brush.horizontalGradient(listOf(cs.tertiary.copy(alpha = 0.12f), Color.Transparent))
+
+/** امتداد خلفية الشريط خلف شريط حالة النظام: نفس الخلفية ونفس التدرّج بلا حدّ فاصل. */
+@Composable
+fun StatusBarWash(modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(cs.background).background(siteWash(cs)))
 }
 
 @Composable

@@ -107,6 +107,14 @@ else:
     if "fun Modifier.pageInsets" in (SRC / "Motion.kt").read_text(encoding="utf-8"): errors.append("Motion.kt: pageInsets مكرّرة — مكانها UiLayout.kt")
     if not (AS / "pwa.js").exists(): errors.append("assets/pwa.js مفقود")
 
+
+# 2.96) المتصفح الافتراضي: الـ Manifest يجب أن يعلن فلتر http/https القابل للتصفح + المشاركة + البحث
+mf2 = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+for need, msg in (('android.intent.category.BROWSABLE', 'BROWSABLE'), ('android.intent.action.SEND', 'ACTION_SEND (مشاركة ← Nova)'),
+                  ('android.intent.action.WEB_SEARCH', 'ACTION_WEB_SEARCH'), ('android:scheme="https"', 'scheme https')):
+    if need not in mf2: errors.append("Manifest: ينقصه " + msg + " (مطلوب ليصلح التطبيق كمتصفح افتراضي)")
+if not (SRC / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt مفقود")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))

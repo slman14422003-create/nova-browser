@@ -182,6 +182,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val cs = MaterialTheme.colorScheme
     var dialog by remember { mutableStateOf<String?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val roleLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { DefaultBrowser.refresh(ctx) }
+    LaunchedEffect(Unit) { DefaultBrowser.refresh(ctx) }
     var cacheSize by remember { mutableStateOf("…") }
     var cacheTick by remember { mutableIntStateOf(0) }
     val warnings = remember { Security.deviceWarnings(ctx) }
@@ -204,6 +206,10 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                 Group(L("عام"), listOf(
+                    RowSpec(L("المتصفح الافتراضي"),
+                        if (DefaultBrowser.isDefault) L("Nova هو متصفحك الافتراضي — اضغط لتغيير الإعدادات") else L("افتح الروابط من واتساب وبقية التطبيقات عبر Nova"),
+                        if (DefaultBrowser.isDefault) Icons.Default.Check else Icons.Default.Star,
+                        { val ri = DefaultBrowser.requestIntent(ctx); if (ri != null) runCatching { roleLauncher.launch(ri) }.onFailure { DefaultBrowser.openSystemSettings(ctx) } else DefaultBrowser.openSystemSettings(ctx) }),
                     RowSpec(L("محرك البحث"), Prefs.engines[Prefs.engine].first, Icons.Default.Search, { dialog = "engine" }),
                     RowSpec(L("المظهر"), themeNames[Prefs.theme], Icons.Default.Star, { dialog = "theme" }),
                     RowSpec(L("المكتبة"), L("المفضلة") + " " + Library.bookmarks.size + " • " + L("السجل") + " " + Library.history.size, Icons.Default.Favorite, { Library.show = true }),
