@@ -30,7 +30,26 @@
       '#player-container-id,.player-container{position:fixed!important;top:0!important;left:0!important;right:0!important;' +
       'width:100vw!important;height:56.25vw!important;max-height:56.25vw!important;z-index:2147483000!important;background:#000!important}' +
       'ytm-engagement-panel,ytm-bottom-sheet-renderer{opacity:0!important;pointer-events:none!important}';
+    // ───────── الترجمة (CC): تتوسّط أسفل المشغّل بتصميم حديث (خلفية زجاجية شفافة وزوايا مدوّرة) بغضّ النظر عن اتجاه اللغة ─────────
+    var CC_ID = 'nova-yt-cc-style';
+    var CC_CSS =
+      '.ytp-caption-window-container{pointer-events:none!important}' +
+      '.ytp-caption-window-container .caption-window,.caption-window{position:absolute!important;left:50%!important;right:auto!important;top:auto!important;' +
+      'bottom:11%!important;transform:translateX(-50%)!important;margin:0!important;width:auto!important;max-width:88%!important;' +
+      'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important;' +
+      'transition:bottom .2s ease!important}' +
+      '.ytp-caption-window-container .caption-visual-line{display:block!important;text-align:center!important;margin:1px 0!important}' +
+      '.ytp-caption-segment{background:rgba(14,14,18,.68)!important;color:#fff!important;font-family:Roboto,\'Segoe UI\',system-ui,sans-serif!important;' +
+      'line-height:1.5!important;padding:.1em .6em!important;border-radius:10px!important;text-shadow:none!important;text-align:center!important;' +
+      'direction:auto;unicode-bidi:plaintext;-webkit-box-decoration-break:clone;box-decoration-break:clone;' +
+      '-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}';
+    function applyCc() {
+      var want = location.pathname === '/watch', s = document.getElementById(CC_ID);
+      if (want && !s) { s = document.createElement('style'); s.id = CC_ID; s.textContent = CC_CSS; (document.head || document.documentElement).appendChild(s); }
+      else if (!want && s) s.remove();
+    }
     function applyMode() {
+      applyCc();
       var want = mode && location.pathname === '/watch';
       var s = document.getElementById(STYLE_ID);
       if (want && !s) {
@@ -164,6 +183,13 @@
 
     // ───────── اللقطة ─────────
     var last = '', timer = 0;
+    // تحليل بطاقات الفيديو مكلف: نعيد استخدام النتيجة ما دامت الصفحة وعدد الروابط لم يتغيّرا (حتى 6 ثوانٍ) فيبقى المشغّل والواجهة سلسَين
+    var itKey = '', itCnt = -1, itAt = 0, itVal = [];
+    function itemsCached(v) {
+      var k = location.pathname + '?' + v + (params().get('search_query') || ''), n = document.getElementsByTagName('a').length, now = Date.now();
+      if (k === itKey && n === itCnt && now - itAt < 6000 && itVal.length) return itVal;
+      itKey = k; itCnt = n; itAt = now; return (itVal = items(v));
+    }
     function snap() {
       timer = 0; applyMode();
       if (miniOn) return;   // المشغّل المصغّر لا يحتاج لقطات (يوفر المعالج)
@@ -171,7 +197,7 @@
       var o = {
         t: 'ys', href: location.href, on: mode,
         key: p + '?' + (v || params().get('search_query') || ''),
-        items: items(v), chips: p === '/' ? chips() : []
+        items: itemsCached(v), chips: p === '/' ? chips() : []
       };
       if (p === '/' && !o.items.length) {
         var nd = q1('ytm-feed-nudge-renderer,ytm-feed-nudge');
@@ -190,7 +216,7 @@
       history[k] = function () { var r = o.apply(this, arguments); cOpen = false; sched(); return r; };
     });
     window.addEventListener('popstate', function () { cOpen = false; sched(); });
-    setInterval(snap, 2000);
+    setInterval(snap, 2500);
 
     // ───────── المشغّل: إعدادات أصلية (جودة/سرعة/ترجمة) ─────────
     // قائمة الإعدادات الأصلية في يوتيوب مخفية خلف الواجهة الأصلية فلا يمكن لمسها، لذلك نلتقط ضغطة زر الترس
@@ -282,6 +308,11 @@
       like: function () {
         var bar = q1('ytm-slim-video-action-bar-renderer');
         var b = bar && q1('button[aria-label*="like" i]:not([aria-label*="dislike" i])', bar);
+        if (b) b.click(); setTimeout(snap, 500);
+      },
+      dislike: function () {
+        var bar = q1('ytm-slim-video-action-bar-renderer');
+        var b = bar && btn(bar, /dislike|لم يعجبني|لا يعجبني/i);
         if (b) b.click(); setTimeout(snap, 500);
       },
       subscribe: function () {

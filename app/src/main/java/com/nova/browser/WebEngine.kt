@@ -29,8 +29,14 @@ object WebEngine {
     var latestMajor by mutableIntStateOf(0); private set
     var checking by mutableStateOf(false); private set
 
-    val behind: Int get() { val i = info ?: return 0; return if (latestMajor > i.major) latestMajor - i.major else 0 }
-    val outdated: Boolean get() = behind >= 2
+    // المستخدم فتح المتجر عند هذا الزوج (المثبّت، الأحدث) ولم يجد المتجر شيئاً أحدث: نعدّ المحرك محدّثاً حتى يتغيّر أحد الرقمين
+    private var ackInstalled by mutableIntStateOf(0)
+    private var ackLatest by mutableIntStateOf(0)
+    val acked: Boolean get() { val i = info ?: return false; return ackInstalled == i.major && ackLatest == latestMajor && latestMajor > 0 }
+
+    val behind: Int get() { val i = info ?: return 0; return if (!acked && latestMajor > i.major) latestMajor - i.major else 0 }
+    // التحديث التدريجي (staged rollout) يجعل المحرك يتأخر إصداراً أو اثنين طبيعياً، فلا ننبّه إلا عند تأخر 3 إصدارات فأكثر
+    val outdated: Boolean get() = behind >= 3
 
     fun init(c: Context) {
         try {
@@ -38,7 +44,9 @@ object WebEngine {
             val v = p?.versionName
             if (p != null && v != null) info = Info(p.packageName, v, v.substringBefore('.').toIntOrNull() ?: 0)
         } catch (_: Throwable) { }
-        latestMajor = ConfStore.open(c).getInt("wvlatest", 0)
+        val st = ConfStore.open(c)
+        latestMajor = st.getInt("wvlatest", 0)
+        ackInstalled = st.getInt("wvackinst", 0); ackLatest = st.getInt("wvacklatest", 0)
     }
 
     /** User-Agent سطح المكتب بآخر إصدار مثبّت (بدل رقم ثابت قديم). */
@@ -91,19 +99,38 @@ object WebEngine {
         }, "nova-wvcheck").start()
     }
 
-    private fun fetchLatestMajor(): Int {
-        val c = URL("https://versionhistory.googleapis.com/v1/chrome/platforms/android/channels/stable/versions?orderBy=version%20desc&pageSize=3")
-            .openConnection() as HttpURLConnection
+    private fun readMajors(url: String): List<Int> {
+        val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 6000; c.readTimeout = 6000
         try {
             val body = c.inputStream.bufferedReader().use { it.readText() }
-            return Regex("\"version\"\\s*:\\s*\"(\\d+)\\.").findAll(body).maxOfOrNull { it.groupValues[1].toInt() } ?: 0
+            return Regex("\"version\"\\s*:\\s*\"(\\d+)\\.").findAll(body).map { it.groupValues[1].toInt() }.toList()
         } finally { c.disconnect() }
+    }
+
+    /**
+     * آخر إصدار مستقر «وصل فعلاً لمعظم الأجهزة». قائمة versions تشمل الإصدارات التي بدأ طرحها لنسبة صغيرة فقط
+     * (فيظهر رقم أحدث من المتاح في المتجر)، لذلك نستخدم releases مع شرط نسبة الطرح ≥ 50%.
+     */
+    private fun fetchLatestMajor(): Int {
+        val base = "https://versionhistory.googleapis.com/v1/chrome/platforms/android/channels/stable/versions"
+        val rolled = runCatching {
+            readMajors("$base/all/releases?filter=endtime%3Dnone,fraction%3E%3D0.5&orderBy=version%20desc&pageSize=3").maxOrNull() ?: 0
+        }.getOrDefault(0)
+        if (rolled > 0) return rolled
+        // احتياطي: القائمة العامة، ونطرح إصداراً لأن أحدثها غالباً قيد الطرح التدريجي
+        val any = readMajors("$base?orderBy=version%20desc&pageSize=3").maxOrNull() ?: 0
+        return if (any > 1) any - 1 else 0
     }
 
     /** يفتح صفحة تحديث الـ WebView (أو كروم إن كان هو المزوّد) في المتجر. */
     fun openStore(c: Context) {
         val pkg = info?.pkg ?: "com.google.android.webview"
+        info?.let { i ->
+            // نتذكّر أن المستخدم زار المتجر عند هذا الزوج من الإصدارات: إن لم يتغيّر المثبّت فالمتجر لا يملك أحدث لجهازه
+            ackInstalled = i.major; ackLatest = latestMajor
+            ConfStore.open(c.applicationContext).apply { putInt("wvackinst", i.major); putInt("wvacklatest", latestMajor) }
+        }
         fun view(u: String) = Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { c.startActivity(view("market://details?id=$pkg")) }
         catch (_: Exception) { runCatching { c.startActivity(view("https://play.google.com/store/apps/details?id=$pkg")) } }
@@ -115,6 +142,7 @@ object WebEngine {
         return when {
             checking -> "$base — " + L("جارٍ الفحص…")
             behind > 0 -> "$base — " + L("يتوفر إصدار أحدث") + " (${latestMajor}) — " + L("اضغط للتحديث")
+            acked -> "$base — " + L("محدّث (هذا أحدث ما يوفّره المتجر لجهازك)")
             latestMajor > 0 -> "$base — " + L("محدّث")
             else -> "$base — " + L("اضغط للفحص الآن")
         }

@@ -1,6 +1,8 @@
 package com.nova.browser
 
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebView
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -44,6 +46,8 @@ class YtSession {
     val recent = mutableStateListOf<String>()
     var wantMode = true                                 // هل يجب تفعيل وضع المشغّل في الصفحة (تضبطه الواجهة)
     var lastMore = 0L
+    var speed by mutableStateOf(1.0)                    // آخر سرعة تشغيل ضُبطت من زر السرعة السريع
+    var sleepMin by mutableStateOf(0)                   // مؤقت النوم بالدقائق (0 = متوقف)
 }
 
 /**
@@ -184,6 +188,7 @@ object YtApp {
     fun refresh(tab: BrowserTab) { tab.webView?.reload() }
     fun chip(tab: BrowserTab, i: Int) = call(tab, "chip($i)")
     fun like(tab: BrowserTab) = call(tab, "like()")
+    fun dislike(tab: BrowserTab) = call(tab, "dislike()")
     fun subscribe(tab: BrowserTab) = call(tab, "subscribe()")
     fun openComments(tab: BrowserTab) { tab.yt.comments = emptyList(); tab.yt.showComments = true; call(tab, "comments()") }
     fun closeComments(tab: BrowserTab) { tab.yt.showComments = false; call(tab, "closeComments()") }
@@ -197,6 +202,50 @@ object YtApp {
     fun setQuality(tab: BrowserTab, q: String) = call(tab, "quality(${JSONObject.quote(q)})")
     fun setCaption(tab: BrowserTab, code: String) = call(tab, "caption(${JSONObject.quote(code)})")
     fun setLoop(tab: BrowserTab, on: Boolean) = call(tab, "loop($on)")
+
+    // ───────── ميزات إضافية في صفحة المشاهدة ─────────
+    private val speedSteps = doubleArrayOf(0.75, 1.0, 1.25, 1.5, 1.75, 2.0)
+    private var sleepRun: Runnable? = null
+    private val ui = Handler(Looper.getMainLooper())
+    private const val PAUSE_JS = "(function(){if(window.__novaYtCtl){window.__novaYtCtl('pause')}else{var v=document.querySelector('video');if(v)v.pause()}})()"
+
+    /** زر السرعة السريع: يقرأ السرعة الحالية من الفيديو ثم ينتقل للتي بعدها (0.75 ← 1 ← 1.25 … 2 ثم يعود). */
+    fun cycleSpeed(tab: BrowserTab) {
+        val w = tab.webView ?: return
+        w.evaluateJavascript("(function(){var v=document.querySelector('video');return v?v.playbackRate:1})()") { r ->
+            val cur = r?.trim('"')?.toDoubleOrNull() ?: tab.yt.speed
+            val i = speedSteps.indexOfFirst { kotlin.math.abs(it - cur) < 0.01 }
+            val next = speedSteps[(i + 1).mod(speedSteps.size)]
+            tab.yt.speed = next
+            setRate(tab, next)
+        }
+    }
+
+    /** مؤقت النوم: يدور بين إيقاف ← 15 ← 30 ← 60 دقيقة، وعند انتهائه يوقف الفيديو (في التبويب أو المشغّل المصغّر). */
+    fun cycleSleep(tab: BrowserTab) {
+        val steps = intArrayOf(0, 15, 30, 60)
+        val s = tab.yt
+        val next = steps[(steps.indexOf(s.sleepMin) + 1).mod(steps.size)]
+        s.sleepMin = next
+        sleepRun?.let { ui.removeCallbacks(it) }; sleepRun = null
+        if (next > 0) {
+            val r = Runnable {
+                s.sleepMin = 0; sleepRun = null
+                tab.webView?.evaluateJavascript(PAUSE_JS, null)
+                YtMini.wv?.evaluateJavascript(PAUSE_JS, null)
+            }
+            sleepRun = r
+            ui.postDelayed(r, next * 60_000L)
+        }
+    }
+
+    /** الثانية الحالية من الفيديو (لمشاركة رابط يبدأ من هذه اللحظة). */
+    fun currentSec(tab: BrowserTab, done: (Int) -> Unit) {
+        val w = tab.webView ?: return done(0)
+        w.evaluateJavascript("(function(){var v=document.querySelector('video');return v?Math.floor(v.currentTime):0})()") { r ->
+            done(r?.trim('"')?.toIntOrNull() ?: 0)
+        }
+    }
 
     // ───────── المشغّل المصغّر ─────────
     /**

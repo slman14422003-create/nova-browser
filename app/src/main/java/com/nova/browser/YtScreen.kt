@@ -7,6 +7,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,9 +42,11 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -256,7 +259,7 @@ private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
         list.isEmpty() -> YtEmpty(onShowSite, onRetry = { retry++; YtApp.refresh(tab) })
         else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp)) {
-                itemsIndexed(list, key = { _, v -> v.id }) { _, v -> VideoCard(v, onClick = { YtApp.open(tab, v) }) }
+                itemsIndexed(list, key = { _, v -> v.id }) { _, v -> Box(Modifier.animateItem()) { VideoCard(v, onClick = { YtApp.open(tab, v) }) } }
                 item {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.tertiary)
@@ -592,6 +595,7 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
     val list = if (fresh) s.items else emptyList()
     val state = rememberLazyListState()
     var descOpen by remember(tab.url) { mutableStateOf(false) }
+    var titleOpen by remember(tab.url) { mutableStateOf(false) }
     val nearEnd by remember { derivedStateOf { val li = state.layoutInfo; li.totalItemsCount > 0 && (li.visibleItemsInfo.lastOrNull()?.index ?: 0) >= li.totalItemsCount - 4 } }
     LaunchedEffect(nearEnd, list.size) { if (nearEnd) { delay(250); YtApp.more(tab) } }
     val link = "https://youtu.be/" + (w?.id ?: YtApp.urlKey(tab.url).substringAfter('?'))
@@ -599,9 +603,10 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
     Column(Modifier.fillMaxSize()) {
         // ثقب بنسبة 16:9: يظهر منه المشغّل الحيّ للصفحة (خلف الواجهة). لا يعالج اللمس فيصل للمشغّل.
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            // زر التصغير فوق زاوية المشغّل (كتطبيق يوتيوب): يحوّل الفيديو إلى نافذة عائمة للتنقل بحرية
+            // زر التصغير فوق الزاوية اليسرى الفعلية للمشغّل (كتطبيق يوتيوب) بغضّ النظر عن اتجاه اللغة؛
+            // أزرار الترجمة والترس الأصلية في الزاوية اليمنى، فلا يتداخل الزران أبداً
             Box(
-                Modifier.align(Alignment.TopStart).padding(8.dp).size(36.dp).clip(CircleShape).background(Color(0x66000000))
+                Modifier.align(AbsoluteAlignment.TopLeft).padding(4.dp).size(40.dp).clip(CircleShape).background(Color(0x66000000))
                     .clickable { YtApp.minimize(tab) },
                 contentAlignment = Alignment.Center
             ) { ChevronDownGlyph(Color.White, Modifier.size(22.dp)) }
@@ -610,19 +615,26 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
             if (s.showComments) YtComments(tab, onShowSite)
             else LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 12.dp)) {
                 item {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().clickable { titleOpen = !titleOpen }.animateContentSize().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
                             w?.title?.ifBlank { null } ?: tab.title, style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.Content),
-                            fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 3, overflow = TextOverflow.Ellipsis
+                            fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = if (titleOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis
                         )
                         if (!w?.info.isNullOrBlank()) Text(w!!.info, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                        if (!titleOpen) Text(L("المزيد"), style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
                     }
                 }
                 item {
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ActionPill(Icons.Default.ThumbUp, w?.likes?.ifBlank { null } ?: L("أعجبني"), active = w?.liked == true) { YtApp.like(tab) }
+                        LikeDislikePill(w?.liked == true, w?.likes?.ifBlank { null } ?: L("أعجبني"), { YtApp.like(tab) }, { YtApp.dislike(tab) })
                         ActionPill(Icons.Default.Share, L("مشاركة")) { shareText(ctx, link) }
                         ActionPill(Icons.Default.Settings, L("الإعدادات")) { YtApp.openSettings(tab) }
+                        ActionPill(null, (if (s.speed == s.speed.toInt().toDouble()) "${s.speed.toInt()}x" else "${s.speed}x") + " " + L("السرعة"), active = s.speed != 1.0) { YtApp.cycleSpeed(tab) }
+                        ActionPill(null, if (s.sleepMin > 0) L("مؤقت النوم") + " ${s.sleepMin}" + L("د") else L("مؤقت النوم"), active = s.sleepMin > 0) { YtApp.cycleSleep(tab) }
+                        ActionPill(Icons.Default.Share, L("مشاركة من هنا")) { YtApp.currentSec(tab) { sec -> shareText(ctx, if (sec > 3) "$link?t=$sec" else link) } }
                         ActionPill(null, L("تنزيل")) { onDownload() }
                         ActionPill(null, L("منبثق")) { onPip() }
                         ActionPill(null, L("عرض الموقع")) { onShowSite() }
@@ -683,6 +695,28 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
                     }
                 }
+            }
+        }
+    }
+}
+
+/** زر الإعجاب وعدم الإعجاب ككبسولة واحدة مقسومة (كتطبيق يوتيوب). */
+@Composable
+private fun LikeDislikePill(liked: Boolean, likes: String, onLike: () -> Unit, onDislike: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val c = if (liked) cs.tertiary else cs.onSecondaryContainer
+    Surface(shape = CircleShape, color = if (liked) cs.tertiary.copy(alpha = 0.2f) else cs.secondaryContainer, modifier = Modifier.clip(CircleShape)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.clickable(onClick = onLike).padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Default.ThumbUp, null, Modifier.size(16.dp), tint = c)
+                Text(likes, style = MaterialTheme.typography.labelLarge, color = c, maxLines = 1)
+            }
+            Box(Modifier.width(1.dp).height(20.dp).background(cs.outlineVariant))
+            Box(Modifier.clickable(onClick = onDislike).padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Icon(Icons.Default.ThumbUp, L("لم يعجبني"), Modifier.size(16.dp).rotate(180f), tint = cs.onSecondaryContainer)
             }
         }
     }

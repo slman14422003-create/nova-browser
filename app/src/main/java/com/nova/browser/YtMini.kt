@@ -1,5 +1,6 @@
 package com.nova.browser
 
+import android.content.Context
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -119,9 +120,11 @@ fun YtMiniPlayer(modifier: Modifier, onExpand: () -> Unit) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
-                            FrameLayout(ctx).apply {
+                            // الصفحة تُرسم بحجم مشغّل حقيقي (360×203dp) ثم تُصغَّر بصرياً لتملأ الإطار الصغير،
+                            // فلا يعاد تخطيط مشغّل يوتيوب على عرض ~120px (سبب التقطيع وتوقف الفيديو سابقاً)
+                            MiniHost(ctx).apply {
                                 (w.parent as? ViewGroup)?.removeView(w)
-                                addView(w, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+                                addView(w, FrameLayout.LayoutParams(MiniHost.virtW(ctx), MiniHost.virtH(ctx)))
                             }
                         }
                     )
@@ -161,4 +164,29 @@ fun ChevronDownGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
             width = w * 0.11f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round
         )
     )
+}
+
+/** حاوية تُبقي الـ WebView بحجمه الافتراضي الكامل وتصغّره بالمقياس (scale) ليناسب مساحتها، مع قص ما يتجاوزها. */
+private class MiniHost(ctx: Context) : FrameLayout(ctx) {
+    private val vw = virtW(ctx)
+    private val vh = virtH(ctx)
+
+    init { clipChildren = true; clipToPadding = true }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec))
+        getChildAt(0)?.measure(MeasureSpec.makeMeasureSpec(vw, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(vh, MeasureSpec.EXACTLY))
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        val c = getChildAt(0) ?: return
+        c.layout(0, 0, vw, vh)
+        val sc = (r - l).toFloat() / vw
+        c.pivotX = 0f; c.pivotY = 0f; c.scaleX = sc; c.scaleY = sc
+    }
+
+    companion object {
+        fun virtW(ctx: Context): Int = (360f * ctx.resources.displayMetrics.density).toInt()
+        fun virtH(ctx: Context): Int = (virtW(ctx) * 9f / 16f).toInt()
+    }
 }

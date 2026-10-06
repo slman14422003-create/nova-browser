@@ -954,10 +954,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     }
                     if (ytApp) YtScreen(tab, onShowSite = { tab.yt.showSite = true }, onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() })
                     // المشغّل المصغّر: يطفو فوق الصفحة (فوق شريط يوتيوب السفلي إن كانت الواجهة الأصلية ظاهرة)
-                    if (YtMini.active && !inPip) YtMiniPlayer(
-                        Modifier.align(Alignment.BottomCenter).padding(bottom = if (ytApp) 60.dp else 8.dp),
-                        onExpand = { YtApp.expandMini(tab) }
-                    )
+                    AnimatedVisibility(
+                        visible = YtMini.active && !inPip,
+                        enter = slideInVertically(tween(Adaptive.ms(240), easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(Adaptive.ms(180))),
+                        exit = ExitTransition.None,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = if (ytApp) 60.dp else 8.dp)
+                    ) { YtMiniPlayer(Modifier, onExpand = { YtApp.expandMini(tab) }) }
                 }
                 AnimatedVisibility(
                     visible = site != null && !ytApp && !showSettings && !showPasswords && !showDownloads,
