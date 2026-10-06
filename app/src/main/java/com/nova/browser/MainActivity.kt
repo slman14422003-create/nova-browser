@@ -200,6 +200,20 @@ fun isYtHost(u: String?): Boolean {
     return h == "youtube.com" || h.endsWith(".youtube.com") || h == "youtu.be"
 }
 
+/**
+ * تسجيل دخول Google: إن اختار المستخدم Chrome Custom Tab يُفتح هناك بالحساب الأساسي،
+ * وإلا نُكمل داخل الصفحة مع إضافة login_hint مرة واحدة (غيابه شرط، فلا تتكرر الحلقة). يعيد true إن عالجنا التنقّل.
+ */
+private fun googleSignIn(v: WebView, h: Handlers, u: Uri): Boolean {
+    val hinted = GoogleAccounts.withHint(u)
+    if (GoogleAccounts.useChrome && GoogleAccounts.openInCustomTab(h.activity, hinted)) {
+        toast(h.activity, L("فُتح تسجيل دخول Google في Chrome — الجلسة هناك منفصلة عن Nova"))
+        return true
+    }
+    if (hinted != u) { v.loadUrl(hinted.toString(), Perf.privacyHeaders); return true }
+    return false
+}
+
 fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show()
 
 fun copyText(c: Context, t: String) {
@@ -320,6 +334,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             return when (u.scheme) {
                 "http", "https" -> {
                     if (!r.isForMainFrame) false
+                    else if (GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u)) true
                     else {
                         var t = Security.cleanUrl(u)
                         val host = t.host
@@ -437,6 +452,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Prefs.init(this)
+        GoogleAccounts.init(this)
         Adaptive.init(this)
         Library.init(this)
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
@@ -783,6 +799,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 if (t === tabs.getOrNull(current)) {
                     val cs = Vault.forHost(host)
                     if (cs.isNotEmpty()) fillOffer = FillOffer(t.id, host, cs)
+                    else if (GoogleAccounts.suggest && GoogleAccounts.accounts.isNotEmpty())
+                        fillOffer = FillOffer(t.id, host, GoogleAccounts.accounts.map { Cred("g:$it", host, it, "", 0L) })   // بريد فقط، بلا كلمة مرور
                 }
             },
             onCredential = { host, user, pass ->
@@ -933,7 +951,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                             }
                         }
                     }
-                    if (aiApp && site != null) AiScreen(tab, site, onShowSite = { tab.ai.showSite = true })
+                    if (aiApp && site != null) AiScreen(tab, site, onShowSite = { tab.ai.showSite = true }, onOpenLink = { openInNewTab(it) })
                     if (ytApp) YtScreen(tab, onShowSite = { tab.yt.showSite = true }, onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() })
                 }
                 AnimatedVisibility(
@@ -1013,7 +1031,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 o, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
                 onClose = { fillOffer = null },
                 onFill = { c ->
-                    Auth.run(activity, L("تأكيد الهوية لتعبئة كلمة المرور")) { tab.webView?.let { PasswordBridge.fill(it, c) }; fillOffer = null }
+                    if (c.pass.isEmpty()) { tab.webView?.let { PasswordBridge.fill(it, c) }; fillOffer = null }   // بريد الحساب: لا يحتاج بصمة
+                    else Auth.run(activity, L("تأكيد الهوية لتعبئة كلمة المرور")) { tab.webView?.let { PasswordBridge.fill(it, c) }; fillOffer = null }
                 }
             )
         }

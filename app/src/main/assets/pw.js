@@ -12,6 +12,10 @@
   function pwFields() {
     return Array.prototype.filter.call(document.querySelectorAll('input[type=password]'), vis);
   }
+  // حقول اسم المستخدم المعلنة صراحةً (دخول بخطوتين: البريد أولاً ثم كلمة المرور)
+  function nameFields() {
+    return Array.prototype.filter.call(document.querySelectorAll('input[autocomplete~=username]'), vis);
+  }
   function userField(pw) {
     var scope = pw.form || document;
     var c = Array.prototype.slice.call(
@@ -63,6 +67,7 @@
 
   function announce() {
     var f = pwFields();
+    if (!f.length) f = nameFields();
     if (f.length && !announced) { announced = true; send('form', {}); }
     else if (!f.length) announced = false;
   }
@@ -81,11 +86,11 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    var f = pwFields();
-    if (!f.length) return false;
-    var pw = f[0], us = userField(pw);
+    var f = pwFields(), pw = f[0] || null, us = null;
+    if (pw) us = userField(pw); else us = nameFields()[0] || null;
+    if (!pw && !us) return false;
     if (us && u) set(us, u);
-    set(pw, p);
+    if (pw && p) set(pw, p);   // كلمة مرور فارغة = تعبئة البريد فقط
     return true;
   };
 })();

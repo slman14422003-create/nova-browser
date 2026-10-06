@@ -10,13 +10,14 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 
-class YtVideo(val id: String, val title: String, val channel: String, val meta: String, val dur: String) {
+class YtVideo(val id: String, val title: String, val channel: String, val meta: String, val dur: String, val avatar: String = "") {
     val url get() = "https://www.youtube.com/watch?v=$id"
 }
 class YtComment(val author: String, val text: String, val time: String, val likes: String)
 class YtWatchData(
     val id: String, val title: String, val channel: String, val subs: String, val info: String, val likes: String,
-    val liked: Boolean, val subscribed: Boolean, val desc: String, val commentsLabel: String, val commentPreview: String
+    val liked: Boolean, val subscribed: Boolean, val desc: String, val commentsLabel: String, val commentPreview: String,
+    val avatar: String = ""
 )
 
 /** حالة واجهة يوتيوب الأصلية لتبويب واحد. المصدر هو DOM الصفحة (يصل عبر yt-app.js). */
@@ -114,7 +115,7 @@ object YtApp {
                     val l = ArrayList<YtVideo>(a.length())
                     for (i in 0 until a.length()) {
                         val v = a.optJSONObject(i) ?: continue
-                        l += YtVideo(v.optString("id"), v.optString("t"), v.optString("c"), v.optString("m"), v.optString("d"))
+                        l += YtVideo(v.optString("id"), v.optString("t"), v.optString("c"), v.optString("m"), v.optString("d"), v.optString("a"))
                     }
                     s.items = l.distinctBy { it.id }   // مفاتيح LazyColumn يجب أن تكون فريدة
                 }
@@ -125,7 +126,7 @@ object YtApp {
                 val w = o.optJSONObject("w")
                 s.watch = if (w == null) null else YtWatchData(
                     w.optString("id"), w.optString("title"), w.optString("chan"), w.optString("subs"), w.optString("info"), w.optString("likes"),
-                    w.optBoolean("liked"), w.optBoolean("subbed"), w.optString("desc"), w.optString("cl"), w.optString("cp")
+                    w.optBoolean("liked"), w.optBoolean("subbed"), w.optString("desc"), w.optString("cl"), w.optString("cp"), w.optString("oa")
                 )
                 val c = o.optJSONArray("c")
                 if (c != null) s.comments = (0 until c.length()).mapNotNull { i ->
@@ -153,6 +154,8 @@ object YtApp {
         tab.yt.lastMore = now
         call(tab, "more()")
     }
+    /** سحب للتحديث: نعيد تحميل الصفحة نفسها (تُحدَّث القائمة عند وصول لقطة جديدة). */
+    fun refresh(tab: BrowserTab) { tab.webView?.reload() }
     fun chip(tab: BrowserTab, i: Int) = call(tab, "chip($i)")
     fun like(tab: BrowserTab) = call(tab, "like()")
     fun subscribe(tab: BrowserTab) = call(tab, "subscribe()")

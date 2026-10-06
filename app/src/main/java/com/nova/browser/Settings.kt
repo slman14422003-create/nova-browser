@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,6 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /** إعدادات التطبيق (محفوظة، وقابلة للقراءة من أي مكان كحالة Compose) */
@@ -190,6 +194,8 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     LaunchedEffect(Unit) { DefaultBrowser.refresh(ctx) }
     var cacheSize by remember { mutableStateOf("…") }
     var cacheTick by remember { mutableIntStateOf(0) }
+    var gEmail by remember { mutableStateOf("") }
+    var gErr by remember { mutableStateOf(false) }
     val warnings = remember { Security.deviceWarnings(ctx) }
     LaunchedEffect(cacheTick) {
         cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CacheCleaner.format(CacheCleaner.size(ctx)) }
@@ -233,6 +239,15 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                     RowSpec(L("كلمات المرور المحفوظة"), Vault.items.size.toString(), Icons.Default.Lock, { onPasswords() }),
                     RowSpec(L("وضع التعبئة التلقائية"), pwNames[Prefs.pwMode.coerceIn(0, 2)], Icons.Default.Person, { dialog = "pwmode" }),
                     RowSpec(L("خدمة التعبئة في النظام"), autofillStatus(ctx), Icons.Default.Settings, { openAutofillSettings(ctx) })
+                ))
+                Group(L("حساب Google"), listOf(
+                    RowSpec(L("حسابات Google"),
+                        if (GoogleAccounts.accounts.isEmpty()) L("أضف بريدك ليُقترح عند طلب تسجيل الدخول") else GoogleAccounts.primary,
+                        Icons.Default.Person, { gEmail = ""; gErr = false; dialog = "gacct" }),
+                    RowSpec(L("اقتراح الحساب عند تسجيل الدخول"), L("يعرض بريدك فوق الصفحة عندما يطلب الموقع تسجيل الدخول"), Icons.Default.Check,
+                        { GoogleAccounts.pickSuggest(!GoogleAccounts.suggest) }, { Switch(checked = GoogleAccounts.suggest, onCheckedChange = null) }),
+                    RowSpec(L("تسجيل دخول Google عبر Chrome"), L("تفتح Google كثيراً صفحة الدخول بخطأ داخل المتصفحات المضمّنة؛ هذا الخيار يفتحها في Chrome Custom Tab"), Icons.Default.Lock,
+                        { GoogleAccounts.pickUseChrome(!GoogleAccounts.useChrome) }, { Switch(checked = GoogleAccounts.useChrome, onCheckedChange = null) })
                 ))
                 Group(L("يوتيوب"), listOf(
                     RowSpec(L("متابعة التشغيل في الخلفية"), L("مع أزرار التحكم في الإشعار وشاشة القفل"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
@@ -324,6 +339,37 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 TextButton(onClick = { YtLog.clear() ; dialog = null }) { Text(L("مسح السجل")) }
                 TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) }
             } }
+        )
+        "gacct" -> AlertDialog(
+            onDismissRequest = { dialog = null }, title = { Text(L("حسابات Google")) },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                    GoogleAccounts.accounts.toList().forEach { a ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { GoogleAccounts.setPrimary(a) }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = a == GoogleAccounts.primary, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(a, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            IconButton(onClick = { GoogleAccounts.remove(a) }) { Icon(Icons.Default.Delete, L("حذف")) }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = gEmail, onValueChange = { gEmail = it; gErr = false }, singleLine = true,
+                        label = { Text(L("البريد الإلكتروني")) }, isError = gErr,
+                        supportingText = if (gErr) ({ Text(L("بريد غير صالح")) }) else null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    )
+                    Text(
+                        L("يُحفظ البريد فقط على جهازك. لا تُخزَّن كلمة مرور Google، ولا تنتقل جلسة Google إلى Nova."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { if (GoogleAccounts.add(gEmail)) { gEmail = ""; gErr = false } else gErr = true }) { Text(L("إضافة")) } },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) } }
         )
         "pwmode" -> ChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), { Prefs.pickPwMode(it) }) { dialog = null }
         "lang" -> ChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), { Prefs.pickLang(it) }) { dialog = null }

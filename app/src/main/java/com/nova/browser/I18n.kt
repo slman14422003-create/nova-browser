@@ -11,6 +11,17 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "أضف بريدك ليُقترح عند طلب تسجيل الدخول" to "Add your email to get it suggested when a site asks you to sign in",
+        "اقتراح الحساب عند تسجيل الدخول" to "Suggest account on sign-in",
+        "البريد الإلكتروني" to "Email",
+        "بريد غير صالح" to "Invalid email",
+        "تسجيل دخول Google عبر Chrome" to "Google sign-in via Chrome",
+        "تفتح Google كثيراً صفحة الدخول بخطأ داخل المتصفحات المضمّنة؛ هذا الخيار يفتحها في Chrome Custom Tab" to "Google often rejects sign-in inside embedded browsers; this opens it in a Chrome Custom Tab instead",
+        "حساب Google" to "Google account",
+        "حسابات Google" to "Google accounts",
+        "فُتح تسجيل دخول Google في Chrome — الجلسة هناك منفصلة عن Nova" to "Google sign-in opened in Chrome — that session is separate from Nova",
+        "يعرض بريدك فوق الصفحة عندما يطلب الموقع تسجيل الدخول" to "Shows your email above the page when a site asks you to sign in",
+        "يُحفظ البريد فقط على جهازك. لا تُخزَّن كلمة مرور Google، ولا تنتقل جلسة Google إلى Nova." to "Only the email is stored on your device. No Google password is stored, and no Google session is transferred to Nova.",
         "اهتزاز الأزرار في وضع التطبيق" to "Button haptics in app mode",
         "لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي" to "Light haptic tap on buttons inside YouTube and AI sites",
         "وضع التطبيق (PWA)" to "App mode (PWA)",

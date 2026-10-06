@@ -23,6 +23,9 @@ class ConfStore private constructor(private val file: File) {
     fun getBoolean(k: String, d: Boolean): Boolean = when (map[k]?.lowercase()) { "true", "1" -> true; "false", "0" -> false; else -> d }
     fun putInt(k: String, v: Int) { map[k] = v.toString(); scheduleSave() }
     fun putBoolean(k: String, v: Boolean) { map[k] = v.toString(); scheduleSave() }
+    fun getString(k: String, d: String): String = map[k] ?: d
+    /** القيمة سطر واحد (الملف key=value): نحوّل أي أسطر جديدة إلى مسافات. */
+    fun putString(k: String, v: String) { map[k] = v.replace('\n', ' ').replace('\r', ' ').trim(); scheduleSave() }
 
     private fun load(): Boolean {
         if (!file.exists()) return false

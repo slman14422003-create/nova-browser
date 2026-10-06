@@ -41,12 +41,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -58,16 +61,18 @@ import androidx.compose.ui.unit.sp
  * صفحة الموقع تبقى حيّة خلفها وتعمل كـ API (انظر Ai.kt / ai.js).
  */
 @Composable
-fun AiScreen(tab: BrowserTab, info: SiteInfo, onShowSite: () -> Unit) {
+fun AiScreen(tab: BrowserTab, info: SiteInfo, onShowSite: () -> Unit, onOpenLink: (String) -> Unit = {}) {
     val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val s = tab.ai
     // Surface يمتص اللمس فلا يصل إلى صفحة الموقع الحيّة خلف الواجهة
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
-        Column(Modifier.fillMaxSize()) {
-            AiTopBar(tab, info, onShowSite)
-            Box(Modifier.weight(1f).fillMaxWidth()) { AiMessages(tab, info, onShowSite) }
-            AiComposer(tab)
+    CompositionLocalProvider(LocalLinkOpener provides onOpenLink) {
+        Surface(Modifier.fillMaxSize(), color = cs.background) {
+            Column(Modifier.fillMaxSize()) {
+                AiTopBar(tab, info, onShowSite)
+                Box(Modifier.weight(1f).fillMaxWidth()) { AiMessages(tab, info, onShowSite) }
+                AiComposer(tab)
+            }
         }
     }
     s.diag?.let { d ->
@@ -302,11 +307,16 @@ private fun FileChip(f: AiFile, onRemove: () -> Unit) {
 
 // ───────────────────────── Markdown خفيف ─────────────────────────
 
+/** يفتح رابطاً من نص الرد في تبويب جديد داخل التطبيق (صفحة ويب كاملة). */
+private val LocalLinkOpener = staticCompositionLocalOf<(String) -> Unit> { {} }
+
 private sealed class Blk
+private class BTable(val rows: List<List<String>>) : Blk()
 private class BCode(val lang: String, val code: String) : Blk()
 private class BText(val s: String, val kind: Int, val indent: Int, val bullet: String) : Blk()   // kind: 0 فقرة، 1-3 عنوان، 4 اقتباس
 
 private val reHead = Regex("^(#{1,3})\\s+(.*)")
+private val reSep = Regex("^:?-{2,}:?$")
 private val reItem = Regex("^(\\s*)([-*+]|\\d+\\.)\\s+(.*)")
 private val reInline = Regex("\\*\\*(.+?)\\*\\*|`([^`]+)`|\\*([^*\\s][^*]*?)\\*|\\[([^\\]]+)]\\(([^)]+)\\)")
 
@@ -315,6 +325,8 @@ private fun parseMd(src: String): List<Blk> {
     val par = StringBuilder()
     fun flush() { if (par.isNotBlank()) out += BText(par.toString().trim(), 0, 0, ""); par.setLength(0) }
     var inCode = false; var lang = ""; val code = StringBuilder()
+    val tbl = ArrayList<List<String>>()
+    fun flushTbl() { if (tbl.isNotEmpty()) { out += BTable(tbl.toList()); tbl.clear() } }
     for (raw in src.lines()) {
         if (raw.trimStart().startsWith("```")) {
             if (inCode) { out += BCode(lang, code.toString().trimEnd('\n')); code.setLength(0); inCode = false }
@@ -323,6 +335,13 @@ private fun parseMd(src: String): List<Blk> {
         }
         if (inCode) { code.append(raw).append('\n'); continue }
         val l = raw.trimEnd()
+        if (l.trimStart().startsWith("|") && l.endsWith("|") && l.length > 1) {
+            flush()
+            val cells = l.trim().trim('|').split('|').map { it.trim() }
+            if (!cells.all { it.matches(reSep) }) tbl.add(cells)   // نتجاهل سطر الفاصل |---|---|
+            continue
+        }
+        flushTbl()
         val h = reHead.find(l)
         val li = reItem.find(l)
         when {
@@ -339,13 +358,14 @@ private fun parseMd(src: String): List<Blk> {
         }
     }
     if (inCode) out += BCode(lang, code.toString().trimEnd('\n'))
-    flush()
+    flush(); flushTbl()
     return out
 }
 
 @Composable
 private fun inlineText(s: String): androidx.compose.ui.text.AnnotatedString {
     val cs = MaterialTheme.colorScheme
+    val opener by rememberUpdatedState(LocalLinkOpener.current)
     return remember(s, cs) {
         buildAnnotatedString {
             var i = 0
@@ -356,7 +376,13 @@ private fun inlineText(s: String): androidx.compose.ui.text.AnnotatedString {
                     g[1].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(g[1]) }
                     g[2].isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = cs.surfaceContainerHighest, fontSize = 0.9.em)) { append(g[2]) }
                     g[3].isNotEmpty() -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(g[3]) }
-                    else -> withStyle(SpanStyle(color = cs.tertiary, textDecoration = TextDecoration.Underline)) { append(g[4]) }
+                    else -> {
+                        val url = g[5].trim()
+                        val style = SpanStyle(color = cs.tertiary, textDecoration = TextDecoration.Underline)
+                        if (url.startsWith("https://") || url.startsWith("http://"))
+                            withLink(LinkAnnotation.Clickable("url", TextLinkStyles(style)) { opener(url) }) { append(g[4]) }
+                        else withStyle(style) { append(g[4]) }
+                    }
                 }
                 i = m.range.last + 1
             }
@@ -374,12 +400,35 @@ private fun Markdown(text: String) {
         blocks.forEach { b ->
             when (b) {
                 is BCode -> CodeBlock(b.lang, b.code)
+                is BTable -> AiTable(b)
                 is BText -> {
                     val base = when (b.kind) { 1 -> ty.titleLarge; 2 -> ty.titleMedium; 3 -> ty.titleSmall; else -> ty.bodyLarge }
                     val style = base.copy(textDirection = TextDirection.Content, fontWeight = if (b.kind in 1..3) FontWeight.Bold else base.fontWeight)
                     Row(Modifier.padding(start = (b.indent * 14).dp)) {
                         if (b.bullet.isNotEmpty()) Text(b.bullet, Modifier.width(24.dp), style = style, color = cs.tertiary)
                         Text(inlineText(b.s), style = style, color = if (b.kind == 4) cs.onSurfaceVariant else cs.onSurface, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiTable(t: BTable) {
+    val cs = MaterialTheme.colorScheme
+    val cols = t.rows.maxOf { it.size }
+    Surface(shape = RoundedCornerShape(12.dp), color = cs.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.horizontalScroll(rememberScrollState())) {
+            t.rows.forEachIndexed { ri, row ->
+                Row(Modifier.background(if (ri == 0) cs.surfaceContainerHigh else if (ri % 2 == 0) cs.surfaceContainerLow else Color.Transparent)) {
+                    for (ci in 0 until cols) {
+                        Text(
+                            inlineText(row.getOrElse(ci) { "" }),
+                            Modifier.width(140.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                            fontWeight = if (ri == 0) FontWeight.Bold else FontWeight.Normal, color = cs.onSurface
+                        )
                     }
                 }
             }

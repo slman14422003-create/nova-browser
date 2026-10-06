@@ -50,6 +50,16 @@
       for (var i = 0; i < 6 && p.parentElement; i++) { p = p.parentElement; if (p.querySelector('img') && tx(p).length > 6) return p; }
       return a;
     }
+    // صورة القناة (أفاتار): تأتي من yt3.ggpht.com أو googleusercontent؛ نقبل https فقط
+    function avOf(root) {
+      if (!root) return '';
+      var im = qa('img', root);
+      for (var i = 0; i < im.length; i++) {
+        var u = im[i].currentSrc || im[i].src || '';
+        if (/^https:\/\/(yt3\.ggpht\.com|yt4\.ggpht\.com|[\w-]+\.googleusercontent\.com)\//.test(u)) return u;
+      }
+      return '';
+    }
     function parseCard(id, c) {
       var ls = lines(c), dur = '', rest = [];
       ls.forEach(function (l) { if (!dur && DUR.test(l)) dur = l; else if (!BADGE.test(l)) rest.push(l); });
@@ -61,7 +71,7 @@
         p = p.trim(); if (!p) return;
         if (/\d/.test(p)) info.push(p); else if (!chan) chan = p;
       });
-      return { id: id, t: title, c: chan, m: info.join(' • '), d: dur };
+      return { id: id, t: title, c: chan, m: info.join(' • '), d: dur, a: avOf(c) };
     }
     function items(curId) {
       var seen = {}, out = [];
@@ -74,6 +84,7 @@
         if (hit && hit.len === len && hit.id === m[1]) o = hit.o;
         else { o = parseCard(m[1], c); if (cache) cache.set(c, { len: len, id: m[1], o: o }); }
         if (!o) return;
+        if (!o.a) o.a = avOf(c);   // الصور تُحمَّل كسولاً: نكمّل الأفاتار لاحقاً دون إعادة تحليل البطاقة
         seen[m[1]] = 1; out.push(o);
       });
       return out.slice(0, 160);
@@ -104,6 +115,7 @@
           document.title.replace(/\s*-\s*YouTube$/, ''),
         chan: pick(owner, ['.slim-owner-channel-name', 'a[href^="/@"]', 'a[href*="/channel/"]', 'h3']),
         subs: pick(owner, ['.subhead', '.slim-owner-subscriber-count', '[class*=subscriber]']),
+        oa: avOf(owner),
         info: pick(document, ['ytm-slim-video-metadata-section-renderer .secondary-text', '.slim-video-information-subtitle', '.slim-video-metadata-header .subhead']),
         likes: lb ? (tx(lb) || '') : '',
         liked: !!(lb && lb.getAttribute('aria-pressed') === 'true'),

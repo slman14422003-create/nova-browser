@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -221,24 +222,31 @@ private fun YtChips(tab: BrowserTab) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
     val s = tab.yt
     val list = if (fresh) s.items else emptyList()
     val state = rememberLazyListState()
     var waited by remember(tab.url) { mutableStateOf(false) }
-    LaunchedEffect(tab.url) { waited = false; delay(9000); waited = true }
+    var retry by remember(tab.url) { mutableIntStateOf(0) }
+    LaunchedEffect(tab.url, retry) { waited = false; delay(9000); waited = true }
     val nearEnd by remember { derivedStateOf { val li = state.layoutInfo; li.totalItemsCount > 0 && (li.visibleItemsInfo.lastOrNull()?.index ?: 0) >= li.totalItemsCount - 4 } }
     LaunchedEffect(nearEnd, list.size) { if (nearEnd) { delay(250); YtApp.more(tab) } }
 
+    var refreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) { if (refreshing) { delay(1500); refreshing = false } }
+
     when {
         list.isEmpty() && !waited -> YtSkeleton()
-        list.isEmpty() -> YtEmpty(onShowSite)
-        else -> LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp)) {
-            itemsIndexed(list, key = { _, v -> v.id }) { _, v -> VideoCard(v, onClick = { YtApp.open(tab, v) }) }
-            item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.tertiary)
+        list.isEmpty() -> YtEmpty(onShowSite, onRetry = { retry++; YtApp.refresh(tab) })
+        else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp)) {
+                itemsIndexed(list, key = { _, v -> v.id }) { _, v -> VideoCard(v, onClick = { YtApp.open(tab, v) }) }
+                item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.tertiary)
+                    }
                 }
             }
         }
@@ -294,15 +302,18 @@ private fun YtSkeleton() {
 }
 
 @Composable
-private fun YtEmpty(onShowSite: () -> Unit) {
+private fun YtEmpty(onShowSite: () -> Unit, onRetry: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
         Surface(shape = RoundedCornerShape(22.dp), color = cs.surfaceContainer) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(L("لم تصل أي فيديوهات من الصفحة"), style = MaterialTheme.typography.titleMedium, color = cs.onSurface)
                 Text(L("قد تكون الصفحة ما زالت تحمّل أو غيّر يوتيوب تصميمه. افتح الموقع أو جرّب خيار التشخيص."), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-                Button(onClick = onShowSite, shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = cs.tertiary, contentColor = cs.onTertiary)) {
-                    Text(L("فتح الموقع"), fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onRetry, shape = CircleShape, colors = ButtonDefaults.buttonColors(containerColor = cs.tertiary, contentColor = cs.onTertiary)) {
+                        Text(L("إعادة المحاولة"), fontWeight = FontWeight.SemiBold)
+                    }
+                    OutlinedButton(onClick = onShowSite, shape = CircleShape) { Text(L("فتح الموقع"), fontWeight = FontWeight.SemiBold) }
                 }
             }
         }
@@ -325,7 +336,7 @@ fun VideoCard(v: YtVideo, onClick: () -> Unit) {
             )
         }
         Row(Modifier.padding(start = 12.dp, end = 2.dp, top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ChannelAvatar(v.channel, 36)
+            ChannelAvatar(v.channel, 36, v.avatar)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     v.title, style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content), color = cs.onSurface,
@@ -348,12 +359,14 @@ fun VideoCard(v: YtVideo, onClick: () -> Unit) {
 }
 
 @Composable
-fun ChannelAvatar(name: String, size: Int) {
+fun ChannelAvatar(name: String, size: Int, url: String = "") {
     val initial = name.trim().trimStart('@').take(1).uppercase().ifEmpty { "Y" }
     val hue = (name.hashCode().let { if (it < 0) -it else it } % 360).toFloat()
     val bg = Color.hsv(hue, 0.45f, 0.55f)
     Box(Modifier.size(size.dp).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) {
         Text(initial, color = Color.White, fontWeight = FontWeight.Bold, fontSize = (size * 0.42f).sp)
+        // الصورة الحقيقية فوق الحرف؛ إن فشل التحميل يبقى الحرف ظاهراً
+        if (url.startsWith("https://")) NetImage(url, Modifier.fillMaxSize(), showBg = false)
     }
 }
 
@@ -369,11 +382,11 @@ private fun fetchBitmap(url: String): Bitmap? = runCatching {
 
 /** صورة من الشبكة بذاكرة مؤقتة صغيرة (بلا مكتبات). القص المركزي يزيل الشريطين الأسودين من hqdefault فيصبح 16:9 دقيقاً. */
 @Composable
-fun NetImage(url: String, modifier: Modifier) {
+fun NetImage(url: String, modifier: Modifier, showBg: Boolean = true) {
     val cs = MaterialTheme.colorScheme
     var bmp by remember(url) { mutableStateOf(thumbs.get(url)) }
     LaunchedEffect(url) { if (bmp == null) bmp = withContext(Dispatchers.IO) { fetchBitmap(url) } }
-    Box(modifier.background(cs.surfaceContainerHigh)) {
+    Box(if (showBg) modifier.background(cs.surfaceContainerHigh) else modifier) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
     }
 }
@@ -419,7 +432,7 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                 }
                 item {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ChannelAvatar(w?.channel ?: "", 40)
+                        ChannelAvatar(w?.channel ?: "", 40, w?.avatar ?: "")
                         Column(Modifier.weight(1f)) {
                             Text(w?.channel?.ifBlank { null } ?: "…", style = MaterialTheme.typography.titleSmall, color = cs.onSurface, maxLines = 1)
                             if (!w?.subs.isNullOrBlank()) Text(w!!.subs, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant, maxLines = 1)
