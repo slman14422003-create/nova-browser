@@ -62,7 +62,7 @@ object GoogleAccounts {
         save()
     }
 
-    fun setPrimary(email: String) { if (email in accounts) { primary = email; save() } }
+    fun choosePrimary(email: String) { if (email in accounts) { primary = email; save() } }
     fun pickSuggest(v: Boolean) { suggest = v; sp?.putBoolean("gsuggest", v) }
     fun pickUseChrome(v: Boolean) { useChrome = v; sp?.putBoolean("gchrome", v) }
 

@@ -346,7 +346,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                     GoogleAccounts.accounts.toList().forEach { a ->
                         Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { GoogleAccounts.setPrimary(a) }.padding(vertical = 4.dp),
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { GoogleAccounts.choosePrimary(a) }.padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(selected = a == GoogleAccounts.primary, onClick = null)
