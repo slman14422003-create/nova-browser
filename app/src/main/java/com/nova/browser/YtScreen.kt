@@ -59,6 +59,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -248,7 +249,9 @@ private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(refreshing) { if (refreshing) { delay(1500); refreshing = false } }
 
+    val nudge = fresh && s.nudge && s.key == YtApp.urlKey(tab.url)
     when {
+        list.isEmpty() && YtApp.pageOf(tab.url) == "home" && (nudge || waited) -> YtStart(tab)
         list.isEmpty() && !waited -> YtSkeleton()
         list.isEmpty() -> YtEmpty(onShowSite, onRetry = { retry++; YtApp.refresh(tab) })
         else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize()) {
@@ -305,6 +308,40 @@ private fun YtSkeleton() {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(Modifier.fillMaxWidth(0.85f).height(12.dp).clip(CircleShape).background(cs.surfaceContainerHigh.copy(alpha = a)))
                         Box(Modifier.fillMaxWidth(0.5f).height(10.dp).clip(CircleShape).background(cs.surfaceContainerHigh.copy(alpha = a)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** الرئيسية بلا توصيات (غير مسجّل دخول / بلا سجل مشاهدة): شاشة بحث أصلية بدل صفحة يوتيوب الفارغة. */
+@Composable
+private fun YtStart(tab: BrowserTab) {
+    val cs = MaterialTheme.colorScheme
+    val s = tab.yt
+    val topics = listOf("موسيقى", "ألعاب", "أخبار", "رياضة", "طبخ", "تقنية", "أفلام", "تعليم", "كرتون")
+    fun go(q: String) { s.recent.remove(q); s.recent.add(0, q); while (s.recent.size > 8) s.recent.removeAt(s.recent.lastIndex); s.searching = false; YtApp.search(tab, q) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically)
+    ) {
+        Text(L("ابحث لتبدأ"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = cs.onSurface)
+        Text(
+            L("لا يعرض يوتيوب توصيات دون تسجيل دخول أو سجل مشاهدة. ابحث عن أي شيء أو اختر موضوعاً."),
+            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, textAlign = TextAlign.Center
+        )
+        Surface(onClick = { s.searching = true }, shape = CircleShape, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
+                Text(L("ابحث في يوتيوب"), color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        topics.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { t ->
+                    Surface(onClick = { go(L(t)) }, shape = CircleShape, color = cs.secondaryContainer) {
+                        Text(L(t), Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = cs.onSecondaryContainer, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -586,7 +623,6 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                         ActionPill(Icons.Default.ThumbUp, w?.likes?.ifBlank { null } ?: L("أعجبني"), active = w?.liked == true) { YtApp.like(tab) }
                         ActionPill(Icons.Default.Share, L("مشاركة")) { shareText(ctx, link) }
                         ActionPill(Icons.Default.Settings, L("الإعدادات")) { YtApp.openSettings(tab) }
-                        ActionPill(null, L("تصغير")) { YtApp.minimize(tab) }
                         ActionPill(null, L("تنزيل")) { onDownload() }
                         ActionPill(null, L("منبثق")) { onPip() }
                         ActionPill(null, L("عرض الموقع")) { onShowSite() }

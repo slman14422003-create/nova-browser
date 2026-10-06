@@ -36,6 +36,7 @@ class YtSession {
     var showComments by mutableStateOf(false)
     var showSite by mutableStateOf(false)               // عرض الموقع الأصلي بدل الواجهة الأصلية
     var searching by mutableStateOf(false)
+    var nudge by mutableStateOf(false)                  // الصفحة الرئيسية فارغة (يوتيوب يطلب البحث لأن لا سجل مشاهدة)
     var query by mutableStateOf("")
     var diag by mutableStateOf<String?>(null)
     var psOpen by mutableStateOf(false)                 // قائمة إعدادات المشغّل الأصلية
@@ -120,6 +121,7 @@ object YtApp {
             "ys" -> {
                 if (o.optBoolean("on") != s.wantMode) call(tab, "mode(${s.wantMode})")   // مزامنة وضع المشغّل (دوران الشاشة/عرض الموقع)
                 s.key = o.optString("key")
+                s.nudge = o.optBoolean("nu")
                 val a = o.optJSONArray("items")
                 if (a != null) {
                     val l = ArrayList<YtVideo>(a.length())

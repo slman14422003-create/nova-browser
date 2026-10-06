@@ -93,8 +93,11 @@
     log('ctl ' + a);
     if (a === 'play') {
       userPaused = false;
+      // واجهة المشغّل نفسها أولاً (تتجاوز منطق الإيقاف الداخلي)، ثم play() ثم نقر الزر كاحتياط
+      try { var mp = document.getElementById('movie_player'); if (mp && mp.playVideo) mp.playVideo(); } catch (x) {}
       var p = e.play();
       if (p && p.catch) p.catch(function (x) { log('ctl play rejected ' + x); clickPlay(); });
+      setTimeout(function () { if (e.paused && !userPaused) { clickPlay(); setTimeout(function () { if (e.paused && !userPaused) { try { e.click(); } catch (x) {} } }, 400); } }, 450);
     }
     else if (a === 'pause') { userPaused = true; (window.__novaOrigPause || e.pause).call(e); }
     else if (a === 'fwd') e.currentTime = Math.min(e.duration || 1e9, e.currentTime + 10);

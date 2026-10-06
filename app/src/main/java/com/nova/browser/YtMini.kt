@@ -66,6 +66,7 @@ object YtMini {
         if (wv != null && wv !== w) close()
         wv = w; title = t; playing = wasPlaying; touched = false
         w.evaluateJavascript("window.__novaYtApp&&window.__novaYtApp.mini(true)", null)
+        w.post { w.onResume(); w.resumeTimers() }   // الصفحة قد تُعدّ مخفية لحظة النقل بين الحاويات فيوقف يوتيوب الفيديو
         // نقل الـ WebView بين الحاويات قد يوقف الفيديو لحظة؛ نستأنفه إن كان يعمل قبل التصغير
         if (wasPlaying) for (d in longArrayOf(350L, 1100L, 2400L)) w.postDelayed({
             if (wv === w && !touched) w.evaluateJavascript(RESUME, null)
@@ -77,7 +78,9 @@ object YtMini {
         touched = true
         val a = if (playing) "pause" else "play"
         playing = !playing
+        w.onResume(); w.resumeTimers()
         w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl('$a')", null)
+        w.postDelayed({ if (wv === w) probe() }, 900)
     }
 
     fun probe() {

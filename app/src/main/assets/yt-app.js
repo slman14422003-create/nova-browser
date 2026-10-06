@@ -173,6 +173,11 @@
         key: p + '?' + (v || params().get('search_query') || ''),
         items: items(v), chips: p === '/' ? chips() : []
       };
+      if (p === '/' && !o.items.length) {
+        var nd = q1('ytm-feed-nudge-renderer,ytm-feed-nudge');
+        var bt = nd ? '' : ((q1('ytm-browse') || {}).textContent || '').slice(0, 600);
+        o.nu = !!nd || /get started|ابدأ بالبحث|ابحث لتبدأ/i.test(bt);
+      }
       if (p === '/watch') { o.w = watchData(); if (cOpen) o.c = comments(); }
       var j = JSON.stringify(o);
       if (j === last) return;
