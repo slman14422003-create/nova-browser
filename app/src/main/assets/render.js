@@ -6,6 +6,9 @@
     window.__novaRender = 1;
     if (!/Android/i.test(navigator.userAgent)) return;
 
+    // يوتيوب/جوجل: صفحاتها تدير تخطيطها بنفسها (المشغّل والواجهة الأصلية)، فلا نضيف شيئاً
+    if (/(^|\.)(youtube\.com|google\.[a-z.]+|googlevideo\.com)$/.test(location.hostname)) return;
+
     var css =
       'img,video{max-width:100%}' +                                   // صور/فيديو لا تتجاوز عرض الشاشة
       'pre{white-space:pre-wrap;overflow-wrap:anywhere}' +             // الأكواد الطويلة تلتف بدل التمرير الأفقي
@@ -13,7 +16,6 @@
       'body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}' +  // خطوط أنعم
       'a,button,summary,label,input,select,[role=button]{touch-action:manipulation}' + // إلغاء تأخير اللمس المزدوج
       'h1,h2,h3{text-wrap:balance}p,li,blockquote{text-wrap:pretty}' +                // أسطر أجمل (CSS حديث)
-      'img,video,canvas,svg{height:auto}img[width][height]{height:auto}' +             // حفظ النسبة
       'img{image-orientation:from-image}' +
       ':focus-visible{outline:2px solid #4c8dff;outline-offset:2px;border-radius:4px}' +
       '::selection{background:rgba(76,141,255,.35)}' +

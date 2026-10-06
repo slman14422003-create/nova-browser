@@ -87,7 +87,28 @@
         if (!o.a) o.a = avOf(c);   // الصور تُحمَّل كسولاً: نكمّل الأفاتار لاحقاً دون إعادة تحليل البطاقة
         seen[m[1]] = 1; out.push(o);
       });
+      if (!out.length) out = fromData(curId);
       return out.slice(0, 160);
+    }
+    // احتياطي: بيانات الصفحة المضمّنة (ytInitialData) إن تغيّر شكل البطاقات في DOM
+    function fromData(curId) {
+      var out = [], seen = {}, n = 0;
+      function txt(o) { return !o ? '' : (o.simpleText || (o.runs && o.runs.map(function (r) { return r.text; }).join('')) || (typeof o === 'string' ? o : '')); }
+      function walk(o, d) {
+        if (!o || typeof o !== 'object' || d > 14 || n++ > 40000 || out.length >= 120) return;
+        if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) walk(o[i], d + 1); return; }
+        var id = o.videoId;
+        if (typeof id === 'string' && /^[\w-]{11}$/.test(id) && id !== curId && !seen[id] && (o.title || o.headline)) {
+          var t = txt(o.title) || txt(o.headline);
+          if (t) {
+            seen[id] = 1;
+            out.push({ id: id, t: t, c: txt(o.shortBylineText || o.longBylineText || o.ownerText), m: txt(o.shortViewCountText || o.viewCountText) + (o.publishedTimeText ? ' • ' + txt(o.publishedTimeText) : ''), d: txt(o.lengthText), a: '' });
+          }
+        }
+        for (var k in o) if (o.hasOwnProperty(k)) walk(o[k], d + 1);
+      }
+      try { walk(window.ytInitialData, 0); } catch (e) {}
+      return out;
     }
 
     var chipEls = [];

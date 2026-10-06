@@ -240,17 +240,8 @@ private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
     val state = rememberLazyListState()
     var waited by remember(tab.url) { mutableStateOf(false) }
     var retry by remember(tab.url) { mutableIntStateOf(0) }
-    // لا فيديوهات بعد 4.5ث: نعيد تحميل الصفحة مرة. وبعد 10ث: نعرض موقع يوتيوب نفسه (قد تكون صفحة موافقة/تسجيل دخول أو تصميم جديد)
-    // بدل ترك المستخدم أمام رسالة خطأ.
-    LaunchedEffect(tab.url, retry) {
-        fun has() = s.key == YtApp.urlKey(tab.url) && s.items.isNotEmpty()
-        waited = false
-        delay(4500)
-        if (!has() && retry == 0) YtApp.refresh(tab)
-        delay(5500)
-        waited = true
-        if (!has()) onShowSite()
-    }
+    // لا نعيد التحميل ولا نبدّل للموقع تلقائياً (كان يقطع تحميل الصفحة البطيء): ننتظر ثم تظهر رسالة بزرَّي إعادة المحاولة وفتح الموقع
+    LaunchedEffect(tab.url, retry) { waited = false; delay(15000); waited = true }
     val nearEnd by remember { derivedStateOf { val li = state.layoutInfo; li.totalItemsCount > 0 && (li.visibleItemsInfo.lastOrNull()?.index ?: 0) >= li.totalItemsCount - 4 } }
     LaunchedEffect(nearEnd, list.size) { if (nearEnd) { delay(250); YtApp.more(tab) } }
 
