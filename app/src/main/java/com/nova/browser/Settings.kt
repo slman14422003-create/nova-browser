@@ -56,6 +56,8 @@ object Prefs {
     var cap60 by mutableStateOf(true); private set          // تحديد 60Hz عند السخونة
     var fitPages by mutableStateOf(true); private set       // تحسين عرض الصفحات (render.js)
     var pwaMode by mutableStateOf(true); private set        // وضع التطبيق (PWA) ليوتيوب ومواقع الذكاء الاصطناعي
+    var ytNative by mutableStateOf(true); private set       // واجهة أصلية ليوتيوب (الصفحة تعمل خلفها كمصدر بيانات)
+    var aiNative by mutableStateOf(true); private set       // واجهة أصلية لمواقع الذكاء الاصطناعي (الموقع يعمل خلفها كـ API)
     var pwaHaptics by mutableStateOf(true); private set     // اهتزاز خفيف على أزرار صفحات وضع التطبيق
 
     val engines = listOf(
@@ -82,7 +84,7 @@ object Prefs {
         autoPip = p.getBoolean("autopip", true); ytBg = p.getBoolean("ytbg", true)
         autoUpdate = p.getBoolean("autoupd", true); adaptive = p.getBoolean("adaptive", true)
         smoothAnim = p.getBoolean("anim", true); cap60 = p.getBoolean("cap60", true)
-        fitPages = p.getBoolean("fitpages", true); pwaMode = p.getBoolean("pwa", true); pwaHaptics = p.getBoolean("pwahap", true)
+        fitPages = p.getBoolean("fitpages", true); pwaMode = p.getBoolean("pwa", true); pwaHaptics = p.getBoolean("pwahap", true); aiNative = p.getBoolean("ainative", true); ytNative = p.getBoolean("ytnative", true)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -118,6 +120,8 @@ object Prefs {
     fun pickCap60(v: Boolean) { cap60 = v; sp?.putBoolean("cap60", v) }
     fun pickFitPages(v: Boolean) { fitPages = v; sp?.putBoolean("fitpages", v) }
     fun pickPwaMode(v: Boolean) { pwaMode = v; sp?.putBoolean("pwa", v) }
+    fun pickYtNative(v: Boolean) { ytNative = v; sp?.putBoolean("ytnative", v) }
+    fun pickAiNative(v: Boolean) { aiNative = v; sp?.putBoolean("ainative", v) }
     fun pickPwaHaptics(v: Boolean) { pwaHaptics = v; sp?.putBoolean("pwahap", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
@@ -265,6 +269,10 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.fitPages, onCheckedChange = null) }),
                     RowSpec(L("وضع التطبيق (PWA)"), L("شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Star, { Prefs.pickPwaMode(!Prefs.pwaMode) },
                         { Switch(checked = Prefs.pwaMode, onCheckedChange = null) }),
+                    RowSpec(L("واجهة تطبيق ليوتيوب"), L("قوائم وصفحة مشاهدة وتعليقات بتنسيق أصلي مع مشغّل يوتيوب الحقيقي. يُطبَّق على التبويبات الجديدة"), Icons.Default.Star, { Prefs.pickYtNative(!Prefs.ytNative) },
+                        { Switch(checked = Prefs.ytNative, onCheckedChange = null) }),
+                    RowSpec(L("واجهة تطبيق للذكاء الاصطناعي"), L("شريط إرسال ورفع ملفات ومحادثة بتنسيق أصلي، والموقع يعمل خلفها (ChatGPT / Claude / Gemini). يُطبَّق على التبويبات الجديدة"), Icons.Default.Star, { Prefs.pickAiNative(!Prefs.aiNative) },
+                        { Switch(checked = Prefs.aiNative, onCheckedChange = null) }),
                     RowSpec(L("اهتزاز الأزرار في وضع التطبيق"), L("لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي"), Icons.Default.Notifications, { Prefs.pickPwaHaptics(!Prefs.pwaHaptics) },
                         { Switch(checked = Prefs.pwaHaptics, onCheckedChange = null) }),
                     RowSpec(L("محرك العرض"), WebEngine.summary(), Icons.Default.Refresh,

@@ -1,0 +1,38 @@
+{
+  "chatgpt.com": {
+    "native": true, "name": "ChatGPT", "home": "https://chatgpt.com/",
+    "input": "#prompt-textarea",
+    "send": "button[data-testid=\"send-button\"]",
+    "stop": "button[data-testid=\"stop-button\"]",
+    "user": "[data-message-author-role=\"user\"]",
+    "bot": "[data-message-author-role=\"assistant\"]",
+    "file": "input[type=file]",
+    "newChat": "a[data-testid=\"create-new-chat-button\"]"
+  },
+  "claude.ai": {
+    "native": true, "name": "Claude", "home": "https://claude.ai/new",
+    "input": "div[contenteditable=\"true\"].ProseMirror, div[contenteditable=\"true\"]",
+    "send": "button[aria-label=\"Send message\"], button[aria-label*=\"Send\"]",
+    "stop": "button[aria-label=\"Stop response\"], button[aria-label*=\"Stop\"]",
+    "user": "[data-testid=\"user-message\"]",
+    "bot": ".font-claude-response, .font-claude-message",
+    "file": "input[type=file]",
+    "newChat": "a[href=\"/new\"]"
+  },
+  "gemini.google.com": {
+    "native": true, "name": "Gemini", "home": "https://gemini.google.com/app",
+    "input": "rich-textarea .ql-editor, div.ql-editor[contenteditable=\"true\"]",
+    "send": "button.send-button, button[aria-label*=\"Send\"]",
+    "stop": "button[aria-label*=\"Stop\"]",
+    "user": "user-query",
+    "bot": "model-response",
+    "file": "input[type=file]",
+    "newChat": "a[href=\"/app\"]"
+  },
+  "chat.deepseek.com": { "native": false, "name": "DeepSeek", "home": "https://chat.deepseek.com/", "input": "textarea" },
+  "grok.com": { "native": false, "name": "Grok", "home": "https://grok.com/", "input": "textarea" },
+  "perplexity.ai": { "native": false, "name": "Perplexity", "home": "https://www.perplexity.ai/", "input": "textarea" },
+  "copilot.microsoft.com": { "native": false, "name": "Copilot", "home": "https://copilot.microsoft.com/", "input": "textarea" },
+  "poe.com": { "native": false, "name": "Poe", "home": "https://poe.com/", "input": "textarea" },
+  "chat.mistral.ai": { "native": false, "name": "Le Chat", "home": "https://chat.mistral.ai/chat", "input": "textarea" }
+}

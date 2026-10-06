@@ -59,7 +59,7 @@ fun SiteBar(
     info: SiteInfo, progress: Float, loading: Boolean,
     onReload: () -> Unit, onShare: () -> Unit,
     onPip: (() -> Unit)? = null, onDownload: (() -> Unit)? = null,
-    onTitleTap: (() -> Unit)? = null,
+    onTitleTap: (() -> Unit)? = null, onAiView: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
@@ -93,6 +93,7 @@ fun SiteBar(
             }
             if (onPip != null) GlyphButton(L("منبثق"), tap(onPip)) { c -> PipGlyph(c, Modifier.size(19.dp)) }
             if (onDownload != null) DownloadPill(L("تنزيل"), tap(onDownload))
+            if (onAiView != null) GlyphButton(L("واجهة التطبيق"), tap(onAiView)) { c -> SparkGlyph(c, Modifier.size(18.dp)) }
             if (onPip == null && onDownload == null) {
                 val spin = if (loading && Adaptive.ms(100) > 0)
                     rememberInfiniteTransition(label = "spin").animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "rot").value
@@ -124,7 +125,7 @@ fun StatusBarWash(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GlyphButton(desc: String, onClick: () -> Unit, tonal: Boolean = true, glyph: @Composable (Color) -> Unit) {
+internal fun GlyphButton(desc: String, onClick: () -> Unit, tonal: Boolean = true, glyph: @Composable (Color) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val src = remember { MutableInteractionSource() }
     Surface(
@@ -152,7 +153,7 @@ private fun DownloadPill(label: String, onClick: () -> Unit) {
 // ───────────── رموز مرسومة (لا تحتاج مكتبة أيقونات إضافية) ─────────────
 
 @Composable
-private fun SparkGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
+internal fun SparkGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
     fun star(cx: Float, cy: Float, r: Float) = Path().apply {
         moveTo(cx, cy - r)
         quadraticBezierTo(cx, cy, cx + r, cy)

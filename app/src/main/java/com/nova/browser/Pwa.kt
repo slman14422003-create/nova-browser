@@ -33,6 +33,12 @@ object Pwa {
         add("https://www.perplexity.ai")
     }
 
+    /** نطاقات مواقع الذكاء الاصطناعي فقط (يُحقن فيها ai.js وجسر NovaAi). */
+    val aiOrigins: Set<String> = buildSet {
+        aiNames.keys.forEach { add("https://$it") }
+        add("https://www.perplexity.ai")
+    }
+
     private val js: String? by lazy {
         runCatching { Perf.asset("pwa.js") }.getOrNull()
     }

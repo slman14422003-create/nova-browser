@@ -151,6 +151,8 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var pinned by mutableStateOf(false)    // تبويب مثبّت (لا يُحرَّر ولا يُغلق بـ"إغلاق الكل")
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
+    val ai = AiSession()                 // حالة واجهة الذكاء الاصطناعي الأصلية لهذا التبويب
+    val yt = YtSession()                 // حالة واجهة يوتيوب الأصلية لهذا التبويب
 }
 
 class Handlers(
@@ -240,6 +242,8 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     Perf.installPrivacy(this)
     Perf.installRender(this)
     Pwa.install(this)
+    Ai.install(this, tab)
+    YtApp.install(this, tab)
     PasswordBridge.install(this, tab, h)
     YtBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -263,7 +267,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); YtMedia.pageChanged(tab, u) }
+        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); Ai.onPageStart(v, u, tab); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u) }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             // تنقّلات الصفحات أحادية الصفحة (مثل يوتيوب) لا تستدعي onPageStarted
             if (u.startsWith("http")) { tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u) }
@@ -723,8 +727,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         Handlers(
             activity = activity,
             chooser = { cb, p ->
-                fileCb?.onReceiveValue(null); fileCb = cb
-                runCatching { fileLauncher.launch(p.createIntent()) }.onFailure { cb.onReceiveValue(null); fileCb = null }
+                // رفع من واجهة الذكاء الاصطناعي الأصلية: الملف مختار مسبقاً فلا نعرض نافذة اختيار ثانية
+                val pend = tabs.getOrNull(current)?.ai?.pendingUris
+                if (!pend.isNullOrEmpty()) {
+                    tabs[current].ai.pendingUris = emptyList()
+                    cb.onReceiveValue(pend.toTypedArray())
+                } else {
+                    fileCb?.onReceiveValue(null); fileCb = cb
+                    runCatching { fileLauncher.launch(p.createIntent()) }.onFailure { cb.onReceiveValue(null); fileCb = null }
+                }
                 true
             },
             permission = { req ->
@@ -864,7 +875,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         Surface(Modifier.fillMaxSize(), color = cs.background) {
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
-            val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
+            // واجهة الذكاء الاصطناعي الأصلية: تحلّ محل الشريط العلوي وصفحة الموقع (التي تبقى حيّة خلفها)
+            val aiApp = site != null && site.kind == SiteKind.AI && Prefs.aiNative && !tab.ai.showSite && Ai.supports(site.host)
+            // واجهة يوتيوب الأصلية: للصفحات المدعومة فقط، وفي الوضع الرأسي، وبعرض الجوال (ليس سطح المكتب)
+            val land = androidx.compose.ui.platform.LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val ytWant = Prefs.pwaMode && Prefs.ytNative && !tab.desktop && !land && !tab.yt.showSite && YtApp.supports(tab.url) && YtApp.nativePage(tab.url)
+            val ytApp = ytWant && site != null && (site.kind == SiteKind.YT || site.kind == SiteKind.YT_VIDEO)
+            SideEffect { tab.yt.wantMode = ytWant }
+            LaunchedEffect(ytWant, tab.id, tab.epoch) { YtApp.mode(tab, ytWant) }
+            val barH = if (site != null && !aiApp && !ytApp) Pwa.BAR_H.dp else 0.dp
             // لون شريط الحالة يتبع لون شريط الموقع (كان خلفية سادة بينما الشريط مائل للون الهوية)
             AnimatedVisibility(visible = site != null, enter = fadeIn(tween(Adaptive.ms(160))), exit = fadeOut(tween(Adaptive.ms(120)))) { StatusBarWash() }
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
@@ -914,9 +933,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                             }
                         }
                     }
+                    if (aiApp && site != null) AiScreen(tab, site, onShowSite = { tab.ai.showSite = true })
+                    if (ytApp) YtScreen(tab, onShowSite = { tab.yt.showSite = true }, onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() })
                 }
                 AnimatedVisibility(
-                    visible = site != null && !showSettings && !showPasswords && !showDownloads,
+                    visible = site != null && !aiApp && !ytApp && !showSettings && !showPasswords && !showDownloads,
                     enter = NovaMotion.barEnter, exit = NovaMotion.barExit, modifier = Modifier.align(Alignment.TopCenter)
                 ) {
                     // آخر معلومات صالحة تبقى أثناء حركة الخروج كي لا يفرغ الشريط فجأة
@@ -927,7 +948,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                             info = si, progress = tab.progress, loading = tab.loading,
                             onReload = { tab.webView?.reload() }, onShare = { shareText(activity, tab.url) }, onTitleTap = { Pwa.scrollTop(tab.webView) },
                             onPip = if (si.kind == SiteKind.YT_VIDEO) ({ mainAct?.enterPip() }) else null,
-                            onDownload = if (si.kind == SiteKind.YT_VIDEO) ({ ytUrl = tab.url }) else null
+                            onDownload = if (si.kind == SiteKind.YT_VIDEO) ({ ytUrl = tab.url }) else null,
+                            onAiView = when {
+                                Prefs.aiNative && si.kind == SiteKind.AI && Ai.supports(si.host) -> ({ tab.ai.showSite = false })
+                                Prefs.ytNative && !tab.desktop && (si.kind == SiteKind.YT || si.kind == SiteKind.YT_VIDEO) && YtApp.supports(tab.url) ->
+                                    ({ tab.yt.showSite = false; if (!YtApp.nativePage(tab.url)) YtApp.go(tab, "/") })
+                                else -> null
+                            }
                         )
                     }
                 }

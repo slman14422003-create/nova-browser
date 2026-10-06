@@ -115,6 +115,24 @@ for need, msg in (('android.intent.category.BROWSABLE', 'BROWSABLE'), ('android.
     if need not in mf2: errors.append("Manifest: ينقصه " + msg + " (مطلوب ليصلح التطبيق كمتصفح افتراضي)")
 if not (SRC / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt مفقود")
 
+
+# 2.97) واجهة الذكاء الاصطناعي: ai.js و ai-sites.json سليمان وكل موقع native له محدّدات أساسية
+import json as _json
+try:
+    _sites = _json.loads((AS / "ai-sites.json").read_text(encoding="utf-8"))
+    for _h, _c in _sites.items():
+        if _c.get("native") and not all(_c.get(k) for k in ("input", "user", "bot")):
+            errors.append("ai-sites.json: " + _h + " مفعّل native بلا input/user/bot")
+except Exception as _e:
+    errors.append("ai-sites.json غير صالح: " + str(_e))
+if "__CFG__" not in (AS / "ai.js").read_text(encoding="utf-8"): errors.append("ai.js: علامة __CFG__ مفقودة")
+
+
+# 2.98) واجهة يوتيوب الأصلية: السكربت موجود ويحمل علامة الإعدادات، والجلسة معرّفة
+_yt = (AS / "yt-app.js")
+if not _yt.exists() or "__CFG__" not in _yt.read_text(encoding="utf-8"): errors.append("yt-app.js مفقود أو بلا __CFG__")
+if "val yt = YtSession()" not in (SRC / "MainActivity.kt").read_text(encoding="utf-8"): errors.append("BrowserTab.yt مفقود")
+
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))
