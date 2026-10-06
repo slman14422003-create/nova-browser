@@ -8,7 +8,7 @@
   try {
     if (window.__novaYtApp || window.top !== window || !window.NovaYtApp) return;
     var CFG = __CFG__;
-    var mode = !!CFG.on, cOpen = false;
+    var mode = !!CFG.on, cOpen = false, miniOn = false;
 
     function post(o) { try { window.NovaYtApp.postMessage(JSON.stringify(o)); } catch (e) {} }
     function qa(sel, root) { try { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); } catch (e) { return []; } }
@@ -145,6 +145,7 @@
     var last = '', timer = 0;
     function snap() {
       timer = 0; applyMode();
+      if (miniOn) return;   // المشغّل المصغّر لا يحتاج لقطات (يوفر المعالج)
       var p = location.pathname, v = params().get('v') || '';
       var o = {
         t: 'ys', href: location.href, on: mode,
@@ -164,6 +165,53 @@
     });
     window.addEventListener('popstate', function () { cOpen = false; sched(); });
     setInterval(snap, 2000);
+
+    // ───────── المشغّل: إعدادات أصلية (جودة/سرعة/ترجمة) ─────────
+    // قائمة الإعدادات الأصلية في يوتيوب مخفية خلف الواجهة الأصلية فلا يمكن لمسها، لذلك نلتقط ضغطة زر الترس
+    // ونفتح بدلها قائمة التطبيق (تعمل عبر واجهة المشغّل نفسها: movie_player).
+    function playerEl() { return document.getElementById('movie_player') || q1('.html5-video-player') || null; }
+    function videoEl() { return q1('video'); }
+    var GEAR_RE = /settings|الإعدادات|إعدادات/i, gearAt = 0;
+    function gearHit(t) {
+      try {
+        var b = t && t.closest && t.closest('button,[role=button],.player-settings-icon,[class*=settings-icon]');
+        if (!b || !b.closest('#player-container-id,.player-container,#player,.html5-video-player')) return false;
+        return GEAR_RE.test((b.getAttribute('aria-label') || '') + ' ' + (b.className && b.className.baseVal === undefined ? b.className : ''));
+      } catch (e) { return false; }
+    }
+    function onGear(e) {
+      if (!mode || miniOn || location.pathname !== '/watch' || !gearHit(e.target)) return;
+      e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      var n = Date.now(); if (n - gearAt < 450) return; gearAt = n;
+      post({ t: 'gear' });
+    }
+    ['click', 'touchend'].forEach(function (n) { document.addEventListener(n, onGear, true); });
+    function playerInfo() {
+      var p = playerEl(), v = videoEl();
+      var o = { t: 'ps', rate: v ? v.playbackRate : 1, loop: v ? !!v.loop : false, q: [], cq: '', caps: [], cc: '' };
+      try { if (p && p.getAvailableQualityLevels) { o.q = (p.getAvailableQualityLevels() || []).slice(0, 12); if (p.getPlaybackQuality) o.cq = p.getPlaybackQuality() || ''; } } catch (e) {}
+      try {
+        if (p && p.getOption) {
+          var tl = p.getOption('captions', 'tracklist') || [];
+          o.caps = tl.slice(0, 40).map(function (c) {
+            var n = c.displayName || (c.languageName && (c.languageName.simpleText || c.languageName)) || c.languageCode || '';
+            return { c: c.languageCode || '', n: String(n) };
+          }).filter(function (c) { return c.c; });
+          var cur = p.getOption('captions', 'track'); o.cc = (cur && cur.languageCode) || '';
+        }
+      } catch (e) {}
+      post(o);
+    }
+
+    var MINI_ID = 'nova-yt-mini-style';
+    var MINI_CSS = '.player-controls-top,.player-controls-bottom,.player-controls-middle,.player-controls-background,.ytp-chrome-top,.ytp-chrome-bottom,' +
+      '.ytp-gradient-top,.ytp-gradient-bottom,.ytp-pause-overlay,.ytp-ce-element,.ytp-endscreen-content,ytm-player-endscreen-renderer,.ytp-spinner{display:none!important}';
+    function applyMini(on) {
+      miniOn = !!on;
+      var s = document.getElementById(MINI_ID);
+      if (on && !s) { s = document.createElement('style'); s.id = MINI_ID; s.textContent = MINI_CSS; (document.head || document.documentElement).appendChild(s); }
+      else if (!on && s) s.remove();
+    }
 
     // ───────── الأوامر ─────────
     function btn(root, re) {
@@ -187,6 +235,24 @@
       more: function () { window.scrollTo(0, document.documentElement.scrollHeight); },
       chip: function (i) { var e = chipEls[i]; if (e) e.click(); },
       mode: function (on) { mode = !!on; applyMode(); sched(); },
+      ps: function () { playerInfo(); },
+      rate: function (r) { var v = videoEl(); if (v && r > 0) v.playbackRate = r; setTimeout(playerInfo, 200); },
+      quality: function (q) {
+        var p = playerEl();
+        try { if (p && p.setPlaybackQualityRange) p.setPlaybackQualityRange(q, q); if (p && p.setPlaybackQuality) p.setPlaybackQuality(q); } catch (e) {}
+        setTimeout(playerInfo, 600);
+      },
+      caption: function (code) {
+        var p = playerEl();
+        try {
+          if (!p) return;
+          if (!code) { if (p.unloadModule) p.unloadModule('captions'); }
+          else { if (p.loadModule) p.loadModule('captions'); if (p.setOption) p.setOption('captions', 'track', { languageCode: code }); }
+        } catch (e) {}
+        setTimeout(playerInfo, 600);
+      },
+      loop: function (on) { var v = videoEl(); if (v) v.loop = !!on; setTimeout(playerInfo, 100); },
+      mini: function (on) { applyMini(on); if (!on) sched(); },
       like: function () {
         var bar = q1('ytm-slim-video-action-bar-renderer');
         var b = bar && q1('button[aria-label*="like" i]:not([aria-label*="dislike" i])', bar);

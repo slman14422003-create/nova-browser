@@ -96,7 +96,9 @@ object Ai {
                 val a = o.optJSONArray("msgs") ?: return
                 val l = ArrayList<AiMsg>(a.length())
                 for (i in 0 until a.length()) { val m = a.optJSONObject(i) ?: continue; l += AiMsg(m.optString("r") == "u", m.optString("x")) }
-                s.msgs = l
+                // لا نُحدّث الحالة (فلا إعادة تركيب لكل الرسائل) إن لم يتغيّر شيء
+                val cur = s.msgs
+                if (cur.size != l.size || l.indices.any { cur[it].user != l[it].user || cur[it].text != l[it].text }) s.msgs = l
                 val opt = s.optimistic
                 if (opt != null && (s.busy || l.any { it.user && it.text.contains(opt.take(30)) })) s.optimistic = null
             }

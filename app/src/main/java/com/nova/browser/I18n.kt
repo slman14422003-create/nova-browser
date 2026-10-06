@@ -375,6 +375,21 @@ object I18n {
         "طباعة / حفظ PDF" to "Print / Save as PDF",
         "لا يوجد متصفح يدعم Custom Tabs" to "No browser with Custom Tabs support is installed",
         "اتصال غير مشفّر" to "Not secure",
+        "إعدادات المشغّل" to "Player settings",
+        "الترجمة" to "Captions",
+        "السجل وقوائم التشغيل والفيديوهات المحفوظة" to "History, playlists and saved videos",
+        "الفيديوهات التي أعجبتني" to "Liked videos",
+        "المشاهدة لاحقاً" to "Watch later",
+        "تصغير" to "Minimize",
+        "تكرار الفيديو" to "Loop video",
+        "جودة الفيديو" to "Video quality",
+        "سرعة التشغيل" to "Playback speed",
+        "عادية" to "Normal",
+        "عرض الكل" to "View all",
+        "قوائم التشغيل وقناتك" to "Playlists and your channel",
+        "لا توجد فيديوهات حديثة هنا. افتح السجل، أو سجّل الدخول من عرض الموقع." to "No recent videos here. Open History, or sign in from the site view.",
+        "مكتبتك" to "Your library",
+        "يفتح الموقع الكامل" to "Opens the full site",
         "عدد التبويبات" to "Number of tabs"
     )
 }

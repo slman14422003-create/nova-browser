@@ -18,18 +18,24 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
@@ -74,6 +80,7 @@ fun YtScreen(tab: BrowserTab, onShowSite: () -> Unit, onDownload: () -> Unit, on
     val fresh = s.key == YtApp.urlKey(tab.url)
     if (page == "watch") YtWatchView(tab, fresh, onShowSite, onDownload, onPip)
     else YtListView(tab, page, fresh, onShowSite)
+    if (s.psOpen && page == "watch") YtPlayerSheet(tab)
     s.diag?.let { d ->
         val cs = MaterialTheme.colorScheme
         val ctx = LocalContext.current
@@ -100,7 +107,9 @@ private fun YtListView(tab: BrowserTab, page: String, fresh: Boolean, onShowSite
                 YtRecent(tab)
             } else {
                 if (page == "home" && fresh && s.chips.isNotEmpty()) YtChips(tab)
-                Box(Modifier.weight(1f).fillMaxWidth()) { YtFeed(tab, fresh, onShowSite) }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    if (page == "library") YtYou(tab, fresh, onShowSite) else YtFeed(tab, fresh, onShowSite)
+                }
                 YtNav(tab, page)
             }
         }
@@ -127,6 +136,7 @@ private fun YtTopBar(tab: BrowserTab, page: String, onShowSite: () -> Unit) {
                         "search" -> s.recent.firstOrNull() ?: L("نتائج البحث")
                         "subs" -> L("الاشتراكات")
                         "library" -> L("أنت")
+                        "history" -> L("السجل")
                         "channel" -> L("القناة")
                         "playlist" -> L("قائمة التشغيل")
                         else -> "YouTube"
@@ -262,7 +272,7 @@ private fun YtNav(tab: BrowserTab, page: String) {
             NavItem(Icons.Default.Home, L("الرئيسية"), page == "home") { YtApp.go(tab, "/") }
             NavItem(Icons.Default.PlayArrow, "Shorts", false) { YtApp.go(tab, "/shorts") }
             NavItem(Icons.Default.Menu, L("الاشتراكات"), page == "subs") { YtApp.go(tab, "/feed/subscriptions") }
-            NavItem(Icons.Default.Person, L("أنت"), page == "library") { YtApp.go(tab, "/feed/library") }
+            NavItem(Icons.Default.Person, L("أنت"), page == "library" || page == "history") { YtApp.go(tab, "/feed/library") }
         }
     }
 }
@@ -315,6 +325,148 @@ private fun YtEmpty(onShowSite: () -> Unit, onRetry: () -> Unit) {
                     }
                     OutlinedButton(onClick = onShowSite, shape = CircleShape) { Text(L("فتح الموقع"), fontWeight = FontWeight.SemiBold) }
                 }
+            }
+        }
+    }
+}
+
+// ───────────────────────── صفحة «أنت» ─────────────────────────
+// صفحة المكتبة في يوتيوب ليست قائمة فيديوهات واحدة (بل رفوف: سجل وقوائم تشغيل)، فكانت تبقى هيكلاً رمادياً ثم تظهر كخطأ.
+// هنا تُعرض بتصميم أصلي: رف «السجل» من الصفحة نفسها + اختصارات إلى صفحات تعمل بثبات.
+
+@Composable
+private fun YtYou(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val recent = if (fresh) tab.yt.items.take(14) else emptyList()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp)) {
+        item {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Box(Modifier.size(56.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Person, null, Modifier.size(30.dp), tint = cs.tertiary)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(L("مكتبتك"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.onSurface)
+                    Text(L("السجل وقوائم التشغيل والفيديوهات المحفوظة"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(L("السجل"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = cs.onSurface, modifier = Modifier.weight(1f))
+                TextButton(onClick = { YtApp.go(tab, "/feed/history") }) { Text(L("عرض الكل"), color = cs.tertiary) }
+            }
+        }
+        item {
+            if (recent.isEmpty()) Text(
+                L("لا توجد فيديوهات حديثة هنا. افتح السجل، أو سجّل الدخول من عرض الموقع."),
+                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) else LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(recent, key = { _, v -> v.id }) { _, v -> YtShelfCard(v) { YtApp.open(tab, v) } }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                ListRow(groupShape(0, 4), L("السجل"), null, { YtApp.go(tab, "/feed/history") }) { IconCircle { Icon(Icons.Default.Refresh, null) } }
+                ListRow(groupShape(1, 4), L("المشاهدة لاحقاً"), null, { YtApp.go(tab, "/playlist?list=WL") }) { IconCircle { Icon(Icons.Default.DateRange, null) } }
+                ListRow(groupShape(2, 4), L("الفيديوهات التي أعجبتني"), null, { YtApp.go(tab, "/playlist?list=LL") }) { IconCircle { Icon(Icons.Default.ThumbUp, null) } }
+                ListRow(groupShape(3, 4), L("قوائم التشغيل وقناتك"), L("يفتح الموقع الكامل"), onShowSite) { IconCircle { Icon(Icons.Default.List, null) } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YtShelfCard(v: YtVideo, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Column(Modifier.width(168.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))) {
+            NetImage("https://i.ytimg.com/vi/${v.id}/hqdefault.jpg", Modifier.fillMaxSize())
+            if (v.dur.isNotEmpty()) Text(
+                v.dur, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0xCC000000), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
+            )
+        }
+        Text(
+            v.title, style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content), color = cs.onSurface,
+            maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
+        if (v.channel.isNotBlank()) Text(v.channel, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+// ───────────────────────── إعدادات المشغّل ─────────────────────────
+
+private fun qualityLabel(q: String): String = when (q) {
+    "highres" -> "4320p"; "hd2880" -> "2880p"; "hd2160" -> "2160p 4K"; "hd1440" -> "1440p"; "hd1080" -> "1080p"; "hd720" -> "720p"
+    "large" -> "480p"; "medium" -> "360p"; "small" -> "240p"; "tiny" -> "144p"; "auto" -> L("تلقائي"); else -> q
+}
+
+private fun rateLabel(r: Double): String = if (r == 1.0) L("عادية") else (if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()) + "x"
+
+@Composable
+private fun SheetLabel(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+}
+
+@Composable
+private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(
+        shape = CircleShape, color = if (selected) cs.tertiary else cs.surfaceContainerHigh,
+        modifier = Modifier.clip(CircleShape).clickable(onClick = onClick)
+    ) {
+        Text(
+            label, Modifier.padding(horizontal = 16.dp, vertical = 9.dp), style = MaterialTheme.typography.labelLarge, maxLines = 1,
+            color = if (selected) cs.onTertiary else cs.onSurface, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+/** قائمة إعدادات المشغّل الأصلية: سرعة، جودة، ترجمة، تكرار. تنفَّذ عبر واجهة المشغّل الحيّ في الصفحة. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun YtPlayerSheet(tab: BrowserTab) {
+    val cs = MaterialTheme.colorScheme
+    val info = tab.yt.ps
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = { YtApp.closeSettings(tab) }, sheetState = state, containerColor = cs.background) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(L("إعدادات المشغّل"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.onSurface)
+            SheetLabel(L("سرعة التشغيل"))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0).forEach { r ->
+                    OptionChip(rateLabel(r), info != null && kotlin.math.abs(info.rate - r) < 0.01) { YtApp.setRate(tab, r) }
+                }
+            }
+            if (info != null && info.qualities.isNotEmpty()) {
+                SheetLabel(L("جودة الفيديو"))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    info.qualities.forEach { q -> OptionChip(qualityLabel(q), q == info.quality) { YtApp.setQuality(tab, q) } }
+                }
+            }
+            if (info != null && info.captions.isNotEmpty()) {
+                SheetLabel(L("الترجمة"))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OptionChip(L("إيقاف"), info.caption.isBlank()) { YtApp.setCaption(tab, "") }
+                    info.captions.forEach { c -> OptionChip(c.second, c.first == info.caption) { YtApp.setCaption(tab, c.first) } }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainer)
+                    .clickable { YtApp.setLoop(tab, info?.loop != true) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(L("تكرار الفيديو"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = Modifier.weight(1f))
+                Switch(checked = info?.loop == true, onCheckedChange = null)
+            }
+            if (info == null) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
             }
         }
     }
@@ -408,7 +560,14 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
 
     Column(Modifier.fillMaxSize()) {
         // ثقب بنسبة 16:9: يظهر منه المشغّل الحيّ للصفحة (خلف الواجهة). لا يعالج اللمس فيصل للمشغّل.
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            // زر التصغير فوق زاوية المشغّل (كتطبيق يوتيوب): يحوّل الفيديو إلى نافذة عائمة للتنقل بحرية
+            Box(
+                Modifier.align(Alignment.TopStart).padding(8.dp).size(36.dp).clip(CircleShape).background(Color(0x66000000))
+                    .clickable { YtApp.minimize(tab) },
+                contentAlignment = Alignment.Center
+            ) { ChevronDownGlyph(Color.White, Modifier.size(22.dp)) }
+        }
         Surface(Modifier.weight(1f).fillMaxWidth(), color = cs.background) {
             if (s.showComments) YtComments(tab, onShowSite)
             else LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 12.dp)) {
@@ -425,6 +584,8 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ActionPill(Icons.Default.ThumbUp, w?.likes?.ifBlank { null } ?: L("أعجبني"), active = w?.liked == true) { YtApp.like(tab) }
                         ActionPill(Icons.Default.Share, L("مشاركة")) { shareText(ctx, link) }
+                        ActionPill(Icons.Default.Settings, L("الإعدادات")) { YtApp.openSettings(tab) }
+                        ActionPill(null, L("تصغير")) { YtApp.minimize(tab) }
                         ActionPill(null, L("تنزيل")) { onDownload() }
                         ActionPill(null, L("منبثق")) { onPip() }
                         ActionPill(null, L("عرض الموقع")) { onShowSite() }

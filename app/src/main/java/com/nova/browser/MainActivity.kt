@@ -281,12 +281,21 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
     }
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) { tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); Ai.onPageStart(v, u, tab); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u) }
+        override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
+            if (YtMini.owns(v)) return   // صفحة المشغّل المصغّر: لا تغيّر حالة التبويب
+            if (isYtVideo(u)) YtMini.close()   // فيديو جديد في التبويب: يُغلق المشغّل المصغّر القديم
+            tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); Ai.onPageStart(v, u, tab); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u)
+        }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
+            if (YtMini.owns(v)) return
             // تنقّلات الصفحات أحادية الصفحة (مثل يوتيوب) لا تستدعي onPageStarted
-            if (u.startsWith("http")) { tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u) }
+            if (u.startsWith("http")) {
+                if (isYtVideo(u)) YtMini.close()
+                tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u)
+            }
         }
         override fun onPageFinished(v: WebView, u: String) {
+            if (YtMini.owns(v)) return
             tab.loading = false; tab.url = u
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
@@ -299,6 +308,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
             Perf.intercept(r.url, r.isForMainFrame)
         override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
+            if (YtMini.owns(v)) { YtMini.close(); return true }   // انهار المشغّل المصغّر فقط: نغلقه ولا نلمس التبويب
             // منع انهيار التطبيق: نُسقط الـ WebView ونعيد إنشاءه بنفس العنوان
             (v.parent as? ViewGroup)?.removeView(v)
             runCatching { v.destroy() }
@@ -368,10 +378,11 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     }
     webChromeClient = object : WebChromeClient() {
         override fun onProgressChanged(v: WebView, p: Int) {
+            if (YtMini.owns(v)) return
             val f = p / 100f   // نحدّث الحالة كل 5% فقط لتقليل إعادة التركيب
             if (p == 0 || p == 100 || kotlin.math.abs(f - tab.progress) >= 0.05f) tab.progress = f
         }
-        override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
+        override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank() && !YtMini.owns(v)) tab.title = t }
         override fun onShowCustomView(view: View, cb: CustomViewCallback) = h.showCustom(view, cb)
         override fun onHideCustomView() = h.hideCustom()
         override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: FileChooserParams) = h.chooser(cb, p)
@@ -422,13 +433,14 @@ class MainActivity : ComponentActivity() {
         if (Prefs.ytBg && YtMedia.owner != null) {
             YtLog.add("native onPause")
             wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)
+            YtMini.bg(true)
         }
     }
 
     override fun onResume() {
         super.onResume()
         DefaultBrowser.refresh(this)   // قد يغيّر المستخدم الافتراضي من إعدادات النظام
-        if (!inPip) wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null)
+        if (!inPip) { wvProvider()?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null); YtMini.bg(false) }
     }
 
     override fun onUserLeaveHint() {
@@ -728,11 +740,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             val inPipNow = (activity as? MainActivity)?.inPip == true
             if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 val ytLive = Prefs.ytBg && (YtMedia.owner != null || inPipNow)
-                if (ytLive) w?.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)   // لا نجمّد الصفحة أثناء تشغيل يوتيوب
+                if (ytLive) { w?.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null); YtMini.bg(true) }   // لا نجمّد الصفحة أثناء تشغيل يوتيوب
                 else if (Prefs.pauseBg && customView == null) { w?.onPause(); w?.pauseTimers() }
             } else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) {
-                w?.resumeTimers(); w?.onResume()
-                if (!inPipNow) w?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null)
+                w?.resumeTimers(); w?.onResume(); YtMini.wake()
+                if (!inPipNow) { w?.evaluateJavascript("window.__novaBg&&window.__novaBg(false)", null); YtMini.bg(false) }
             }
         }
         activity.lifecycle.addObserver(obs)
@@ -953,6 +965,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     }
                     if (aiApp && site != null) AiScreen(tab, site, onShowSite = { tab.ai.showSite = true }, onOpenLink = { openInNewTab(it) })
                     if (ytApp) YtScreen(tab, onShowSite = { tab.yt.showSite = true }, onDownload = { ytUrl = tab.url }, onPip = { mainAct?.enterPip() })
+                    // المشغّل المصغّر: يطفو فوق الصفحة (فوق شريط يوتيوب السفلي إن كانت الواجهة الأصلية ظاهرة)
+                    if (YtMini.active && !inPip) YtMiniPlayer(
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = if (ytApp) 60.dp else 8.dp),
+                        onExpand = { YtApp.expandMini(tab) }
+                    )
                 }
                 AnimatedVisibility(
                     visible = site != null && !aiApp && !ytApp && !showSettings && !showPasswords && !showDownloads,

@@ -20,6 +20,12 @@ class YtWatchData(
     val avatar: String = ""
 )
 
+/** حالة المشغّل كما يعرضها يوتيوب: السرعة والجودة والترجمة (تصل عند فتح قائمة الإعدادات). */
+class YtPlayerInfo(
+    val rate: Double, val loop: Boolean, val qualities: List<String>, val quality: String,
+    val captions: List<Pair<String, String>>, val caption: String
+)
+
 /** حالة واجهة يوتيوب الأصلية لتبويب واحد. المصدر هو DOM الصفحة (يصل عبر yt-app.js). */
 class YtSession {
     var key by mutableStateOf("")                       // مفتاح الصفحة التي جاءت منها آخر لقطة
@@ -32,6 +38,8 @@ class YtSession {
     var searching by mutableStateOf(false)
     var query by mutableStateOf("")
     var diag by mutableStateOf<String?>(null)
+    var psOpen by mutableStateOf(false)                 // قائمة إعدادات المشغّل الأصلية
+    var ps by mutableStateOf<YtPlayerInfo?>(null)
     val recent = mutableStateListOf<String>()
     var wantMode = true                                 // هل يجب تفعيل وضع المشغّل في الصفحة (تضبطه الواجهة)
     var lastMore = 0L
@@ -65,7 +73,8 @@ object YtApp {
             p == "/watch" -> "watch"
             p.startsWith("/shorts") -> "shorts"
             p == "/feed/subscriptions" -> "subs"
-            p.startsWith("/feed/library") || p.startsWith("/feed/history") || p.startsWith("/feed/you") -> "library"
+            p.startsWith("/feed/history") -> "history"
+            p.startsWith("/feed/library") || p.startsWith("/feed/you") -> "library"
             p == "/playlist" -> "playlist"
             p.startsWith("/@") || p.startsWith("/channel/") || p.startsWith("/c/") || p.startsWith("/user/") -> "channel"
             else -> "other"
@@ -73,7 +82,7 @@ object YtApp {
     }
 
     /** صفحات تعرضها الواجهة الأصلية؛ غيرها (Shorts وغيرها) يبقى بعرض الموقع. */
-    fun nativePage(url: String?) = pageOf(url) in setOf("home", "search", "watch", "subs", "library", "channel", "playlist")
+    fun nativePage(url: String?) = pageOf(url) in setOf("home", "search", "watch", "subs", "library", "history", "channel", "playlist")
 
     /** نفس صيغة المفتاح في yt-app.js: المسار + معرّف الفيديو أو كلمة البحث. */
     fun urlKey(url: String?): String {
@@ -86,8 +95,9 @@ object YtApp {
         val base = js ?: return
         if (!Prefs.pwaMode || !Prefs.ytNative || !listenerOk) return
         runCatching {
-            WebViewCompat.addWebMessageListener(wv, "NovaYtApp", origins, WebViewCompat.WebMessageListener { _, message, _, isMain, _ ->
+            WebViewCompat.addWebMessageListener(wv, "NovaYtApp", origins, WebViewCompat.WebMessageListener { view, message, _, isMain, _ ->
                 if (!isMain) return@WebMessageListener
+                if (view !== tab.webView) return@WebMessageListener   // صفحة المشغّل المصغّر لها واجهتها الخاصة ولا تغيّر حالة التبويب
                 val data = message.data ?: return@WebMessageListener
                 if (data.length > 800_000) return@WebMessageListener
                 handle(tab, data)
@@ -134,6 +144,19 @@ object YtApp {
                 }
             }
             "diag" -> s.diag = o.optString("x")
+            "gear" -> { if (!s.psOpen) { s.ps = null; s.psOpen = true }; call(tab, "ps()") }
+            "ps" -> {
+                val q = o.optJSONArray("q"); val c = o.optJSONArray("caps")
+                s.ps = YtPlayerInfo(
+                    rate = o.optDouble("rate", 1.0).takeIf { it > 0 } ?: 1.0, loop = o.optBoolean("loop"),
+                    qualities = if (q == null) emptyList() else (0 until q.length()).map { q.optString(it) }.filter { it.isNotBlank() },
+                    quality = o.optString("cq"),
+                    captions = if (c == null) emptyList() else (0 until c.length()).mapNotNull { i ->
+                        c.optJSONObject(i)?.let { it.optString("c") to it.optString("n").ifBlank { it.optString("c") } }
+                    },
+                    caption = o.optString("cc")
+                )
+            }
         }
     }
 
@@ -143,6 +166,7 @@ object YtApp {
 
     fun mode(tab: BrowserTab, on: Boolean) { tab.yt.wantMode = on; call(tab, "mode($on)") }
     fun open(tab: BrowserTab, v: YtVideo) {
+        YtMini.close()   // فيديو جديد: المشغّل المصغّر السابق يُغلق كي لا يتداخل صوتان
         tab.yt.showComments = false
         call(tab, "open(${JSONObject.quote("/watch?v=" + v.id)})")
     }
@@ -163,4 +187,54 @@ object YtApp {
     fun closeComments(tab: BrowserTab) { tab.yt.showComments = false; call(tab, "closeComments()") }
     fun expand(tab: BrowserTab) = call(tab, "expand()")
     fun diagnose(tab: BrowserTab) = call(tab, "diag()")
+
+    // ───────── إعدادات المشغّل (جودة/سرعة/ترجمة/تكرار) ─────────
+    fun openSettings(tab: BrowserTab) { tab.yt.ps = null; tab.yt.psOpen = true; call(tab, "ps()") }
+    fun closeSettings(tab: BrowserTab) { tab.yt.psOpen = false }
+    fun setRate(tab: BrowserTab, r: Double) = call(tab, "rate($r)")
+    fun setQuality(tab: BrowserTab, q: String) = call(tab, "quality(${JSONObject.quote(q)})")
+    fun setCaption(tab: BrowserTab, code: String) = call(tab, "caption(${JSONObject.quote(code)})")
+    fun setLoop(tab: BrowserTab, on: Boolean) = call(tab, "loop($on)")
+
+    // ───────── المشغّل المصغّر ─────────
+    /**
+     * يصغّر الفيديو الجاري: صفحة المشاهدة (بمشغّلها الحيّ) تنتقل إلى نافذة صغيرة عائمة تواصل التشغيل،
+     * ويفتح التبويب صفحة جديدة (الصفحة السابقة في السجل أو الرئيسية) للتنقل بحرية في يوتيوب.
+     */
+    fun minimize(tab: BrowserTab): Boolean {
+        val w = tab.webView ?: return false
+        if (pageOf(tab.url) != "watch") return false
+        val wasPlaying = tab.ytPlaying
+        val title = tab.yt.watch?.title?.ifBlank { null } ?: tab.title
+        val back = runCatching {
+            val l = w.copyBackForwardList()
+            if (l.currentIndex > 0) l.getItemAtIndex(l.currentIndex - 1)?.url else null
+        }.getOrNull()
+        val next = back?.takeIf { supports(it) && pageOf(it) != "watch" && pageOf(it) != "shorts" } ?: "https://m.youtube.com/"
+        YtMini.start(w, title, wasPlaying)
+        tab.webView = null; tab.saved = null
+        tab.url = next; tab.canBack = false; tab.canForward = false; tab.loading = true
+        val s = tab.yt
+        s.items = emptyList(); s.chips = emptyList(); s.watch = null; s.comments = emptyList(); s.key = ""
+        s.showComments = false; s.psOpen = false; s.ps = null; s.searching = false
+        tab.epoch++
+        return true
+    }
+
+    /** يوسّع المشغّل المصغّر: يفتح الفيديو في التبويب الحالي من الموضع نفسه ويغلق النافذة العائمة. */
+    fun expandMini(tab: BrowserTab) {
+        val w = YtMini.wv ?: return
+        val id = Regex("[?&]v=([\\w-]{11})").find(w.url ?: "")?.groupValues?.get(1)
+        w.evaluateJavascript("(function(){var v=document.querySelector('video');return v?Math.floor(v.currentTime):0})()") { r ->
+            val sec = r?.trim('"')?.toIntOrNull() ?: 0
+            YtMini.close()
+            if (id != null) {
+                tab.yt.showComments = false; tab.yt.showSite = false
+                val path = "/watch?v=$id" + if (sec > 3) "&t=${sec}s" else ""
+                val u = "https://m.youtube.com$path"
+                if (supports(tab.url) && tab.webView != null) call(tab, "go(${JSONObject.quote(path)})")
+                else { tab.url = u; tab.webView?.loadUrl(u, Perf.privacyHeaders) }
+            }
+        }
+    }
 }

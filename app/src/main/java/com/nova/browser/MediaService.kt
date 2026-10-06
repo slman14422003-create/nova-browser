@@ -90,7 +90,7 @@ object YtMedia {
     }
 
     fun stop() { playing = false; owner = null; MediaService.instance?.shutdown() }
-    fun pageChanged(tab: BrowserTab, url: String) { if (owner === tab && !isYtVideo(url)) stop() }
+    fun pageChanged(tab: BrowserTab, url: String) { if (owner === tab && !isYtVideo(url) && !YtMini.active) stop() }   // المشغّل المصغّر يواصل الإشعار
     fun tabClosed(tab: BrowserTab) { if (owner === tab) stop() }
 }
 

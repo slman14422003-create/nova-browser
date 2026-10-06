@@ -10,6 +10,9 @@
     // google.com: فقط وضع الذكاء الاصطناعي (udm=50)، أما البحث العادي فلا يُمسّ
     if (GOOGLE && !/[?&]udm=50(&|$)/.test(location.search) && !/^\/ai(\/|$)/.test(location.pathname)) return;
     window.__novaPwa = 1;
+    // صفحات جوجل (وضع الذكاء الاصطناعي) ثقيلة أصلاً وتتغيّر باستمرار أثناء كتابة الرد:
+    // نُبقي لها الحد الأدنى فقط (هوية التطبيق + المشاركة) بلا مراقبات DOM ولا حركات انتقال، وإلا سبّبت لاغاً كبيراً.
+    var LIGHT = GOOGLE;
 
     var CFG = { v: 2, anim: true, hap: true };
     try { CFG = Object.assign(CFG, __CFG__); } catch (e) {}
@@ -87,7 +90,7 @@
       'input,textarea{-webkit-user-select:text;user-select:text}' +
       'button,[role=button],[role=tab],summary,select{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}' +
       'img,video,canvas{-webkit-user-drag:none}' +
-      (CFG.anim ? '@keyframes novaIn{from{opacity:.01}to{opacity:1}}html{animation:novaIn .18s ease-out both}' : '') +
+      (CFG.anim && !LIGHT ? '@keyframes novaIn{from{opacity:.01}to{opacity:1}}html{animation:novaIn .18s ease-out backwards}' : '') +
       (YT ? 'ytm-open-app-promo-renderer,ytm-mealbar-promo-renderer,ytm-app-install-promo-renderer,ytm-promoted-sparkles-web-renderer{display:none!important}' : '');
     safe(function () {
       var sh = new CSSStyleSheet();
@@ -139,16 +142,19 @@
     }
 
     // ───────────── 7) إخفاء لافتات «حمّل التطبيق» ─────────────
+    // يوتيوب فقط (وبقية المواقع غير جوجل). كان يمرّ على كل الروابط والأزرار ويقرأ innerText (يفرض إعادة تخطيط) مع كل تغيير في الصفحة.
+    // الآن: عناصر الأزرار فقط، قراءة aria-label/textContent بلا تخطيط، بتباطؤ أطول وبحدّ أقصى لعدد الفحوص.
     var bannerRe = /^(open app|open in app|get the app|get app|download the app|install app|use the app|try the app|فتح التطبيق|افتح التطبيق|حمّل التطبيق|حمل التطبيق|تنزيل التطبيق|ouvrir l.application|abrir app|app öffnen)$/i;
-    var sweepT = 0;
+    var sweepT = 0, sweepN = 0;
     function sweep() {
-      sweepT = 0;
+      sweepT = 0; sweepN++;
       safe(function () {
-        var l = document.querySelectorAll('a,button,[role=button],ytm-button-renderer,yt-button-shape');
-        for (var i = 0; i < l.length; i++) {
+        var l = document.querySelectorAll('ytm-button-renderer,yt-button-shape,button,[role=button]');
+        for (var i = 0; i < l.length && i < 600; i++) {
           var e = l[i];
-          if (e.__novaHid) continue;
-          var s = (e.innerText || e.getAttribute('aria-label') || '').trim();
+          if (e.__novaHid || e.__novaSeen) continue;
+          e.__novaSeen = 1;   // كل عنصر يُفحص مرة واحدة فقط
+          var s = ((e.getAttribute && e.getAttribute('aria-label')) || (e.childElementCount < 4 ? e.textContent : '') || '').trim();
           if (!s || s.length > 28 || !bannerRe.test(s)) continue;
           e.__novaHid = 1;
           var box = e.closest('ytm-button-renderer') || e;
@@ -170,8 +176,9 @@
       });
     }
     function startSweep() {
+      if (LIGHT) return;
       sweep();
-      new MutationObserver(function () { if (!sweepT && !document.hidden) sweepT = setTimeout(sweep, 900); })
+      new MutationObserver(function () { if (!sweepT && sweepN < 40 && !document.hidden) sweepT = setTimeout(sweep, 1800); })
         .observe(root, { childList: true, subtree: true });
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startSweep); else startSweep();
@@ -187,7 +194,7 @@
         var r = location.pathname + location.search;
         if (r === lastRoute) return;
         lastRoute = r;
-        if (!CFG.anim) return;
+        if (!CFG.anim || LIGHT) return;
         safe(function () {
           var el = pageEl();
           if (el && el.animate) el.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 190, easing: 'cubic-bezier(.2,0,0,1)' });

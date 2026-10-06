@@ -124,7 +124,15 @@
       if (cache) cache.set(e, { len: len, x: x });
       return x;
     }
-    function outer(list) { return list.filter(function (e) { return !list.some(function (o) { return o !== e && o.contains(e); }); }); }
+    // العناصر الخارجية فقط (بلا عنصر داخل عنصر آخر من القائمة): بحث صاعد عبر Set بدل مقارنة كل زوج (كان O(n²) مع كل لقطة)
+    function outer(list) {
+      if (typeof Set !== 'function') return list;
+      var set = new Set(list);
+      return list.filter(function (e) {
+        for (var p = e.parentElement; p; p = p.parentElement) if (set.has(p)) return false;
+        return true;
+      });
+    }
     function collect() {
       var us = S.user, bs = S.bot, both = !!(us && bs);
       var els = outer(qa(both ? us + ',' + bs : '[data-message-author-role]'));
@@ -138,17 +146,19 @@
       return out;
     }
 
-    var last = '', timer = 0;
+    var last = '', timer = 0, dirty = true, tick = 0;
     function snap() {
-      timer = 0;
+      timer = 0; dirty = false;
       var o = { t: 'snap', input: !!findInput(), busy: !!stopBtn(), msgs: collect() };
       var j = JSON.stringify(o);
       if (j === last) return;
       last = j; post(o);
     }
-    function sched() { if (!timer) timer = setTimeout(snap, 250); }
+    // أثناء كتابة الرد تتغيّر الصفحة مع كل كلمة: نجمع التغييرات في لقطة واحدة كل 350ms، والفحص الدوري يعمل فقط عند وجود تغيير
+    // (أو مرة كل ~6 ثوانٍ لالتقاط تغيّر ظهور عناصر بلا تعديل DOM) بدل كل 1.5 ثانية دائماً.
+    function sched() { dirty = true; if (!timer) timer = setTimeout(snap, 350); }
     new MutationObserver(sched).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-    setInterval(snap, 1500);
+    setInterval(function () { if (!document.hidden && (dirty || ++tick % 3 === 0)) snap(); }, 2000);
 
     // ───────── رفع الملفات ─────────
     var bufs = {};
