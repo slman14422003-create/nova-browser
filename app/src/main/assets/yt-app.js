@@ -181,6 +181,67 @@
       }).filter(function (c) { return c.x; });
     }
 
+    // ───────── قوائم التشغيل ─────────
+    function plTitle() {
+      return pick(document, ['ytm-playlist-header-renderer h1', 'ytm-playlist-header-renderer .title', '.playlist-header h1', 'h1']) ||
+        document.title.replace(/\s*-\s*YouTube$/, '');
+    }
+    // قوائم المستخدم في صفحة المكتبة: بطاقات روابطها /playlist?list=…
+    function playlists() {
+      var seen = {}, out = [];
+      qa('a[href*="/playlist?"]').forEach(function (a) {
+        var m = (a.getAttribute('href') || '').match(/[?&]list=([\w-]+)/);
+        if (!m || seen[m[1]]) return;
+        var c = cardOf(a);
+        if (c.closest && c.closest('ytm-engagement-panel,ytm-mobile-topbar-renderer')) return;
+        var ls = lines(c).filter(function (l) { return !DUR.test(l); });
+        var t = pick(c, ['h3', 'h4', '[class*=headline]', '[class*=title]']) || ls[0] || '';
+        if (!t) return;
+        var th = '', im = qa('img', c);
+        for (var i = 0; i < im.length && !th; i++) { var mm = (im[i].currentSrc || im[i].src || '').match(/\/vi(?:_webp)?\/([\w-]{11})\//); if (mm) th = mm[1]; }
+        var meta = ls.filter(function (l) { return l !== t && /\d/.test(l) && l.length < 40; })[0] || '';
+        seen[m[1]] = 1; out.push({ id: m[1], t: t, m: meta, th: th });
+      });
+      return out.slice(0, 40);
+    }
+    // قائمة التشغيل الجارية في صفحة المشاهدة (إن فُتح الفيديو من قائمة): العنوان والعناصر إن ظهرت في الصفحة
+    function panel() {
+      var lid = params().get('list'); if (!lid) return null;
+      var root = q1('ytm-playlist-panel-renderer'), o = { id: lid, t: '', items: [] };
+      if (root) {
+        o.t = pick(root, ['h3', '.playlist-panel-title', '[class*=title]']);
+        var seen = {};
+        qa('a[href*="v="]', root).forEach(function (a) {
+          var m = (a.getAttribute('href') || '').match(/[?&]v=([\w-]{11})/);
+          if (!m || seen[m[1]]) return;
+          var c = a.closest('ytm-playlist-panel-video-renderer,ytm-playlist-panel-video-wrapper-renderer') || cardOf(a);
+          var it = parseCard(m[1], c); if (!it) return;
+          seen[m[1]] = 1; o.items.push(it);
+        });
+      }
+      return o;
+    }
+
+    // ───────── حفظ في قائمة تشغيل (يستخدم قائمة «حفظ» الأصلية في الصفحة ويعرضها الواجهة بشكل أصلي) ─────────
+    var saveEls = [];
+    function sheetEls() {
+      var sh = q1('ytm-bottom-sheet-renderer'); if (!sh) return [];
+      var els = qa('ytm-playlist-add-to-option-renderer', sh);
+      if (!els.length) els = qa('[role=checkbox],[role=menuitemcheckbox]', sh);
+      return els;
+    }
+    function saveList() {
+      saveEls = sheetEls();
+      post({
+        t: 'save', ok: saveEls.length > 0,
+        o: saveEls.map(function (e) {
+          var ls = lines(e);
+          var chk = e.getAttribute('aria-checked') === 'true' || !!e.querySelector('[aria-checked="true"],input:checked');
+          return { n: ls[0] || '', p: ls[1] || '', c: chk };
+        })
+      });
+    }
+
     // ───────── اللقطة ─────────
     var last = '', timer = 0;
     // تحليل بطاقات الفيديو مكلف: نعيد استخدام النتيجة ما دامت الصفحة وعدد الروابط لم يتغيّرا (حتى 6 ثوانٍ) فيبقى المشغّل والواجهة سلسَين
@@ -204,7 +265,9 @@
         var bt = nd ? '' : ((q1('ytm-browse') || {}).textContent || '').slice(0, 600);
         o.nu = !!nd || /get started|ابدأ بالبحث|ابحث لتبدأ/i.test(bt);
       }
-      if (p === '/watch') { o.w = watchData(); if (cOpen) o.c = comments(); }
+      if (p === '/watch') { o.w = watchData(); o.pp = panel(); if (cOpen) o.c = comments(); }
+      else if (p === '/playlist') o.pt = plTitle();
+      else if (p.indexOf('/feed/library') === 0 || p.indexOf('/feed/you') === 0 || p === '/feed/playlists') o.pls = playlists();
       var j = JSON.stringify(o);
       if (j === last) return;
       last = j; post(o);
@@ -257,7 +320,10 @@
 
     var MINI_ID = 'nova-yt-mini-style';
     var MINI_CSS = '.player-controls-top,.player-controls-bottom,.player-controls-middle,.player-controls-background,.ytp-chrome-top,.ytp-chrome-bottom,' +
-      '.ytp-gradient-top,.ytp-gradient-bottom,.ytp-pause-overlay,.ytp-ce-element,.ytp-endscreen-content,ytm-player-endscreen-renderer,.ytp-spinner{display:none!important}';
+      '.ytp-gradient-top,.ytp-gradient-bottom,.ytp-pause-overlay,.ytp-ce-element,.ytp-endscreen-content,ytm-player-endscreen-renderer,.ytp-spinner{display:none!important}' +
+      // الفيديو يملأ الإطار دائماً (يوتيوب يضع مقاسات بكسل قديمة على العنصر بعد تغيّر حجم الصفحة)
+      '.html5-video-container{width:100%!important;height:100%!important}' +
+      'video.html5-main-video{width:100%!important;height:100%!important;left:0!important;top:0!important;object-fit:contain!important}';
     function applyMini(on) {
       miniOn = !!on;
       var s = document.getElementById(MINI_ID);
@@ -309,6 +375,47 @@
         var bar = q1('ytm-slim-video-action-bar-renderer');
         var b = bar && q1('button[aria-label*="like" i]:not([aria-label*="dislike" i])', bar);
         if (b) b.click(); setTimeout(snap, 500);
+      },
+      saveOpen: function () {
+        var bar = q1('ytm-slim-video-action-bar-renderer');
+        var b = (bar && btn(bar, /save|حفظ/i)) || btn(document, /save to playlist|حفظ في قائمة|^save$/i);
+        if (!b) { post({ t: 'save', ok: false, fail: true, o: [] }); return; }
+        b.click();
+        var n = 0; (function poll() { saveList(); if (!sheetEls().length && ++n < 14) setTimeout(poll, 350); else if (!sheetEls().length) post({ t: 'save', ok: false, fail: true, o: [] }); })();
+      },
+      saveToggle: function (i) {
+        var e = saveEls[i]; if (!e) return;
+        (q1('[role=checkbox],input,button', e) || e).click();
+        setTimeout(saveList, 500); setTimeout(saveList, 1200);
+      },
+      saveNew: function (name) {
+        var sh = q1('ytm-bottom-sheet-renderer');
+        var nb = sh && btn(sh, /new playlist|قائمة تشغيل جديدة|قائمة جديدة/i);
+        if (!nb) { post({ t: 'save', ok: false, fail: true, o: [] }); return; }
+        nb.click();
+        var n = 0; (function wait() {
+          var inp = q1('input[type=text],input:not([type]),textarea', q1('ytm-dialog, ytm-bottom-sheet-renderer, dialog, [role=dialog]') || document);
+          if (!inp) { if (++n < 12) setTimeout(wait, 300); return; }
+          try {
+            var setter = Object.getOwnPropertyDescriptor(inp.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set;
+            setter.call(inp, name); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true }));
+          } catch (e) {}
+          setTimeout(function () {
+            var cb = btn(document, /^(create|إنشاء)$/i) || btn(document, /create|إنشاء/i);
+            if (cb) cb.click();
+            setTimeout(saveList, 900); setTimeout(saveList, 1800);
+          }, 350);
+        })();
+      },
+      saveClose: function () {
+        var sh = q1('ytm-bottom-sheet-renderer');
+        var b = sh && btn(sh, /close|إغلاق|cancel|إلغاء|done|تم/i);
+        if (b) b.click();
+        else {
+          try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })); } catch (e) {}
+          var sc = q1('.mobile-topbar-scrim, c3-overlay, .dialog-scrim, .bottom-sheet-scrim'); if (sc) sc.click();
+        }
+        saveEls = [];
       },
       dislike: function () {
         var bar = q1('ytm-slim-video-action-bar-renderer');

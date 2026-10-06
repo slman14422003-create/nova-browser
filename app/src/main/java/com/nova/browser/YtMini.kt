@@ -52,7 +52,9 @@ object YtMini {
     var wv by mutableStateOf<WebView?>(null); private set
     var title by mutableStateOf("")
     var playing by mutableStateOf(true)
-    private var touched = false   // المستخدم تحكّم يدوياً: لا نستأنف التشغيل تلقائياً بعد ذلك
+    private var want = true       // نيّة المستخدم: هل يريد الفيديو شغّالاً؟ (نعيد التشغيل تلقائياً إن أوقفه النظام أو الصفحة رغماً عنه)
+    private var stalls = 0        // عدد الفحوص المتتالية التي وجدنا فيها الفيديو متوقفاً رغم رغبة المستخدم
+    private var kicks = 0
 
     val active: Boolean get() = wv != null
 
@@ -60,39 +62,66 @@ object YtMini {
     private val retired: MutableSet<WebView> = java.util.Collections.newSetFromMap(java.util.WeakHashMap<WebView, Boolean>())
     fun owns(v: WebView?): Boolean = v != null && (v === wv || retired.contains(v))
 
-    private const val PROBE = "(function(){var v=document.querySelector('video');return v?(v.paused?0:1):-1})()"
-    private const val RESUME = "(function(){var v=document.querySelector('video');if(v&&v.paused&&!v.ended){var p=v.play();if(p&&p.catch)p.catch(function(){})}})()"
+    // 1 = يعمل، 0 = متوقف، 2 = انتهى، -1 = لا يوجد فيديو
+    private const val PROBE = "(function(){var v=document.querySelector('video');return v?(v.ended?2:(v.paused?0:1)):-1})()"
+    private const val KICK = "(function(){var v=document.querySelector('video');if(!v||v.ended)return;" +
+        "try{var mp=document.getElementById('movie_player');if(mp&&mp.playVideo)mp.playVideo()}catch(e){}" +
+        "var p=v.play();if(p&&p.catch)p.catch(function(){var b=document.querySelector('.ytp-play-button,button.player-control-play-pause-icon,[aria-label=\"Play\"]');if(b)b.click()})})()"
 
     fun start(w: WebView, t: String, wasPlaying: Boolean) {
         if (wv != null && wv !== w) close()
-        wv = w; title = t; playing = wasPlaying; touched = false
-        w.evaluateJavascript("window.__novaYtApp&&window.__novaYtApp.mini(true)", null)
-        w.post { w.onResume(); w.resumeTimers() }   // الصفحة قد تُعدّ مخفية لحظة النقل بين الحاويات فيوقف يوتيوب الفيديو
+        wv = w; title = t; playing = wasPlaying; want = wasPlaying; stalls = 0; kicks = 0
+        // الحماية: الصفحة تتجاهل تغيّر الرؤية الناتج عن نقل الـ WebView بين الحاويات ولا توقف الفيديو بنفسها
+        w.evaluateJavascript("window.__novaMini&&window.__novaMini(true);window.__novaYtApp&&window.__novaYtApp.mini(true)", null)
+        w.post { w.onResume(); w.resumeTimers() }
         // نقل الـ WebView بين الحاويات قد يوقف الفيديو لحظة؛ نستأنفه إن كان يعمل قبل التصغير
-        if (wasPlaying) for (d in longArrayOf(350L, 1100L, 2400L)) w.postDelayed({
-            if (wv === w && !touched) w.evaluateJavascript(RESUME, null)
+        if (wasPlaying) for (d in longArrayOf(350L, 1100L, 2400L, 4000L)) w.postDelayed({
+            if (wv === w && want) kick(w)
         }, d)
+    }
+
+    private fun kick(w: WebView) {
+        kicks++
+        YtLog.add("mini kick #$kicks")
+        w.onResume(); w.resumeTimers()
+        w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl('play')", null)
+        w.evaluateJavascript(KICK, null)
     }
 
     fun toggle() {
         val w = wv ?: return
-        touched = true
-        val a = if (playing) "pause" else "play"
-        playing = !playing
+        want = !want
+        playing = want
+        stalls = 0; kicks = 0
         w.onResume(); w.resumeTimers()
-        w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl('$a')", null)
+        if (want) kick(w) else w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl('pause')", null)
         w.postDelayed({ if (wv === w) probe() }, 900)
     }
 
+    /** يُستدعى كل ثانية: يقرأ حالة الفيديو الحقيقية، ويعيد تشغيله إن توقف والمستخدم لم يطلب الإيقاف. */
     fun probe() {
         val w = wv ?: return
-        w.evaluateJavascript(PROBE) { r -> if (wv === w && r != null && r != "-1" && r != "null") playing = r.trim('"') == "1" }
+        w.evaluateJavascript(PROBE) { r ->
+            if (wv !== w || r == null) return@evaluateJavascript
+            when (r.trim('"')) {
+                "1" -> { playing = true; stalls = 0; kicks = 0 }
+                "2" -> { playing = false; want = false; stalls = 0 }
+                "0" -> {
+                    if (want) {
+                        stalls++
+                        // نعرض زر الإيقاف أثناء المحاولة كي لا يومض الزر؛ بعد 8 محاولات فاشلة نستسلم ونعرض الحقيقة
+                        playing = kicks < 8
+                        if (stalls >= 2 && kicks < 8) { stalls = 0; kick(w) }
+                    } else playing = false
+                }
+            }
+        }
     }
 
     fun close() {
         val w = wv ?: return
         retired.add(w)
-        wv = null
+        wv = null; want = false
         runCatching { w.stopLoading() }
         (w.parent as? ViewGroup)?.removeView(w)
         runCatching { w.onPause(); w.destroy() }

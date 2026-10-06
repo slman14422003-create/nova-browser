@@ -15,6 +15,9 @@ import org.json.JSONObject
 class YtVideo(val id: String, val title: String, val channel: String, val meta: String, val dur: String, val avatar: String = "") {
     val url get() = "https://www.youtube.com/watch?v=$id"
 }
+class YtPlaylist(val id: String, val title: String, val meta: String, val thumb: String)
+class YtPanel(val id: String, val title: String, val items: List<YtVideo>)
+class YtSaveOpt(val name: String, val sub: String, val checked: Boolean)
 class YtComment(val author: String, val text: String, val time: String, val likes: String)
 class YtWatchData(
     val id: String, val title: String, val channel: String, val subs: String, val info: String, val likes: String,
@@ -46,6 +49,12 @@ class YtSession {
     val recent = mutableStateListOf<String>()
     var wantMode = true                                 // هل يجب تفعيل وضع المشغّل في الصفحة (تضبطه الواجهة)
     var lastMore = 0L
+    var playlists by mutableStateOf<List<YtPlaylist>>(emptyList())   // قوائم المستخدم (صفحة المكتبة)
+    var plTitle by mutableStateOf("")                   // عنوان صفحة قائمة التشغيل
+    var plPanel by mutableStateOf<YtPanel?>(null)       // قائمة التشغيل الجارية في صفحة المشاهدة
+    var saveOpen by mutableStateOf(false)               // قائمة «حفظ في قائمة تشغيل»
+    var saveOpts by mutableStateOf<List<YtSaveOpt>?>(null)
+    var saveFail by mutableStateOf(false)
     var speed by mutableStateOf(1.0)                    // آخر سرعة تشغيل ضُبطت من زر السرعة السريع
     var sleepMin by mutableStateOf(0)                   // مؤقت النوم بالدقائق (0 = متوقف)
 }
@@ -144,9 +153,29 @@ object YtApp {
                     w.optString("id"), w.optString("title"), w.optString("chan"), w.optString("subs"), w.optString("info"), w.optString("likes"),
                     w.optBoolean("liked"), w.optBoolean("subbed"), w.optString("desc"), w.optString("cl"), w.optString("cp"), w.optString("oa")
                 )
+                val pls = o.optJSONArray("pls")
+                s.playlists = if (pls == null) emptyList() else (0 until pls.length()).mapNotNull { i ->
+                    pls.optJSONObject(i)?.let { YtPlaylist(it.optString("id"), it.optString("t"), it.optString("m"), it.optString("th")) }
+                }.distinctBy { it.id }
+                s.plTitle = o.optString("pt")
+                val pp = o.optJSONObject("pp")
+                s.plPanel = if (pp == null) null else {
+                    val ia = pp.optJSONArray("items")
+                    YtPanel(pp.optString("id"), pp.optString("t"), if (ia == null) emptyList() else (0 until ia.length()).mapNotNull { i ->
+                        ia.optJSONObject(i)?.let { v -> YtVideo(v.optString("id"), v.optString("t"), v.optString("c"), v.optString("m"), v.optString("d"), v.optString("a")) }
+                    }.distinctBy { it.id })
+                }
                 val c = o.optJSONArray("c")
                 if (c != null) s.comments = (0 until c.length()).mapNotNull { i ->
                     c.optJSONObject(i)?.let { YtComment(it.optString("a"), it.optString("x"), it.optString("t"), it.optString("l")) }
+                }
+            }
+            "save" -> {
+                if (!s.saveOpen) return
+                val a = o.optJSONArray("o")
+                s.saveFail = o.optBoolean("fail")
+                s.saveOpts = if (!o.optBoolean("ok") && !s.saveFail) null else (0 until (a?.length() ?: 0)).mapNotNull { i ->
+                    a?.optJSONObject(i)?.let { YtSaveOpt(it.optString("n"), it.optString("p"), it.optBoolean("c")) }
                 }
             }
             "diag" -> s.diag = o.optString("x")
@@ -176,6 +205,16 @@ object YtApp {
         tab.yt.showComments = false
         call(tab, "open(${JSONObject.quote("/watch?v=" + v.id)})")
     }
+    /** تشغيل فيديو ضمن قائمة تشغيل (يبقى التشغيل يتابع عناصر القائمة). */
+    fun openInList(tab: BrowserTab, id: String, list: String) {
+        YtMini.close()
+        tab.yt.showComments = false
+        call(tab, "open(${JSONObject.quote("/watch?v=$id&list=$list")})")
+    }
+    fun saveOpen(tab: BrowserTab) { tab.yt.saveOpts = null; tab.yt.saveFail = false; tab.yt.saveOpen = true; call(tab, "saveOpen()") }
+    fun saveToggle(tab: BrowserTab, i: Int) = call(tab, "saveToggle($i)")
+    fun saveNew(tab: BrowserTab, name: String) { tab.yt.saveOpts = null; call(tab, "saveNew(${JSONObject.quote(name)})") }
+    fun saveClose(tab: BrowserTab) { tab.yt.saveOpen = false; call(tab, "saveClose()") }
     fun go(tab: BrowserTab, path: String) { tab.yt.showComments = false; call(tab, "go(${JSONObject.quote(path)})") }
     fun search(tab: BrowserTab, q: String) { tab.yt.showComments = false; call(tab, "search(${JSONObject.quote(q)})") }
     fun more(tab: BrowserTab) {

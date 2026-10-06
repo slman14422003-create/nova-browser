@@ -2,7 +2,9 @@
   if (window.__novaYt || window.top !== window || !window.NovaYt) return;
   window.__novaYt = 1;
   var BG = __BG__;
-  var bg = false, userPaused = false, lastResume = 0, nlog = 0;
+  var bg = false, mini = false, userPaused = false, lastResume = 0, nlog = 0;
+  // الحماية من إيقاف الصفحة للفيديو: أثناء الخلفية (إن فُعّلت) وأثناء المشغّل المصغّر دائماً
+  function guard() { return (BG && bg) || mini; }
 
   function send(o) { try { window.NovaYt.postMessage(JSON.stringify(o)); } catch (e) {} }
   function log(m) { if (nlog++ < 150) send({ t: 'log', m: String(m).slice(0, 400) }); }
@@ -42,45 +44,46 @@
   });
   setInterval(function () { var e = v(); if (e && !e.paused) state(); }, 5000);
 
-  // تشغيل في الخلفية: إخفاء تغيّر الرؤية عن الصفحة حتى لا يوقف يوتيوب التشغيل
-  if (BG) {
-    try {
-      Object.defineProperty(document, 'hidden', { get: function () { return false; }, configurable: true });
-      Object.defineProperty(document, 'visibilityState', { get: function () { return 'visible'; }, configurable: true });
-      Object.defineProperty(document, 'webkitHidden', { get: function () { return false; }, configurable: true });
-      Object.defineProperty(document, 'webkitVisibilityState', { get: function () { return 'visible'; }, configurable: true });
-      ['visibilitychange', 'webkitvisibilitychange', 'pagehide', 'freeze', 'blur'].forEach(function (n) {
-        window.addEventListener(n, function (e) { if (bg) e.stopImmediatePropagation(); }, true);
-        document.addEventListener(n, function (e) { if (bg) e.stopImmediatePropagation(); }, true);
-      });
-    } catch (e) {}
+  // إخفاء تغيّر الرؤية عن الصفحة حتى لا يوقف يوتيوب التشغيل (يعمل فقط عند وجود الحماية: خلفية أو مشغّل مصغّر)
+  try {
+    var dsc = function (n) { try { return Object.getOwnPropertyDescriptor(Document.prototype, n); } catch (e) { return null; } };
+    var dh = dsc('hidden'), dv = dsc('visibilityState');
+    Object.defineProperty(document, 'hidden', { get: function () { return guard() ? false : (dh && dh.get ? dh.get.call(document) : false); }, configurable: true });
+    Object.defineProperty(document, 'visibilityState', { get: function () { return guard() ? 'visible' : (dv && dv.get ? dv.get.call(document) : 'visible'); }, configurable: true });
+    Object.defineProperty(document, 'webkitHidden', { get: function () { return guard() ? false : (dh && dh.get ? dh.get.call(document) : false); }, configurable: true });
+    Object.defineProperty(document, 'webkitVisibilityState', { get: function () { return guard() ? 'visible' : (dv && dv.get ? dv.get.call(document) : 'visible'); }, configurable: true });
+    ['visibilitychange', 'webkitvisibilitychange', 'pagehide', 'freeze', 'blur'].forEach(function (n) {
+      window.addEventListener(n, function (e) { if (guard()) e.stopImmediatePropagation(); }, true);
+      document.addEventListener(n, function (e) { if (guard()) e.stopImmediatePropagation(); }, true);
+    });
+  } catch (e) {}
 
-    // يمنع كود يوتيوب نفسه من إيقاف الفيديو أثناء الخلفية/المنبثق إلا إذا طلب المستخدم الإيقاف
-    try {
-      var origPause = HTMLMediaElement.prototype.pause;
-      HTMLMediaElement.prototype.pause = function () {
-        if (bg && !userPaused && !this.ended) {
-          log('blocked page pause');
-          return;
-        }
-        return origPause.apply(this, arguments);
-      };
-      window.__novaOrigPause = origPause;
-    } catch (e) {}
-  }
+  // يمنع كود يوتيوب نفسه من إيقاف الفيديو أثناء الحماية إلا إذا طلب المستخدم الإيقاف
+  try {
+    var origPause = HTMLMediaElement.prototype.pause;
+    HTMLMediaElement.prototype.pause = function () {
+      if (guard() && !userPaused && !this.ended) {
+        log('blocked page pause');
+        return;
+      }
+      return origPause.apply(this, arguments);
+    };
+    window.__novaOrigPause = origPause;
+  } catch (e) {}
 
   window.__novaBg = function (b) { bg = !!b; log('bg=' + bg); };
+  window.__novaMini = function (on) { mini = !!on; if (mini) userPaused = false; log('mini=' + mini); };
 
   // إيقاف جاء من خارج الصفحة (نظام/WebView): نستأنف ما لم يطلب المستخدم الإيقاف
   document.addEventListener('play', function () { userPaused = false; }, true);
   document.addEventListener('pause', function (ev) {
     var e = v();
-    if (!BG || !bg || userPaused || !e || ev.target !== e || e.ended) return;
+    if (!guard() || userPaused || !e || ev.target !== e || e.ended) return;
     var now = Date.now();
     if (now - lastResume < 400) return;
     lastResume = now;
-    log('resuming after external pause');
-    setTimeout(function () { if (bg && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function (x) { log('play rejected ' + x); }); } }, 120);
+    log('resuming after external pause vis=' + realVis());
+    setTimeout(function () { if (guard() && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function (x) { log('play rejected ' + x); }); } }, 120);
   }, true);
   function clickPlay() {
     var b = document.querySelector('.ytp-play-button,button.player-control-play-pause-icon,[aria-label="Play"]');

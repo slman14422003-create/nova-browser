@@ -1,6 +1,7 @@
 package com.nova.browser
 
 import android.graphics.Bitmap
+import android.net.Uri
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.animation.core.RepeatMode
@@ -26,6 +27,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -85,6 +87,7 @@ fun YtScreen(tab: BrowserTab, onShowSite: () -> Unit, onDownload: () -> Unit, on
     if (page == "watch") YtWatchView(tab, fresh, onShowSite, onDownload, onPip)
     else YtListView(tab, page, fresh, onShowSite)
     if (s.psOpen && page == "watch") YtPlayerSheet(tab)
+    if (s.saveOpen && page == "watch") YtSaveSheet(tab, onShowSite)
     s.diag?.let { d ->
         val cs = MaterialTheme.colorScheme
         val ctx = LocalContext.current
@@ -111,6 +114,7 @@ private fun YtListView(tab: BrowserTab, page: String, fresh: Boolean, onShowSite
                 YtRecent(tab)
             } else {
                 if (page == "home" && fresh && s.chips.isNotEmpty()) YtChips(tab)
+                if (page == "playlist" && fresh && s.items.isNotEmpty()) YtPlaylistHeader(tab)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     if (page == "library") YtYou(tab, fresh, onShowSite) else YtFeed(tab, fresh, onShowSite)
                 }
@@ -241,6 +245,7 @@ private fun YtChips(tab: BrowserTab) {
 private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
     val s = tab.yt
     val list = if (fresh) s.items else emptyList()
+    val plId = if (YtApp.pageOf(tab.url) == "playlist") Uri.parse(tab.url).getQueryParameter("list") else null
     val state = rememberLazyListState()
     var waited by remember(tab.url) { mutableStateOf(false) }
     var retry by remember(tab.url) { mutableIntStateOf(0) }
@@ -259,7 +264,7 @@ private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
         list.isEmpty() -> YtEmpty(onShowSite, onRetry = { retry++; YtApp.refresh(tab) })
         else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize()) {
             LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp)) {
-                itemsIndexed(list, key = { _, v -> v.id }) { _, v -> Box(Modifier.animateItem()) { VideoCard(v, onClick = { YtApp.open(tab, v) }) } }
+                itemsIndexed(list, key = { _, v -> v.id }) { _, v -> Box(Modifier.animateItem()) { VideoCard(v, onClick = { if (plId != null) YtApp.openInList(tab, v.id, plId) else YtApp.open(tab, v) }) } }
                 item {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.tertiary)
@@ -379,6 +384,7 @@ private fun YtEmpty(onShowSite: () -> Unit, onRetry: () -> Unit) {
 private fun YtYou(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val recent = if (fresh) tab.yt.items.take(14) else emptyList()
+    val pls = if (fresh) tab.yt.playlists else emptyList()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp)) {
         item {
             Row(
@@ -406,6 +412,15 @@ private fun YtYou(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             ) else LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(recent, key = { _, v -> v.id }) { _, v -> YtShelfCard(v) { YtApp.open(tab, v) } }
+            }
+        }
+        item {
+            Text(L("قوائم التشغيل"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = cs.onSurface, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp))
+            if (pls.isEmpty()) Text(
+                L("لا توجد قوائم تشغيل هنا. سجّل الدخول من عرض الموقع."),
+                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            ) else LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(pls, key = { _, p -> p.id }) { _, p -> YtPlaylistCard(p) { YtApp.go(tab, "/playlist?list=" + p.id) } }
             }
         }
         item {
@@ -596,6 +611,8 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
     val state = rememberLazyListState()
     var descOpen by remember(tab.url) { mutableStateOf(false) }
     var titleOpen by remember(tab.url) { mutableStateOf(false) }
+    var plOpen by remember(tab.url) { mutableStateOf(false) }
+    val panel = if (fresh) s.plPanel else null
     val nearEnd by remember { derivedStateOf { val li = state.layoutInfo; li.totalItemsCount > 0 && (li.visibleItemsInfo.lastOrNull()?.index ?: 0) >= li.totalItemsCount - 4 } }
     LaunchedEffect(nearEnd, list.size) { if (nearEnd) { delay(250); YtApp.more(tab) } }
     val link = "https://youtu.be/" + (w?.id ?: YtApp.urlKey(tab.url).substringAfter('?'))
@@ -635,11 +652,13 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                         ActionPill(null, (if (s.speed == s.speed.toInt().toDouble()) "${s.speed.toInt()}x" else "${s.speed}x") + " " + L("السرعة"), active = s.speed != 1.0) { YtApp.cycleSpeed(tab) }
                         ActionPill(null, if (s.sleepMin > 0) L("مؤقت النوم") + " ${s.sleepMin}" + L("د") else L("مؤقت النوم"), active = s.sleepMin > 0) { YtApp.cycleSleep(tab) }
                         ActionPill(Icons.Default.Share, L("مشاركة من هنا")) { YtApp.currentSec(tab) { sec -> shareText(ctx, if (sec > 3) "$link?t=$sec" else link) } }
+                        ActionPill(Icons.Default.Add, L("حفظ")) { YtApp.saveOpen(tab) }
                         ActionPill(null, L("تنزيل")) { onDownload() }
                         ActionPill(null, L("منبثق")) { onPip() }
                         ActionPill(null, L("عرض الموقع")) { onShowSite() }
                     }
                 }
+                if (panel != null) item { YtPlaylistPanel(tab, panel, w?.id ?: "", plOpen) { plOpen = !plOpen } }
                 item {
                     Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         ChannelAvatar(w?.channel ?: "", 40, w?.avatar ?: "")
@@ -794,4 +813,172 @@ private fun YtSiteGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
     val w = size.width; val h = size.height; val sw = w * 0.09f
     drawRoundRect(color, Offset(w * 0.12f, h * 0.18f), androidx.compose.ui.geometry.Size(w * 0.76f, h * 0.64f), androidx.compose.ui.geometry.CornerRadius(w * 0.12f), style = Stroke(width = sw))
     drawLine(color, Offset(w * 0.12f, h * 0.38f), Offset(w * 0.88f, h * 0.38f), sw, StrokeCap.Round)
+}
+
+
+// ───────────────────────── قوائم التشغيل ─────────────────────────
+
+private fun playlistName(id: String): String = when (id) {
+    "WL" -> L("المشاهدة لاحقاً")
+    "LL" -> L("الفيديوهات التي أعجبتني")
+    else -> L("قائمة التشغيل")
+}
+
+/** بطاقة قائمة تشغيل في المكتبة: صورة أول فيديو + العنوان + عدد الفيديوهات. */
+@Composable
+private fun YtPlaylistCard(p: YtPlaylist, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Column(Modifier.width(168.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainerHigh)) {
+            if (p.thumb.isNotBlank()) NetImage("https://i.ytimg.com/vi/${p.thumb}/hqdefault.jpg", Modifier.fillMaxSize())
+            Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0xCC000000), RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                Icon(Icons.Default.List, null, Modifier.size(14.dp), tint = Color.White)
+            }
+        }
+        Text(
+            p.title, style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content), color = cs.onSurface,
+            maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
+        if (p.meta.isNotBlank()) Text(p.meta, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** رأس صفحة قائمة التشغيل: العنوان وعدد الفيديوهات وزر «تشغيل الكل». */
+@Composable
+private fun YtPlaylistHeader(tab: BrowserTab) {
+    val cs = MaterialTheme.colorScheme
+    val s = tab.yt
+    val lid = remember(tab.url) { Uri.parse(tab.url).getQueryParameter("list") ?: "" }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                s.plTitle.ifBlank { playlistName(lid) }, style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.Content),
+                fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+            Text("${s.items.size} " + L("فيديو"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+        }
+        Button(
+            onClick = { s.items.firstOrNull()?.let { YtApp.openInList(tab, it.id, lid) } }, shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = cs.onSurface, contentColor = cs.surface)
+        ) {
+            Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(L("تشغيل الكل"), fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+/** قائمة التشغيل الجارية في صفحة المشاهدة: رأس يبيّن الموضع (3/20) وعند التوسيع تظهر العناصر للانتقال بينها. */
+@Composable
+private fun YtPlaylistPanel(tab: BrowserTab, pp: YtPanel, curId: String, open: Boolean, onToggle: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val idx = pp.items.indexOfFirst { it.id == curId }
+    val next = if (idx >= 0) pp.items.getOrNull(idx + 1) else null
+    Surface(
+        shape = RoundedCornerShape(16.dp), color = cs.surfaceContainer,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).animateContentSize()
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().clickable { if (pp.items.isEmpty()) YtApp.go(tab, "/playlist?list=" + pp.id) else onToggle() }.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Default.List, null, Modifier.size(20.dp), tint = cs.tertiary)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        pp.title.ifBlank { playlistName(pp.id) }, style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content),
+                        color = cs.onSurface, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    val sub = when {
+                        pp.items.isEmpty() -> L("فتح قائمة التشغيل")
+                        next != null && !open -> L("التالي") + ": " + next.title
+                        else -> ""
+                    }
+                    if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Content), color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (pp.items.isNotEmpty()) Text(
+                    (if (idx >= 0) "${idx + 1}/" else "") + pp.items.size, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant
+                )
+            }
+            if (open) pp.items.take(40).forEach { v ->
+                val cur = v.id == curId
+                Row(
+                    Modifier.fillMaxWidth().background(if (cur) cs.tertiary.copy(alpha = 0.12f) else Color.Transparent)
+                        .clickable { if (!cur) YtApp.openInList(tab, v.id, pp.id) }.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))) {
+                        NetImage("https://i.ytimg.com/vi/${v.id}/mqdefault.jpg", Modifier.fillMaxSize())
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            v.title, style = MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content),
+                            color = if (cur) cs.tertiary else cs.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis
+                        )
+                        if (v.channel.isNotBlank()) Text(v.channel, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** «حفظ في قائمة تشغيل»: خيارات القوائم تأتي من قائمة الحفظ الأصلية في الصفحة (تتطلب تسجيل الدخول). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun YtSaveSheet(tab: BrowserTab, onShowSite: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    val s = tab.yt
+    val opts = s.saveOpts
+    var newDlg by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = { YtApp.saveClose(tab) }, sheetState = state, containerColor = cs.background) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(L("حفظ في قائمة تشغيل"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.onSurface)
+            when {
+                s.saveFail -> {
+                    Text(L("تعذّر فتح قائمة الحفظ — تأكد من تسجيل الدخول من عرض الموقع"), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                    TextButton(onClick = { YtApp.saveClose(tab); onShowSite() }) { Text(L("عرض الموقع"), color = cs.tertiary) }
+                }
+                opts == null -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                }
+                else -> {
+                    opts.forEachIndexed { i, o ->
+                        if (o.name.isBlank()) return@forEachIndexed
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { YtApp.saveToggle(tab, i) }.padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Checkbox(checked = o.checked, onCheckedChange = null, modifier = Modifier.padding(start = 6.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(o.name, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content), color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (o.sub.isNotBlank()) Text(o.sub, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1)
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { newDlg = true }.padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Default.Add, null, Modifier.size(20.dp), tint = cs.tertiary)
+                        Text(L("قائمة جديدة"), style = MaterialTheme.typography.bodyLarge, color = cs.tertiary, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+    if (newDlg) AlertDialog(
+        onDismissRequest = { newDlg = false }, shape = RoundedCornerShape(24.dp), containerColor = cs.surfaceContainerHigh,
+        title = { Text(L("قائمة جديدة")) },
+        text = { OutlinedTextField(value = newName, onValueChange = { newName = it }, singleLine = true, label = { Text(L("اسم القائمة")) }) },
+        confirmButton = {
+            TextButton(onClick = { val n = newName.trim(); if (n.isNotEmpty()) YtApp.saveNew(tab, n); newName = ""; newDlg = false }) { Text(L("إنشاء"), color = cs.tertiary) }
+        },
+        dismissButton = { TextButton(onClick = { newDlg = false }) { Text(L("إلغاء"), color = cs.onSurfaceVariant) } }
+    )
 }
