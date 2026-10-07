@@ -36,7 +36,7 @@ class YtPlayerInfo(
     val rate: Double, val loop: Boolean, val qualities: List<String>, val quality: String,
     val captions: List<YtCap>, val caption: String,
     val translations: List<Pair<String, String>> = emptyList(), val translateTo: String = "",
-    val ccReady: Boolean = false, val ccSize: String = "m", val ccBg: String = "glass"
+    val ccReady: Boolean = false, val ccSize: String = "m", val ccBg: String = "glass", val ccPos: String = "b", val ccOff: Int = 0
 )
 
 /** حالة واجهة يوتيوب الأصلية لتبويب واحد. المصدر هو DOM الصفحة (يصل عبر yt-app.js). */
@@ -204,7 +204,9 @@ object YtApp {
                     translateTo = o.optString("tl"),
                     ccReady = o.optBoolean("cr"),
                     ccSize = o.optString("cs").ifBlank { "m" },
-                    ccBg = o.optString("cb").ifBlank { "glass" }
+                    ccBg = o.optString("cb").ifBlank { "glass" },
+                    ccPos = o.optString("cp").ifBlank { "b" },
+                    ccOff = o.optInt("co", 0).coerceIn(0, 40)
                 )
             }
         }
@@ -258,8 +260,8 @@ object YtApp {
     fun setCaption(tab: BrowserTab, key: String, translateTo: String = "") =
         call(tab, "caption(${JSONObject.quote(key)},${JSONObject.quote(translateTo)})")
     /** شكل الترجمة: الحجم (s/m/l/xl) والخلفية (glass/solid/none). */
-    fun setCcStyle(tab: BrowserTab, size: String, bg: String) =
-        call(tab, "ccStyle(${JSONObject.quote(size)},${JSONObject.quote(bg)})")
+    fun setCcStyle(tab: BrowserTab, size: String, bg: String, pos: String = "", off: Int = -1, quiet: Boolean = false) =
+        call(tab, "ccStyle(${JSONObject.quote(size)},${JSONObject.quote(bg)},${JSONObject.quote(pos)},${if (off < 0) "null" else off.toString()},$quiet)")
     fun setLoop(tab: BrowserTab, on: Boolean) = call(tab, "loop($on)")
 
     // ───────── ميزات إضافية في صفحة المشاهدة ─────────

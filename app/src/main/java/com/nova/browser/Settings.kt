@@ -42,6 +42,7 @@ object Prefs {
     var blockThirdCookies by mutableStateOf(true); private set
     var secureScreen by mutableStateOf(false); private set  // منع لقطات الشاشة
     var antiFingerprint by mutableStateOf(true); private set // الحماية من البصمة
+    var shield by mutableStateOf(true); private set         // الحماية الفورية من الهجمات والتتبع (Shield)
     var lang by mutableIntStateOf(0); private set           // لغة التطبيق: 0 تلقائي، 1 عربية، 2 English
     var siteLang by mutableIntStateOf(0); private set       // لغة المواقع (فهرس في siteLangs)
     var textZoom by mutableIntStateOf(1); private set       // فهرس في zoomValues
@@ -82,7 +83,7 @@ object Prefs {
         dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true)
         httpsFirst = p.getBoolean("https1", true); cleanUrls = p.getBoolean("cleanurl", true)
         blockThirdCookies = p.getBoolean("c3p", true); secureScreen = p.getBoolean("secscr", false)
-        antiFingerprint = p.getBoolean("antifp", true); pauseBg = p.getBoolean("pausebg", true)
+        antiFingerprint = p.getBoolean("antifp", true); shield = p.getBoolean("shield", true); pauseBg = p.getBoolean("pausebg", true)
         lang = p.getInt("lang", 0); siteLang = p.getInt("sitelang", 0).coerceIn(0, siteLangs.lastIndex)
         textZoom = p.getInt("zoom", 1).coerceIn(0, zoomValues.lastIndex); siteDark = p.getBoolean("sitedark", false)
         pwMode = if (p.contains("pwmode")) p.getInt("pwmode", 0).coerceIn(0, 2) else defaultPwMode(c)
@@ -111,6 +112,7 @@ object Prefs {
     fun pickCleanUrls(v: Boolean) { cleanUrls = v; sp?.putBoolean("cleanurl", v) }
     fun pickThirdCookies(v: Boolean) { blockThirdCookies = v; sp?.putBoolean("c3p", v) }
     fun pickAntiFingerprint(v: Boolean) { antiFingerprint = v; sp?.putBoolean("antifp", v) }
+    fun pickShield(v: Boolean) { shield = v; sp?.putBoolean("shield", v) }
     fun pickLang(v: Int) { lang = v; sp?.putInt("lang", v) }
     fun pickSiteLang(v: Int) { siteLang = v; sp?.putInt("sitelang", v) }
     fun pickTextZoom(v: Int) { textZoom = v; sp?.putInt("zoom", v) }
@@ -267,6 +269,10 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.siteDark, onCheckedChange = null) })
                 ))
                 Group(L("الأمان"), listOf(
+                    RowSpec(L("الحماية الفورية"),
+                        (if (Shield.version >= 0) L("تصدّي لهجمات الشبكة المحلية والتعدين الخفي والتتبع والروابط المخادعة وإغراق النوافذ — تم صدّ ") + Shield.total else ""),
+                        Icons.Default.Lock, { Prefs.pickShield(!Prefs.shield) },
+                        { Switch(checked = Prefs.shield, onCheckedChange = null) }),
                     RowSpec(L("HTTPS أولاً"), L("ترقية الروابط إلى اتصال مشفّر مع رجوع تلقائي عند عدم الدعم"), Icons.Default.Lock, { Prefs.pickHttpsFirst(!Prefs.httpsFirst) },
                         { Switch(checked = Prefs.httpsFirst, onCheckedChange = null) }),
                     RowSpec(L("الحماية من البصمة"), L("توحيد وتشويش قيم Canvas وWebGL والصوت والجهاز (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Lock, { Prefs.pickAntiFingerprint(!Prefs.antiFingerprint) },

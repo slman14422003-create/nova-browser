@@ -190,6 +190,7 @@ object Downloader {
     private val sinkFd = HashMap<String, ParcelFileDescriptor>()
 
     private fun open(t: DlTask, url: String, range: String?): HttpURLConnection {
+        if (!(url.startsWith("https://") || url.startsWith("http://"))) throw IOException("unsupported scheme")
         val c = URL(url).openConnection() as HttpURLConnection
         c.instanceFollowRedirects = false
         c.connectTimeout = 15000; c.readTimeout = 20000; c.useCaches = false
@@ -210,7 +211,10 @@ object Downloader {
             if (code in 300..399 && code != 304) {
                 val loc = c.getHeaderField("Location"); c.disconnect()
                 if (loc == null) throw IOException("redirect")
-                u = URL(URL(u), loc).toString()
+                val next = URL(URL(u), loc).toString()
+                // التحويل لا يخرج من http/https (file: وcontent: وftp:)، ولا يتراجع من https إلى http (تنزيل غير مشفّر بلا علم المستخدم)
+                if (!(next.startsWith("https://") || (next.startsWith("http://") && u.startsWith("http://")))) throw IOException("blocked redirect")
+                u = next
             } else return c to u
         }
         throw IOException("too many redirects")

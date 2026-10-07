@@ -38,7 +38,7 @@ object Security {
     fun summary(): String {
         val lines = (sp?.getString("log", "") ?: "").split("\n").filter { it.isNotBlank() }
         val total = persisted + session.get()
-        return (L("متتبعات/إعلانات محجوبة: ") + total + L("\nتنبيهات مسجّلة: ") + (lines.size) + "\n\n") +
+        return (Shield.summary() + "\n\n" + L("متتبعات/إعلانات محجوبة: ") + total + L("\nتنبيهات مسجّلة: ") + (lines.size) + "\n\n") +
             (if (lines.isEmpty()) L("لا توجد أحداث أمنية.") else lines.reversed().joinToString("\n"))
     }
 

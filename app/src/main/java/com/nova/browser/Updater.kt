@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -15,10 +16,11 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 enum class UpdPhase { IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, INSTALLING, ERROR }
 
-class UpdateInfo(val version: String, val notes: String, val size: Long, val apkUrl: String?, val page: String)
+class UpdateInfo(val version: String, val notes: String, val size: Long, val apkUrl: String?, val page: String, val sha256: String = "")
 
 /** تحديث من داخل التطبيق: فحص GitHub Releases ← تنزيل APK بشريط تقدّم ← تثبيت عبر PackageInstaller (يتطلب نفس مفتاح التوقيع). */
 object Updater {
@@ -32,6 +34,37 @@ object Updater {
     private val main = Handler(Looper.getMainLooper())
     private fun ui(block: () -> Unit) { if (Looper.myLooper() == Looper.getMainLooper()) block() else main.post(block) }
     private fun apkFile(c: Context) = File(File(c.cacheDir, "update").apply { mkdirs() }, "nova-update.apk")
+
+    // ───────── حماية التحديث ─────────
+    // ملف التحديث لا يُنزَّل إلا من GitHub عبر https، ويُتحقق من حجمه وبصمته (إن وفّرتها GitHub) ومن أنه حزمة التطبيق نفسه
+    // وموقّعة بمفتاحه قبل تسليمه لمثبّت النظام؛ أي اختلاف يحذف الملف ويوقف التحديث.
+    private val trustedHosts = listOf("github.com", "githubusercontent.com")
+    private fun trustedUrl(u: String?): Boolean {
+        if (u.isNullOrBlank()) return false
+        val p = runCatching { Uri.parse(u) }.getOrNull() ?: return false
+        val h = p.host?.lowercase() ?: return false
+        return p.scheme == "https" && trustedHosts.any { h == it || h.endsWith(".$it") }
+    }
+
+    /** يعيد null إن كان الملف سليماً، وإلا سبب الرفض. */
+    @Suppress("DEPRECATION")
+    private fun verifyApk(c: Context, f: File): String? = try {
+        val pm = c.packageManager
+        val flag = PackageManager.GET_SIGNING_CERTIFICATES
+        val arch = pm.getPackageArchiveInfo(f.absolutePath, flag)
+        if (arch == null) "invalid package"
+        else if (arch.packageName != c.packageName) "package mismatch"
+        else {
+            val mine = pm.getPackageInfo(c.packageName, flag).signingInfo?.apkContentsSigners
+            val theirs = arch.signingInfo?.apkContentsSigners
+            if (mine != null && theirs != null && mine.isNotEmpty() && theirs.isNotEmpty() && mine.none { m -> theirs.any { it == m } }) "signature mismatch" else null
+        }
+    } catch (_: Exception) { null }   // تعذّر الفحص المسبق: يبقى فحص النظام عند التثبيت
+
+    private fun reject(f: File, why: String) {
+        runCatching { f.delete() }
+        error = why; phase = UpdPhase.ERROR
+    }
 
     /** يقارن الإصدارات رقماً رقماً (1.10.0 أحدث من 1.9.0). */
     fun isNewer(remote: String, local: String): Boolean {
@@ -68,7 +101,7 @@ object Updater {
                 val j = JSONObject(cn.inputStream.bufferedReader().use { it.readText() })
                 cn.disconnect()
                 val tag = j.optString("tag_name")
-                var apk: String? = null; var size = 0L
+                var apk: String? = null; var size = 0L; var sha = ""
                 val assets = j.optJSONArray("assets")
                 if (assets != null) {
                     var fallback: JSONObject? = null; var best: JSONObject? = null
@@ -78,13 +111,17 @@ object Updater {
                         if (fallback == null) fallback = a
                         if (best == null && n.contains("release")) best = a
                     }
-                    (best ?: fallback)?.let { apk = it.optString("browser_download_url"); size = it.optLong("size") }
+                    (best ?: fallback)?.let {
+                        apk = it.optString("browser_download_url").takeIf { u -> trustedUrl(u) }
+                        size = it.optLong("size")
+                        sha = it.optString("digest").lowercase().removePrefix("sha256:").takeIf { d -> Regex("[0-9a-f]{64}").matches(d) } ?: ""
+                    }
                 }
                 sp.edit().putLong("last", System.currentTimeMillis()).apply()
                 val newer = tag.isNotBlank() && isNewer(tag, BuildConfig.VERSION_NAME)
                 ui {
                     if (newer) {
-                        info = UpdateInfo(tag.removePrefix("v"), j.optString("body"), size, apk, j.optString("html_url"))
+                        info = UpdateInfo(tag.removePrefix("v"), j.optString("body"), size, apk, j.optString("html_url"), sha)
                         phase = if (apkFile(app).exists() && apkFile(app).length() == size && size > 0) UpdPhase.READY else UpdPhase.AVAILABLE
                         prompt = true
                     } else { info = null; phase = UpdPhase.UP_TO_DATE }
@@ -100,7 +137,7 @@ object Updater {
         val i = info ?: return
         val app = c.applicationContext
         val url = i.apkUrl
-        if (url.isNullOrBlank()) { // لا ملف APK في الإصدار: نفتح صفحة الإصدار
+        if (url.isNullOrBlank() || !trustedUrl(url)) { // لا ملف APK موثوق في الإصدار: نفتح صفحة الإصدار
             runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(i.page)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             return
         }
@@ -112,20 +149,32 @@ object Updater {
                 val cn = URL(url).openConnection() as HttpURLConnection
                 cn.connectTimeout = 10000; cn.readTimeout = 20000; cn.instanceFollowRedirects = true
                 if (cn.responseCode != 200) throw java.io.IOException("HTTP " + cn.responseCode)
+                // بعد التحويلات: يجب أن نبقى على https وعلى نطاقات GitHub
+                if (!trustedUrl(cn.url.toString())) { cn.disconnect(); throw java.io.IOException("untrusted redirect") }
                 val total = cn.contentLengthLong.takeIf { it > 0 } ?: i.size
                 var done = 0L; var lastUi = 0L
+                val md = MessageDigest.getInstance("SHA-256")
                 cn.inputStream.use { ins -> tmp.outputStream().use { out ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
                         val n = ins.read(buf); if (n < 0) break
-                        out.write(buf, 0, n); done += n
+                        if (i.size > 0 && done + n > i.size + 1024) throw java.io.IOException("size mismatch")   // أكبر من المعلن: ملف مختلف
+                        out.write(buf, 0, n); md.update(buf, 0, n); done += n
                         val now = android.os.SystemClock.elapsedRealtime()
                         if (total > 0 && now - lastUi > 250) { lastUi = now; val p = (done.toFloat() / total).coerceIn(0f, 1f); ui { progress = p } }
                     }
                 } }
                 cn.disconnect()
+                val got = md.digest().joinToString("") { b -> "%02x".format(b) }
+                if ((i.size > 0 && done != i.size) || (i.sha256.isNotEmpty() && got != i.sha256)) {
+                    tmp.delete()
+                    ui { error = "checksum mismatch"; phase = UpdPhase.ERROR }
+                    return@Thread
+                }
                 if (f.exists()) f.delete()
                 if (!tmp.renameTo(f)) throw java.io.IOException("rename failed")
+                val bad = verifyApk(app, f)
+                if (bad != null) { ui { reject(f, bad) }; return@Thread }
                 ui { progress = 1f; phase = UpdPhase.READY; install(app) }
             } catch (e: Exception) {
                 ui { error = e.message ?: "error"; phase = UpdPhase.ERROR }
@@ -138,6 +187,7 @@ object Updater {
         val app = c.applicationContext
         val f = apkFile(app)
         if (!f.exists()) { error = "file missing"; phase = UpdPhase.AVAILABLE; return }
+        verifyApk(app, f)?.let { reject(f, it); return }
         if (!app.packageManager.canRequestPackageInstalls()) {
             error = L("فعّل «السماح بالتثبيت من هذا المصدر» ثم اضغط تثبيت")
             phase = UpdPhase.READY

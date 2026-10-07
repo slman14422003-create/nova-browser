@@ -151,6 +151,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var pinned by mutableStateOf(false)    // تبويب مثبّت (لا يُحرَّر ولا يُغلق بـ"إغلاق الكل")
     var epoch by mutableIntStateOf(0)   // يزيد عند انهيار عملية العرض لإعادة إنشاء الـ WebView
     var webView: WebView? = null
+    @Volatile var shieldHost: String = ""   // نطاق الصفحة الحالية (يقرؤه فحص الطلبات من خيط الشبكة)
     val yt = YtSession()                 // حالة واجهة يوتيوب الأصلية لهذا التبويب
 }
 
@@ -229,22 +230,32 @@ fun choose(c: Context, items: List<Pair<String, () -> Unit>>) {
     AlertDialog.Builder(c).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
 }
 
-fun errorHtml(url: String, desc: String): String = """
-<html data-nova-err><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+fun errorHtml(url: String, desc: String): String {
+    // كل ما يأتي من الشبكة يُشفَّر قبل وضعه في الصفحة. الرابط يُحفظ في سمة data (مشفّرة) ويُقرأ بالسكربت،
+    // بدل حقنه داخل onclick كما كان — فالرابط الخبيث لم يعد يستطيع كسر السمة وتنفيذ سكربت بأصل الموقع.
+    val u = android.text.TextUtils.htmlEncode(url)
+    val d = android.text.TextUtils.htmlEncode(desc)
+    val dir = if (I18n.isEnglish()) "ltr" else "rtl"
+    return """
+<html data-nova-err><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
 :root{color-scheme:light dark}body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
-justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:${if (I18n.isEnglish()) "ltr" else "rtl"}}
+justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:$dir}
 h2{margin:8px}p{opacity:.65;word-break:break-all;margin:4px}
 button{margin-top:22px;padding:12px 30px;border:0;border-radius:24px;background:#3D5AFE;color:#fff;font-size:16px}
-</style></head><body><div style="font-size:56px">📡</div><h2>${L("تعذّر فتح الصفحة")}</h2>
-<p>${android.text.TextUtils.htmlEncode(desc)}</p><p>${android.text.TextUtils.htmlEncode(url)}</p>
-<button onclick='location.replace(${JSONObject.quote(url)})'>${L("إعادة المحاولة")}</button></body></html>"""
+</style></head><body data-u="$u"><div style="font-size:56px">📡</div><h2>${L("تعذّر فتح الصفحة")}</h2>
+<p>$d</p><p>$u</p>
+<button id="r">${L("إعادة المحاولة")}</button>
+<script>document.getElementById('r').onclick=function(){location.replace(document.body.getAttribute('data-u'))}</script></body></html>"""
+}
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView(ctx).apply {
     with(settings) {
         javaScriptEnabled = Prefs.js; domStorageEnabled = true; databaseEnabled = true
         mediaPlaybackRequiresUserGesture = false
-        javaScriptCanOpenWindowsAutomatically = true
+        javaScriptCanOpenWindowsAutomatically = false   // لا نوافذ منبثقة بلا لمسة من المستخدم
         setSupportMultipleWindows(false)
         allowFileAccess = false
         setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
@@ -253,6 +264,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     applyUa(this, tab.desktop)
     Perf.tune(this)
     Perf.installPrivacy(this)
+    Shield.install(this)
     Perf.installRender(this)
     WebSupport.configure(this)
     WebSupport.installBoost(this)
@@ -285,14 +297,14 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtMini.owns(v)) return   // صفحة المشغّل المصغّر: لا تغيّر حالة التبويب
             if (isYtVideo(u)) YtMini.close()   // فيديو جديد في التبويب: يُغلق المشغّل المصغّر القديم
-            tab.loading = true; tab.url = u; Perf.onPageStart(v); WebSupport.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtSupport.onPageStart(v, u); YtMedia.pageChanged(tab, u)
+            tab.loading = true; tab.url = u; tab.shieldHost = Shield.hostFor(u); Shield.onPageStart(v); Perf.onPageStart(v); WebSupport.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtSupport.onPageStart(v, u); YtMedia.pageChanged(tab, u)
         }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             if (YtMini.owns(v)) return
             // تنقّلات الصفحات أحادية الصفحة (مثل يوتيوب) لا تستدعي onPageStarted
             if (u.startsWith("http")) {
                 if (isYtVideo(u)) YtMini.close()
-                tab.url = u; tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u)
+                tab.url = u; tab.shieldHost = Shield.hostFor(u); tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward(); YtMedia.pageChanged(tab, u)
             }
         }
         override fun onPageFinished(v: WebView, u: String) {
@@ -308,7 +320,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             Library.visit(u, v.title)   // سجل التصفح
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
-            Perf.intercept(r.url, r.isForMainFrame)
+            Shield.intercept(tab.shieldHost, r.url, r.isForMainFrame) ?: Perf.intercept(r.url, r.isForMainFrame)
         override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
             if (YtMini.owns(v)) { YtMini.close(); return true }   // انهار المشغّل المصغّر فقط: نغلقه ولا نلمس التبويب
             // منع انهيار التطبيق: نُسقط الـ WebView ونعيد إنشاءه بنفس العنوان
@@ -346,6 +358,8 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             return when (u.scheme) {
                 "http", "https" -> {
                     if (!r.isForMainFrame) false
+                    else if (Shield.isSpoofed(u)) { toast(ctx, L("تم حظر رابط مخادع يُخفي وجهته الحقيقية")); true }
+                    else if (!Shield.navAllowed(v, r.hasGesture(), u.host)) { toast(ctx, L("تم إيقاف تحويلات تلقائية متكررة")); true }
                     else if (GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u)) true
                     else {
                         var t = Security.cleanUrl(u)
@@ -365,8 +379,12 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 null, "about", "data", "blob" -> false
                 "intent" -> {
                     runCatching {
+                        // الرابط البديل يجب أن يكون http(s) فقط: كان يُمرَّر كما هو فيُنفَّذ javascript: أو file: داخل الصفحة الحالية
                         Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
-                            .getStringExtra("browser_fallback_url")?.let { v.loadUrl(it) }
+                            .getStringExtra("browser_fallback_url")?.let { f ->
+                                val fu = Uri.parse(f)
+                                if ((fu.scheme == "https" || fu.scheme == "http") && !Shield.isSpoofed(fu)) v.loadUrl(Security.cleanUrl(fu).toString(), Perf.privacyHeaders)
+                            }
                     }
                     true
                 }
@@ -395,14 +413,20 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPermissionRequest(req: PermissionRequest) = h.permission(req)
         override fun onGeolocationPermissionsShowPrompt(origin: String, cb: GeolocationPermissions.Callback) = h.geo(origin, cb)
         override fun onJsAlert(v: WebView, url: String, msg: String, r: JsResult): Boolean {
-            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton(L("حسناً")) { _, _ -> r.confirm() }
+            if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }   // إغراق نوافذ
+            AlertDialog.Builder(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("حسناً")) { _, _ -> r.confirm() }
                 .setOnCancelListener { r.cancel() }.show()
             return true
         }
         override fun onJsConfirm(v: WebView, url: String, msg: String, r: JsResult): Boolean {
-            AlertDialog.Builder(ctx).setMessage(msg).setPositiveButton(L("موافق")) { _, _ -> r.confirm() }
+            if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }
+            AlertDialog.Builder(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("موافق")) { _, _ -> r.confirm() }
                 .setNegativeButton(L("إلغاء")) { _, _ -> r.cancel() }.setOnCancelListener { r.cancel() }.show()
             return true
+        }
+        override fun onJsPrompt(v: WebView, url: String, message: String?, defaultValue: String?, r: JsPromptResult): Boolean {
+            if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }
+            return false   // النافذة الافتراضية للنظام
         }
     }
 }
@@ -476,6 +500,7 @@ class MainActivity : ComponentActivity() {
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
+        Shield.init(this)
         WebEngine.init(this)
         NetKit.init(this)
         WebSupport.init(this)
@@ -841,7 +866,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 }
             },
             onDownload = { u, ua, cd, mime, ref ->
-                if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, L("هذا النوع من التنزيل غير مدعوم بعد"))
+                if (!Shield.downloadAllowed(hostOf(ref ?: u))) toast(activity, L("تم حظر تنزيلات تلقائية متتابعة من الصفحة"))
+                else if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, L("هذا النوع من التنزيل غير مدعوم بعد"))
                 else {
                     val start = {
                         Downloader.start(activity, u, ua, cd, mime, ref)
@@ -896,6 +922,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
 
     val primaryInt = cs.primary.toArgb()
     val bgInt = cs.surfaceContainerHigh.toArgb()
+    val spinnerInt = cs.onSurface.toArgb()
 
     // الكيبورد أثناء الكتابة داخل صفحة (مثل خانة سؤال الذكاء الاصطناعي): تنكمش الصفحة فوق الكيبورد ويختفي شريط العنوان السفلي.
     // derivedStateOf يتغيّر مرتين فقط (فتح/إغلاق) فلا إعادة تركيب أثناء حركة الكيبورد.
@@ -964,6 +991,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                             setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || isYtHost(wv.url) || Pwa.kind(wv.url) != SiteKind.NONE }
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
+                                            useIosSpinner(spinnerInt)
                                         }
                                     }
                                 )

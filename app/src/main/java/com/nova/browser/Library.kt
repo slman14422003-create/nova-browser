@@ -164,7 +164,7 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                 placeholder = { Text(L("بحث")) }, leadingIcon = { Icon(Icons.Default.Search, null) },
                 shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
-            if (importing) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            if (importing) NovaLoadingRow(L("جارٍ الاستيراد…"))
             val empty = if (tab == 0) bms.isEmpty() else hs.isEmpty()
             if (empty) {
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {

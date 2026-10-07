@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
@@ -260,18 +261,23 @@ private fun YtFeed(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit) {
 
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(refreshing) { if (refreshing) { delay(1500); refreshing = false } }
+    val pullState = rememberPullToRefreshState()
 
     val nudge = fresh && s.nudge && s.key == YtApp.urlKey(tab.url)
     when {
         list.isEmpty() && YtApp.pageOf(tab.url) == "home" && (nudge || waited) -> YtStart(tab)
         list.isEmpty() && !waited -> YtSkeleton()
         list.isEmpty() -> YtEmpty(onShowSite, onRetry = { retry++; YtApp.refresh(tab) })
-        else -> PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize()) {
+        else -> PullToRefreshBox(
+            isRefreshing = refreshing, onRefresh = { refreshing = true; YtApp.refresh(tab) }, modifier = Modifier.fillMaxSize(),
+            state = pullState,
+            indicator = { NovaPullIndicator(pullState, refreshing, Modifier.align(Alignment.TopCenter)) }
+        ) {
             LazyColumn(state = state, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 6.dp, bottom = 12.dp)) {
                 itemsIndexed(list, key = { _, v -> v.id }) { _, v -> Box(Modifier.animateItem()) { VideoCard(v, onClick = { if (plId != null) YtApp.openInList(tab, v.id, plId) else YtApp.open(tab, v) }) } }
                 item {
                     Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.tertiary)
+                        NovaSpinner(size = 22.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -520,23 +526,29 @@ private fun PickRow(label: String, sub: String?, selected: Boolean, onClick: () 
     }
 }
 
-/** معاينة حيّة لشكل الترجمة (الحجم والخلفية) فوق لقطة داكنة، كما ستظهر في منتصف أسفل المشغّل. */
+/** معاينة حيّة لشكل الترجمة وموضعها (أعلى/وسط/أسفل + الإزاحة) فوق لقطة داكنة. */
 @Composable
-private fun CcPreview(size: String, bg: String) {
+private fun CcPreview(size: String, bg: String, pos: String, off: Int) {
     val k = when (size) { "s" -> 0.82f; "l" -> 1.22f; "xl" -> 1.5f; else -> 1f }
     val fill = when (bg) { "solid" -> Color(0xEB000000); "none" -> Color.Transparent; else -> Color(0xAD0E0E12) }
+    val h = 120.dp
+    val gap = h * (off / 100f)
     Box(
-        Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().height(h).clip(RoundedCornerShape(16.dp))
             .background(Brush.verticalGradient(listOf(Color(0xFF3B4F73), Color(0xFF0F172A)))),
-        contentAlignment = Alignment.BottomCenter
+        contentAlignment = when (pos) { "t" -> Alignment.TopCenter; "m" -> Alignment.Center; else -> Alignment.BottomCenter }
     ) {
         Text(
             L("هكذا ستظهر الترجمة"), color = Color.White, fontSize = (15f * k).sp, textAlign = TextAlign.Center,
             style = if (bg == "none") TextStyle(shadow = Shadow(Color.Black, Offset(0f, 1f), 8f)) else TextStyle.Default,
-            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp).background(fill, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp)
+            modifier = Modifier
+                .padding(start = 8.dp, end = 8.dp, top = if (pos == "t") 10.dp + gap else 0.dp, bottom = if (pos == "b") 10.dp + gap else if (pos == "m") gap * 2 else 0.dp)
+                .background(fill, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp)
         )
     }
 }
+
+private fun posLabel(k: String): String = when (k) { "t" -> L("أعلى"); "m" -> L("وسط"); else -> L("أسفل") }
 
 /**
  * قائمة إعدادات المشغّل الأصلية: سرعة، جودة، ترجمة (لغات حقيقية + ترجمة تلقائية + شكل)، تكرار.
@@ -571,7 +583,7 @@ private fun YtPlayerSheet(tab: BrowserTab) {
             SheetCard(L("الترجمة (CC)")) {
                 if (info == null || (!info.ccReady && info.captions.isEmpty())) {
                     Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                        NovaSpinner(size = 18.dp, color = cs.onSurfaceVariant)
                         Text(L("جارٍ تحميل لغات الترجمة…"), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
                     }
                 } else if (info.captions.isEmpty()) {
@@ -603,13 +615,25 @@ private fun YtPlayerSheet(tab: BrowserTab) {
             SheetCard(L("شكل الترجمة")) {
                 val size = info?.ccSize ?: "m"
                 val bg = info?.ccBg ?: "glass"
-                CcPreview(size, bg)
+                val pos = info?.ccPos ?: "b"
+                var off by remember(info?.ccOff) { mutableIntStateOf(info?.ccOff ?: 0) }
+                CcPreview(size, bg, pos, off)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("s", "m", "l", "xl").forEach { k -> OptionChip(sizeLabel(k), size == k) { YtApp.setCcStyle(tab, k, bg) } }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("glass", "solid", "none").forEach { k -> OptionChip(bgLabel(k), bg == k) { YtApp.setCcStyle(tab, size, k) } }
                 }
+                Text(L("موضع الترجمة"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("t", "m", "b").forEach { k -> OptionChip(posLabel(k), pos == k) { YtApp.setCcStyle(tab, size, bg, k, off) } }
+                }
+                Text(L("الإزاحة عن الحافة"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                Slider(
+                    value = off.toFloat(), valueRange = 0f..40f,
+                    onValueChange = { off = it.toInt(); YtApp.setCcStyle(tab, size, bg, pos, off, quiet = true) },
+                    onValueChangeFinished = { YtApp.setCcStyle(tab, size, bg, pos, off) }
+                )
             }
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer)
@@ -620,7 +644,7 @@ private fun YtPlayerSheet(tab: BrowserTab) {
                 Switch(checked = info?.loop == true, onCheckedChange = null)
             }
             if (info == null) Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                NovaSpinner(size = 22.dp, color = cs.onSurfaceVariant)
             }
         }
     }
@@ -809,7 +833,7 @@ private fun YtWatchView(tab: BrowserTab, fresh: Boolean, onShowSite: () -> Unit,
                 itemsIndexed(list, key = { _, v -> v.id }) { _, v -> VideoCard(v, onClick = { YtApp.open(tab, v) }) }
                 if (list.isEmpty()) item {
                     Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                        NovaSpinner(size = 22.dp, color = cs.onSurfaceVariant)
                     }
                 }
             }
@@ -878,7 +902,7 @@ private fun YtComments(tab: BrowserTab, onShowSite: () -> Unit) {
                     }
                 }
             }
-            !waited -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = cs.tertiary) }
+            !waited -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { NovaSpinner(size = 24.dp, color = cs.onSurfaceVariant) }
             else -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(L("لم تُحمَّل التعليقات من الصفحة"), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
@@ -1043,7 +1067,7 @@ private fun YtSaveSheet(tab: BrowserTab, onShowSite: () -> Unit) {
                     TextButton(onClick = { YtApp.saveClose(tab); onShowSite() }) { Text(L("عرض الموقع"), color = cs.tertiary) }
                 }
                 opts == null -> Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                    NovaSpinner(size = 22.dp, color = cs.onSurfaceVariant)
                 }
                 else -> {
                     opts.forEachIndexed { i, o ->

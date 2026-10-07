@@ -13,7 +13,7 @@
     var FIX = window.__novaYtFix = { v: 2 };
 
     // ───────── تخزين آمن (قد يرفض الوصول في بعض الحالات) ─────────
-    var K = { lang: 'nova_cc_lang', tr: 'nova_cc_tr', size: 'nova_cc_size', bg: 'nova_cc_bg' };
+    var K = { lang: 'nova_cc_lang', tr: 'nova_cc_tr', size: 'nova_cc_size', bg: 'nova_cc_bg', pos: 'nova_cc_pos', off: 'nova_cc_off' };
     function sget(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
     function sset(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function qa(sel, root) { try { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); } catch (e) { return []; } }
@@ -30,11 +30,15 @@
       // الحاوية: لا تلتقط اللمس فتصل الضغطات للمشغّل
       '.ytp-caption-window-container{pointer-events:none!important}' +
       // النافذة: وسط أفقي دائماً بغضّ النظر عن اتجاه لغة الترجمة، وترتفع قليلاً عند ظهور أزرار التحكم
-      '.ytp-caption-window-container .caption-window,.caption-window{position:absolute!important;left:50%!important;right:auto!important;top:auto!important;' +
-      'bottom:15%!important;transform:translateX(-50%)!important;margin:0!important;width:auto!important;max-width:90%!important;' +
+      '.ytp-caption-window-container .caption-window,.caption-window{position:absolute!important;left:50%!important;right:auto!important;' +
+      'transform:translateX(-50%)!important;margin:0!important;width:auto!important;max-width:90%!important;' +
       'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important;' +
-      'transition:bottom .22s cubic-bezier(.2,0,0,1)!important;contain:layout style}' +
-      '.ytp-autohide .caption-window{bottom:6%!important}' +
+      'transition:bottom .22s cubic-bezier(.2,0,0,1),top .22s cubic-bezier(.2,0,0,1)!important;contain:layout style}' +
+      // موضع الترجمة (يختاره المستخدم): b أسفل (فوق أزرار التحكم) • m وسط • t أعلى. --nova-cc-off نسبة مئوية للإزاحة الدقيقة نحو الداخل
+      'html:not([data-nova-ccpos]) .caption-window,html[data-nova-ccpos="b"] .caption-window{top:auto!important;bottom:calc(15% + var(--nova-cc-off,0)*1%)!important}' +
+      'html:not([data-nova-ccpos]) .ytp-autohide .caption-window,html[data-nova-ccpos="b"] .ytp-autohide .caption-window{bottom:calc(6% + var(--nova-cc-off,0)*1%)!important}' +
+      'html[data-nova-ccpos="m"] .caption-window{bottom:auto!important;top:calc(50% - var(--nova-cc-off,0)*1%)!important;transform:translate(-50%,-50%)!important}' +
+      'html[data-nova-ccpos="t"] .caption-window{bottom:auto!important;top:calc(7% + var(--nova-cc-off,0)*1%)!important}' +
       '.ytp-caption-window-container .caption-visual-line{display:block!important;text-align:center!important;margin:2px 0!important}' +
       // النص: حجم متجاوب مع عرض الشاشة، خط مقروء، زوايا مدوّرة، يلتف السطر ولا يقتصّ
       '.ytp-caption-segment{background:var(--nova-cc-bg)!important;color:#fff!important;' +
@@ -60,6 +64,9 @@
       var r = root(); if (!r) return;
       r.setAttribute('data-nova-ccsize', sget(K.size, 'm'));
       r.setAttribute('data-nova-ccbg', sget(K.bg, 'glass'));
+      r.setAttribute('data-nova-ccpos', sget(K.pos, 'b'));
+      var o = parseInt(sget(K.off, '0'), 10); if (!(o >= 0 && o <= 40)) o = 0;
+      r.style.setProperty('--nova-cc-off', String(o));
     }
     applyStyle();
 
@@ -111,12 +118,14 @@
     function ensureModule(p) { try { if (p && p.loadModule) p.loadModule('captions'); } catch (e) {} }
 
     FIX.cc = {
-      style: function (size, bg) {
+      style: function (size, bg, pos, off) {
         if (size) sset(K.size, size);
         if (bg) sset(K.bg, bg);
+        if (pos === 'b' || pos === 'm' || pos === 't') sset(K.pos, pos);
+        if (off !== undefined && off !== null && off !== '') sset(K.off, String(Math.max(0, Math.min(40, Math.round(Number(off) || 0)))));
         applyStyle();
       },
-      styleOf: function () { return { size: sget(K.size, 'm'), bg: sget(K.bg, 'glass') }; },
+      styleOf: function () { return { size: sget(K.size, 'm'), bg: sget(K.bg, 'glass'), pos: sget(K.pos, 'b'), off: parseInt(sget(K.off, '0'), 10) || 0 }; },
       info: function () {
         var p = player(), list = trackList(p), c = current(p, list), tr = transList(p);
         return {

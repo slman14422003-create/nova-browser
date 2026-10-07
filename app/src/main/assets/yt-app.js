@@ -286,12 +286,12 @@
     ['click', 'touchend'].forEach(function (n) { document.addEventListener(n, onGear, true); });
     function playerInfo() {
       var p = playerEl(), v = videoEl(), F = window.__novaYtFix;
-      var o = { t: 'ps', rate: v ? v.playbackRate : 1, loop: v ? !!v.loop : false, q: [], cq: '', caps: [], trs: [], cc: '', tl: '', cr: false, cs: 'm', cb: 'glass' };
+      var o = { t: 'ps', rate: v ? v.playbackRate : 1, loop: v ? !!v.loop : false, q: [], cq: '', caps: [], trs: [], cc: '', tl: '', cr: false, cs: 'm', cb: 'glass', cp: 'b', co: 0 };
       try { if (p && p.getAvailableQualityLevels) { o.q = (p.getAvailableQualityLevels() || []).slice(0, 12); if (p.getPlaybackQuality) o.cq = p.getPlaybackQuality() || ''; } } catch (e) {}
       try {
         if (F && F.cc) {
           var ci = F.cc.info(), st = F.cc.styleOf();
-          o.caps = ci.caps.slice(0, 60); o.trs = ci.trs.slice(0, 120); o.cc = ci.cc; o.tl = ci.tl; o.cr = !!ci.ready; o.cs = st.size; o.cb = st.bg;
+          o.caps = ci.caps.slice(0, 60); o.trs = ci.trs.slice(0, 120); o.cc = ci.cc; o.tl = ci.tl; o.cr = !!ci.ready; o.cs = st.size; o.cb = st.bg; o.cp = st.pos; o.co = st.off;
         }
       } catch (e) {}
       post(o);
@@ -350,10 +350,10 @@
         try { if (F && F.cc) F.cc.set(key, tl || ''); } catch (e) {}
         setTimeout(playerInfo, 800); setTimeout(playerInfo, 1800);
       },
-      ccStyle: function (size, bg) {
+      ccStyle: function (size, bg, pos, off, quiet) {
         var F = window.__novaYtFix;
-        try { if (F && F.cc) F.cc.style(size, bg); } catch (e) {}
-        playerInfo();
+        try { if (F && F.cc) F.cc.style(size, bg, pos, off); } catch (e) {}
+        if (!quiet) playerInfo();
       },
       loop: function (on) { var v = videoEl(); if (v) v.loop = !!on; setTimeout(playerInfo, 100); },
       mini: function (on) { applyMini(on); if (!on) sched(); },
