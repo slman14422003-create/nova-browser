@@ -1,32 +1,12 @@
--keepattributes *Annotation*
--dontwarn java.lang.invoke.StringConcatFactory
+# Keep readable stack traces in crash reports (mapping.txt is uploaded by the workflow)
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# NewPipeExtractor + Rhino + jsoup
--keep class org.schabi.newpipe.extractor.** { *; }
--keep class org.mozilla.javascript.** { *; }
--keep class org.mozilla.classfile.ClassFileWriter
--dontwarn org.mozilla.javascript.JavaToJSONConverters
--dontwarn org.mozilla.javascript.tools.**
--dontwarn javax.script.**
--dontwarn jdk.dynalink.**
--dontwarn java.beans.**
--dontwarn org.jsoup.**
--dontwarn com.google.re2j.**
--dontwarn edu.umd.cs.findbugs.annotations.**
--dontwarn javax.annotation.**
--dontwarn com.google.protobuf.**
--dontwarn sun.misc.Unsafe
--dontwarn com.google.errorprone.annotations.**
--dontwarn org.checkerframework.**
--dontwarn javax.lang.model.**
-
-# FFmpegKit
--keep class com.arthenica.ffmpegkit.** { *; }
--keep class com.arthenica.smartexception.** { *; }
--dontwarn com.arthenica.**
-
-# OkHttp / Okio (مزوّدات TLS الاختيارية غير موجودة على أندرويد)
--dontwarn okhttp3.internal.platform.**
--dontwarn org.conscrypt.**
--dontwarn org.bouncycastle.**
--dontwarn org.openjsse.**
+# Hardening: remove all debug/verbose logging and flatten package names
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
+-repackageclasses ''
+-allowaccessmodification
