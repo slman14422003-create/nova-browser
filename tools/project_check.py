@@ -66,7 +66,7 @@ if (AS / "privacy.js").exists() and "__SEED__" not in (AS / "privacy.js").read_t
     errors.append("privacy.js: العلامة __SEED__ مفقودة")
 
 # 2.8) كل نص L("...") له ترجمة إنجليزية في I18n.kt
-i18n = (SRC / "I18n.kt").read_text(encoding="utf-8")
+i18n = (SRC / "core" / "I18n.kt").read_text(encoding="utf-8")
 keys = set(re.findall(r'^\s+"((?:\\.|[^"\\])*)" to "', i18n, re.M))
 used = set()
 for f in SRC.rglob("*.kt"):
@@ -98,13 +98,13 @@ for wf in (ROOT / ".github/workflows").glob("*.yml"):
 
 
 # 2.95) تنظيم الواجهة: القياسات تأتي من UiLayout فقط
-if not (SRC / "UiLayout.kt").exists():
+if not (SRC / "ui" / "UiLayout.kt").exists():
     errors.append("UiLayout.kt مفقود (ملف تنظيم الواجهة)")
 else:
-    sb = (SRC / "SiteBar.kt").read_text(encoding="utf-8")
+    sb = (SRC / "pwa" / "SiteBar.kt").read_text(encoding="utf-8")
     if re.search(r"height\((45|48|3)\.dp\)", sb): errors.append("SiteBar.kt: ارتفاع الشريط مكتوب رقماً — استخدم UiLayout.BAR_ROW_DP / PROGRESS_DP")
-    if re.search(r"BAR_H\s*=\s*\d", (SRC / "Pwa.kt").read_text(encoding="utf-8")): errors.append("Pwa.kt: BAR_H يجب أن يشير إلى UiLayout.BAR_DP")
-    if "fun Modifier.pageInsets" in (SRC / "Motion.kt").read_text(encoding="utf-8"): errors.append("Motion.kt: pageInsets مكرّرة — مكانها UiLayout.kt")
+    if re.search(r"BAR_H\s*=\s*\d", (SRC / "pwa" / "Pwa.kt").read_text(encoding="utf-8")): errors.append("Pwa.kt: BAR_H يجب أن يشير إلى UiLayout.BAR_DP")
+    if "fun Modifier.pageInsets" in (SRC / "ui" / "Motion.kt").read_text(encoding="utf-8"): errors.append("Motion.kt: pageInsets مكرّرة — مكانها UiLayout.kt")
     if not (AS / "pwa.js").exists(): errors.append("assets/pwa.js مفقود")
 
 
@@ -113,7 +113,7 @@ mf2 = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 for need, msg in (('android.intent.category.BROWSABLE', 'BROWSABLE'), ('android.intent.action.SEND', 'ACTION_SEND (مشاركة ← Nova)'),
                   ('android.intent.action.WEB_SEARCH', 'ACTION_WEB_SEARCH'), ('android:scheme="https"', 'scheme https')):
     if need not in mf2: errors.append("Manifest: ينقصه " + msg + " (مطلوب ليصلح التطبيق كمتصفح افتراضي)")
-if not (SRC / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt مفقود")
+if not (SRC / "core" / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt مفقود")
 
 
 
@@ -121,10 +121,10 @@ if not (SRC / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt م
 # 2.98) واجهة يوتيوب الأصلية: السكربت موجود ويحمل علامة الإعدادات، والجلسة معرّفة
 _yt = (AS / "yt-all.js")
 if not _yt.exists() or "__CFG__" not in _yt.read_text(encoding="utf-8"): errors.append("yt-all.js مفقود أو بلا __CFG__")
-if "val yt = YtSession()" not in (SRC / "MainActivity.kt").read_text(encoding="utf-8"): errors.append("BrowserTab.yt مفقود")
+if "val yt = YtSession()" not in (SRC / "browser" / "BrowserTab.kt").read_text(encoding="utf-8"): errors.append("BrowserTab.yt مفقود")
 
 # 3) كل Prefs.xxx المستخدمة معرّفة
-prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
+prefs = (SRC / "core" / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))
 defined = {x for t in defined for x in t if x}
 for f in SRC.rglob("*.kt"):
