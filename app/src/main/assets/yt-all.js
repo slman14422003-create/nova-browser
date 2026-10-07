@@ -44,7 +44,9 @@ try {
       // لمسة جمالية لأزرار المشغّل: تدرّج خفيف يوضّح الأزرار فوق أي فيديو، وأزرار الوسط بخلفية زجاجية مستديرة
       '.player-controls-background{background:linear-gradient(180deg,rgba(0,0,0,.55) 0,rgba(0,0,0,0) 32%,rgba(0,0,0,0) 58%,rgba(0,0,0,.72) 100%)!important}' +
       '.player-controls-middle button{background:rgba(0,0,0,.38)!important;border-radius:50%!important;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}' +
-      '.player-controls-top,.player-controls-bottom{text-shadow:0 1px 3px rgba(0,0,0,.65)}';
+      '.player-controls-top,.player-controls-bottom{text-shadow:0 1px 3px rgba(0,0,0,.65)}' +
+      // أزرار الأعلى (ترجمة/إعدادات): نفس الشكل الزجاجي المستدير لأزرار الوسط وبمسافات متساوية
+      '.player-controls-top button:not([aria-label*=utoplay i]):not([class*=autonav]){background:rgba(0,0,0,.34)!important;border-radius:50%!important;margin:0 3px!important;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}';
     // الترجمة (CC): تصميمها ومديرها في yt-fix.js (ملف دعم يوتيوب)
     function applyMode() {
       var want = mode && location.pathname === '/watch';
@@ -129,7 +131,13 @@ try {
 
     var chipEls = [];
     function chips() {
-      chipEls = qa('ytm-feed-filter-chip-bar-renderer ytm-chip-cloud-chip-renderer, ytm-feed-filter-chip-bar-renderer chip-shape');
+      var all = qa('ytm-feed-filter-chip-bar-renderer ytm-chip-cloud-chip-renderer, ytm-feed-filter-chip-bar-renderer chip-shape');
+      // العنصر الأب والابن يطابقان معاً فتتكرر الشرائح: نُبقي الأعلى فقط ثم نزيل أي تكرار بالنص
+      var seenChip = {};
+      chipEls = all.filter(function (e) {
+        for (var i = 0; i < all.length; i++) if (all[i] !== e && all[i].contains(e)) return false;
+        var k = tx(e); if (!k || seenChip[k]) return false; seenChip[k] = 1; return true;
+      });
       return chipEls.slice(0, 30).map(function (e) {
         var sel = e.getAttribute('aria-selected') === 'true' || !!e.querySelector('[aria-selected="true"]') ||
           /selected|active/i.test((e.className || '') + ' ' + ((e.firstElementChild && e.firstElementChild.className) || ''));
@@ -138,6 +146,16 @@ try {
     }
 
     // ───────── صفحة المشاهدة ─────────
+    // بيانات الفيديو من المشغّل نفسه (أوثق من DOM حين يغيّر يوتيوب أسماء العناصر)
+    function vdata() {
+      try { var p = playerEl(), d = p && p.getVideoData && p.getVideoData(); return d && d.video_id === (params().get('v') || '') ? d : null; } catch (e) { return null; }
+    }
+    function pickEl(root, sels) { for (var i = 0; i < sels.length; i++) { var e = q1(sels[i], root); if (e && tx(e)) return e; } return null; }
+    // سطر المشاهدات والتاريخ: بلا الإعجابات ولا المعرّف (@…) وبفاصل واضح بين المشاهدات والتاريخ
+    function cleanInfo(el) {
+      return lines(el).filter(function (l) { return l.indexOf('@') < 0 && !/(likes?|إعجاب)/i.test(l); }).join(' • ')
+        .replace(/(views?|مشاهد[ةات]*)(?=[^\s•])/i, '$1 • ').slice(0, 140);
+    }
     function watchData() {
       var owner = q1('ytm-slim-owner-renderer');
       var bar = q1('ytm-slim-video-action-bar-renderer');
@@ -146,14 +164,19 @@ try {
       var ce = q1('ytm-comments-entry-point-header-renderer, ytm-comments-entry-point-teaser-renderer, ytm-comments-entry-point-renderer');
       var cl = lines(ce);
       var sbLab = sb ? ((sb.getAttribute('aria-label') || '') + ' ' + tx(sb)) : '';
+      var vd = vdata(), infoEl = pickEl(document, ['ytm-slim-video-metadata-section-renderer .secondary-text', '.slim-video-information-subtitle', '.slim-video-metadata-header .subhead', 'ytm-slim-video-metadata-section-renderer']);
+      var metaLines = lines(infoEl), handle = '';
+      metaLines.forEach(function (l) { if (!handle && l.charAt(0) === '@') handle = l; else if (!handle && l.slice(-1) === '@') handle = '@' + l.slice(0, -1); });
+      var ownerLines = lines(owner), subsLine = '';
+      ownerLines.forEach(function (l) { if (!subsLine && /(subscriber|مشترك)/i.test(l)) subsLine = l; });
       return {
         id: params().get('v') || '',
         title: pick(document, ['ytm-slim-video-metadata-section-renderer h2', '.slim-video-metadata-title', 'h2.slim-video-information-title', 'h1']) ||
           document.title.replace(/\s*-\s*YouTube$/, ''),
-        chan: pick(owner, ['.slim-owner-channel-name', 'a[href^="/@"]', 'a[href*="/channel/"]', 'h3']),
-        subs: pick(owner, ['.subhead', '.slim-owner-subscriber-count', '[class*=subscriber]']),
+        chan: pick(owner, ['.slim-owner-channel-name', 'a[href^="/@"]', 'a[href*="/channel/"]', 'h3']) || (vd && vd.author) || handle.replace(/^@/, ''),
+        subs: pick(owner, ['.subhead', '.slim-owner-subscriber-count', '[class*=subscriber]']) || subsLine,
         oa: avOf(owner),
-        info: pick(document, ['ytm-slim-video-metadata-section-renderer .secondary-text', '.slim-video-information-subtitle', '.slim-video-metadata-header .subhead']),
+        info: infoEl ? cleanInfo(infoEl) : '',
         likes: lb ? (tx(lb) || '') : '',
         liked: !!(lb && lb.getAttribute('aria-pressed') === 'true'),
         subbed: !!(sb && (sb.getAttribute('aria-pressed') === 'true' || /unsubscribe|subscribed|مشترك/i.test(sbLab))),
@@ -284,7 +307,7 @@ try {
       history[k] = function () { var r = o.apply(this, arguments); cOpen = false; sched(); return r; };
     });
     window.addEventListener('popstate', function () { cOpen = false; sched(); });
-    setInterval(function () { if (!document.hidden) snap(); }, 2500);
+    setInterval(function () { if (!document.hidden) snap(); }, 4000);   // شبكة أمان فقط؛ التغييرات تُلتقط فوراً بالمراقب
 
     // ───────── المشغّل: إعدادات أصلية (جودة/سرعة/ترجمة) ─────────
     // قائمة الإعدادات الأصلية في يوتيوب مخفية خلف الواجهة الأصلية فلا يمكن لمسها، لذلك نلتقط ضغطة زر الترس
@@ -330,7 +353,12 @@ try {
       '.ytp-gradient-top,.ytp-gradient-bottom,.ytp-pause-overlay,.ytp-ce-element,.ytp-endscreen-content,ytm-player-endscreen-renderer,.ytp-spinner{display:none!important}' +
       // الفيديو يملأ الإطار دائماً (يوتيوب يضع مقاسات بكسل قديمة على العنصر بعد تغيّر حجم الصفحة)
       '.html5-video-container{width:100%!important;height:100%!important}' +
-      'video.html5-main-video{width:100%!important;height:100%!important;left:0!important;top:0!important;object-fit:contain!important}';
+      'video.html5-main-video{width:100%!important;height:100%!important;left:0!important;top:0!important;object-fit:contain!important}' +
+      // الحاوية تملأ نافذة المعاينة كلها دائماً (يوتيوب يترك مقاسات قديمة تظهر الفيديو صغيراً وسط فراغ أسود)
+      'html,body{overflow:hidden!important;background:#000!important;margin:0!important}' +
+      '#player-container-id,.player-container{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;max-height:none!important}' +
+      '#movie_player,.html5-video-player{width:100%!important;height:100%!important}' +
+      '.html5-video-container{position:absolute!important;top:0!important;left:0!important}';
     function applyMini(on) {
       miniOn = !!on;
       var s = document.getElementById(MINI_ID);

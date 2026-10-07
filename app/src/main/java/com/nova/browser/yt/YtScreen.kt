@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -700,6 +701,8 @@ fun ChannelAvatar(name: String, size: Int, url: String = "") {
     }
 }
 
+private val imgGate = kotlinx.coroutines.sync.Semaphore(4)
+
 private val thumbs = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
     override fun sizeOf(key: String, value: Bitmap) = value.byteCount
 }
@@ -715,7 +718,8 @@ private fun fetchBitmap(url: String): Bitmap? = runCatching {
 fun NetImage(url: String, modifier: Modifier, showBg: Boolean = true) {
     val cs = MaterialTheme.colorScheme
     var bmp by remember(url) { mutableStateOf(thumbs.get(url)) }
-    LaunchedEffect(url) { if (bmp == null) bmp = withContext(Dispatchers.IO) { fetchBitmap(url) } }
+    // أربعة تنزيلات كحد أقصى معاً؛ البطاقات التي تغادر الشاشة أثناء التمرير السريع تُلغى قبل أن تبدأ (يمنع تراكم الشبكة والذاكرة)
+    LaunchedEffect(url) { if (bmp == null) bmp = imgGate.withPermit { thumbs.get(url) ?: withContext(Dispatchers.IO) { fetchBitmap(url) } } }
     Box(if (showBg) modifier.background(cs.surfaceContainerHigh) else modifier) {
         bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
     }

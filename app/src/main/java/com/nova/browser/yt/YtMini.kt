@@ -118,6 +118,13 @@ object YtMini {
         }
     }
 
+    /** يسلّم الـ WebView الحيّ للتبويب (عند التكبير) بلا تدميره؛ يعيد null إن لم يكن نشطاً. */
+    fun handOver(): WebView? {
+        val w = wv ?: return null
+        wv = null; want = false; stalls = 0; kicks = 0
+        return w
+    }
+
     fun close() {
         val w = wv ?: return
         retired.add(w)

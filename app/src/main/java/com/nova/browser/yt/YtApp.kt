@@ -145,7 +145,7 @@ object YtApp {
             l.distinctBy { it.id }   // مفاتيح LazyColumn يجب أن تكون فريدة
         }
         val ch = o.optJSONArray("chips")
-        val chips = if (ch == null) emptyList() else (0 until ch.length()).mapNotNull { i -> ch.optJSONObject(i)?.let { it.optString("x") to it.optBoolean("s") } }
+        val chips = if (ch == null) emptyList() else (0 until ch.length()).mapNotNull { i -> ch.optJSONObject(i)?.let { it.optString("x") to it.optBoolean("s") } }.distinctBy { it.first }
         val w = o.optJSONObject("w")
         val watch = if (w == null) null else YtWatchData(
             w.optString("id"), w.optString("title"), w.optString("chan"), w.optString("subs"), w.optString("info"), w.optString("likes"),
@@ -352,9 +352,35 @@ object YtApp {
         return true
     }
 
+    private const val RESUME_JS = "(function(){var v=document.querySelector('video');if(v&&v.paused&&!v.ended){var p=v.play();if(p&&p.catch)p.catch(function(){})}})()"
+
+    /** ينقل الـ WebView الحيّ من المشغّل المصغّر إلى التبويب مكان صفحة القوائم (التي تُحرَّر). يعيد false إن تعذّر فيُستعمل الطريق القديم. */
+    private fun handBack(tab: BrowserTab, w: WebView, url: String): Boolean = runCatching {
+        val was = YtMini.playing
+        YtMini.handOver() ?: return@runCatching false
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        val old = tab.webView
+        tab.webView = w; tab.saved = null
+        tab.url = url; tab.canBack = w.canGoBack(); tab.canForward = w.canGoForward(); tab.loading = false
+        val s = tab.yt
+        s.showComments = false; s.showSite = false; s.psOpen = false; s.ps = null; s.searching = false
+        s.watch = null; s.comments = emptyList(); s.items = emptyList(); s.key = ""
+        w.evaluateJavascript("window.__novaMini&&window.__novaMini(false);window.__novaYtApp&&window.__novaYtApp.mini(false)", null)
+        w.onResume(); w.resumeTimers()
+        tab.epoch++
+        // إعادة ربط الـ WebView بالواجهة قد توقف الفيديو لحظة: نستأنفه إن كان يعمل
+        if (was) for (d in longArrayOf(350L, 1100L)) ui.postDelayed({ if (tab.webView === w) w.evaluateJavascript(RESUME_JS, null) }, d)
+        // صفحة القوائم القديمة تُحرَّر بعد أن تنتهي الواجهة من فصلها
+        if (old != null && old !== w) ui.postDelayed({ runCatching { old.stopLoading(); (old.parent as? android.view.ViewGroup)?.removeView(old); old.destroy() } }, 500L)
+        true
+    }.getOrDefault(false)
+
     /** يوسّع المشغّل المصغّر: يفتح الفيديو في التبويب الحالي من الموضع نفسه ويغلق النافذة العائمة. */
     fun expandMini(tab: BrowserTab) {
         val w = YtMini.wv ?: return
+        // التكبير بلا إعادة تحميل: نفس صفحة المشغّل المصغّر (بكل ما حُمّل ووقت التشغيل) تعود إلى التبويب
+        val cur = w.url
+        if (cur != null && pageOf(cur) == "watch" && handBack(tab, w, cur)) return
         val id = Regex("[?&]v=([\\w-]{11})").find(w.url ?: "")?.groupValues?.get(1)
         w.evaluateJavascript("(function(){var v=document.querySelector('video');return v?Math.floor(v.currentTime):0})()") { r ->
             val sec = r?.trim('"')?.toIntOrNull() ?: 0
