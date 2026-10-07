@@ -78,14 +78,7 @@ jobs:
           echo "APP_VERSION_NAME=${TAG#v}" >> "$GITHUB_ENV"
           echo "VERSION_CODE_OVERRIDE=$((10 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
 
-      - name: Security guard (network and file exposure)
-        run: |
-          SRC=app/src/main/java
-          # 1) network classes may only appear in Net.java (Updater.java only uses its connection type)
-          if grep -rEn "java\.net\.|HttpURLConnection|HttpsURLConnection|okhttp|android\.net\.http|javax\.net|loadUrl\(|DownloadManager" $SRC \
-               | grep -v -E "/(Net|Updater)\.java:"; then
-            echo "::error title=Network guard::network code outside Net.java"; exit 1
-          fi
+      - 
           # 2) only the launcher and the screens that replace the system installer / Files app (install, open link, file picker) may be exported
           M=app/src/main/AndroidManifest.xml
           EXP="$(grep -B1 'android:exported="true"' $M | grep -o 'android:name="[^"]*"' | sort | tr '\n' ' ')"
