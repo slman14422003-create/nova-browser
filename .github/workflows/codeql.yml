@@ -24,7 +24,7 @@ jobs:
         include:
           - language: java-kotlin      # كود التطبيق (Kotlin + Java)
             build-mode: manual
-          - language: javascript-typescript   # سكربتات الصفحات في assets (yt.js, pw.js, privacy.js, render.js)
+          - language: javascript-typescript   # سكربتات الصفحات في assets (yt-all.js, pw.js, privacy.js, render.js)
             build-mode: none
           - language: actions          # ملفات workflows نفسها
             build-mode: none

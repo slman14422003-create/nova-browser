@@ -27,7 +27,7 @@ def strip(code: str) -> str:
     return _TOKEN.sub(repl, code)
 
 # 1) توازن الأقواس
-for f in sorted(SRC.glob("*.*")):
+for f in sorted(SRC.rglob("*.*")):
     if f.suffix not in (".kt", ".java"):
         continue
     c = strip(f.read_text(encoding="utf-8"))
@@ -38,7 +38,7 @@ for f in sorted(SRC.glob("*.*")):
 # 2) مكونات الـ Manifest موجودة
 mf = (ROOT / "app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
 for name in re.findall(r'android:name="\.(\w+)"', mf):
-    if not (SRC / f"{name}.kt").exists() and not (SRC / f"{name}.java").exists():
+    if not any(SRC.rglob(f"{name}.kt")) and not any(SRC.rglob(f"{name}.java")):
         errors.append(f"Manifest يشير إلى .{name} ولا يوجد ملف له")
 
 # 2.5) تدقيق أمني للـ Manifest
@@ -47,7 +47,7 @@ if 'android:debuggable="true"' in mf: errors.append("أمان: debuggable=true �
 if "EnableSafeBrowsing" not in mf: warnings.append("أمان: لم يُفعَّل Safe Browsing في Manifest")
 for m in re.finditer(r"<(?:service|receiver|provider)[^>]*android:exported=\"true\"", mf):
     errors.append("أمان: مكوّن مكشوف exported=true: " + m.group(0)[:60])
-if re.search(r"setJavaScriptEnabled|addJavascriptInterface", "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt"))) and "addJavascriptInterface" in "".join(f.read_text(encoding="utf-8") for f in SRC.glob("*.kt")):
+if re.search(r"setJavaScriptEnabled|addJavascriptInterface", "".join(f.read_text(encoding="utf-8") for f in SRC.rglob("*.kt"))) and "addJavascriptInterface" in "".join(f.read_text(encoding="utf-8") for f in SRC.rglob("*.kt")):
     warnings.append("أمان: addJavascriptInterface مستخدم — تأكد من حصره بمصادر موثوقة")
 
 # 2.7) ملفات assets المطلوبة
@@ -69,7 +69,7 @@ if (AS / "privacy.js").exists() and "__SEED__" not in (AS / "privacy.js").read_t
 i18n = (SRC / "I18n.kt").read_text(encoding="utf-8")
 keys = set(re.findall(r'^\s+"((?:\\.|[^"\\])*)" to "', i18n, re.M))
 used = set()
-for f in SRC.glob("*.kt"):
+for f in SRC.rglob("*.kt"):
     if f.name == "I18n.kt": continue
     used |= set(re.findall(r'\bL\("((?:\\.|[^"\\])*)"\)', f.read_text(encoding="utf-8")))
 for u in sorted(used - keys): errors.append(f"i18n: لا ترجمة إنجليزية للنص: {u}")
@@ -119,15 +119,15 @@ if not (SRC / "DefaultBrowser.kt").exists(): errors.append("DefaultBrowser.kt م
 
 
 # 2.98) واجهة يوتيوب الأصلية: السكربت موجود ويحمل علامة الإعدادات، والجلسة معرّفة
-_yt = (AS / "yt-app.js")
-if not _yt.exists() or "__CFG__" not in _yt.read_text(encoding="utf-8"): errors.append("yt-app.js مفقود أو بلا __CFG__")
+_yt = (AS / "yt-all.js")
+if not _yt.exists() or "__CFG__" not in _yt.read_text(encoding="utf-8"): errors.append("yt-all.js مفقود أو بلا __CFG__")
 if "val yt = YtSession()" not in (SRC / "MainActivity.kt").read_text(encoding="utf-8"): errors.append("BrowserTab.yt مفقود")
 
 # 3) كل Prefs.xxx المستخدمة معرّفة
 prefs = (SRC / "Settings.kt").read_text(encoding="utf-8")
 defined = set(re.findall(r"(?:va[lr])\s+(\w+)\s*(?:by|=|:)|fun\s+(\w+)\(", prefs))
 defined = {x for t in defined for x in t if x}
-for f in SRC.glob("*.kt"):
+for f in SRC.rglob("*.kt"):
     for m in set(re.findall(r"\bPrefs\.(\w+)", f.read_text(encoding="utf-8"))):
         if m not in defined and m != "engines":
             errors.append(f"{f.name}: Prefs.{m} غير معرّف")
