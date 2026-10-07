@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -51,7 +52,8 @@ val TabTagColors = listOf(Color.Transparent, Color(0xFFE57373), Color(0xFFFFB74D
 fun TabSwitcher(
     tabs: List<BrowserTab>, current: Int,
     onSelect: (Int) -> Unit, onClose: (Int) -> Unit, onNew: () -> Unit, onCloseAll: () -> Unit, onBack: () -> Unit,
-    onDuplicate: (Int) -> Unit = {}, onCloseOthers: (Int) -> Unit = {}, onCloseTag: (Int) -> Unit = {}
+    onDuplicate: (Int) -> Unit = {}, onCloseOthers: (Int) -> Unit = {}, onCloseTag: (Int) -> Unit = {},
+    canReopen: Boolean = false, onReopen: () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     var picked by remember { mutableIntStateOf(-1) }   // -1 الكل، -2 المثبّتة، 1..6 علامة
@@ -69,6 +71,7 @@ fun TabSwitcher(
                     Text(L("التبويبات"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text("" + tabs.size + L(" مفتوحة"), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                 }
+                if (canReopen) IconButton(onClick = onReopen) { Icon(Icons.Default.Refresh, L("إعادة فتح تبويب مغلق")) }
                 TextButton(onClick = onCloseAll) { Text(L("إغلاق الكل")) }
                 FilledTonalButton(onClick = onNew) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(L("جديد")) }
                 Spacer(Modifier.width(8.dp))
@@ -109,7 +112,12 @@ fun TabSwitcher(
                                 if (t.tag > 0) Box(Modifier.fillMaxWidth().height(4.dp).background(TabTagColors[t.tag]))
                                 Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 2.dp, top = if (t.tag > 0) 0.dp else 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(22.dp).clip(CircleShape).background(accent), contentAlignment = Alignment.Center) {
-                                        Text(host.take(1).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        val fvTick = Favicons.version   // يعيد الرسم عند وصول أيقونة
+                                        val ic = if (blank) null else remember(host, fvTick) { Favicons.get(host) }
+                                        if (ic != null) {
+                                            val ib = remember(ic) { ic.asImageBitmap() }
+                                            Image(ib, null, Modifier.fillMaxSize().background(Color.White), contentScale = ContentScale.Fit)
+                                        } else Text(host.take(1).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                     Spacer(Modifier.width(8.dp))
                                     if (t.pinned) { Text("📌", fontSize = 11.sp); Spacer(Modifier.width(4.dp)) }

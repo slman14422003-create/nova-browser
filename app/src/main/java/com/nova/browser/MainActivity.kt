@@ -230,7 +230,7 @@ fun choose(c: Context, items: List<Pair<String, () -> Unit>>) {
 }
 
 fun errorHtml(url: String, desc: String): String = """
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+<html data-nova-err><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 :root{color-scheme:light dark}body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
 justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:${if (I18n.isEnglish()) "ltr" else "rtl"}}
 h2{margin:8px}p{opacity:.65;word-break:break-all;margin:4px}
@@ -254,6 +254,8 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     Perf.tune(this)
     Perf.installPrivacy(this)
     Perf.installRender(this)
+    WebSupport.configure(this)
+    WebSupport.installBoost(this)
     Pwa.install(this)
     YtApp.install(this, tab)
     PasswordBridge.install(this, tab, h)
@@ -282,7 +284,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtMini.owns(v)) return   // صفحة المشغّل المصغّر: لا تغيّر حالة التبويب
             if (isYtVideo(u)) YtMini.close()   // فيديو جديد في التبويب: يُغلق المشغّل المصغّر القديم
-            tab.loading = true; tab.url = u; Perf.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u)
+            tab.loading = true; tab.url = u; Perf.onPageStart(v); WebSupport.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u)
         }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             if (YtMini.owns(v)) return
@@ -298,6 +300,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             Perf.onPageDone(v)
+            WebSupport.onPageDone(v)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             YtBridge.onPageDone(v)
@@ -379,6 +382,10 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             if (YtMini.owns(v)) return
             val f = p / 100f   // نحدّث الحالة كل 5% فقط لتقليل إعادة التركيب
             if (p == 0 || p == 100 || kotlin.math.abs(f - tab.progress) >= 0.05f) tab.progress = f
+        }
+        override fun onReceivedIcon(v: WebView, icon: Bitmap?) {
+            val u = v.url ?: return
+            if (icon != null && u.startsWith("http") && !YtMini.owns(v)) Favicons.put(hostOf(u), icon)
         }
         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank() && !YtMini.owns(v)) tab.title = t }
         override fun onShowCustomView(view: View, cb: CustomViewCallback) = h.showCustom(view, cb)
@@ -469,6 +476,8 @@ class MainActivity : ComponentActivity() {
         Security.init(this)
         Perf.init(this)
         WebEngine.init(this)
+        NetKit.init(this)
+        WebSupport.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
         DefaultBrowser.refresh(this)
@@ -600,6 +609,14 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         else { permCallback = cb; permLauncher.launch(perms.filter { !granted(it) }.toTypedArray()) }
     }
 
+    // آخر التبويبات المغلقة (لإعادة فتحها من شاشة التبويبات)
+    val closedTabs = remember { mutableStateListOf<Pair<String, String>>() }
+    fun pushClosed(t: BrowserTab) {
+        if (t.url.isBlank()) return
+        closedTabs.removeAll { it.first == t.url }
+        closedTabs.add(0, t.url to t.title)
+        while (closedTabs.size > 15) closedTabs.removeAt(closedTabs.lastIndex)
+    }
     fun go(t: BrowserTab, input: String) { val u = normalize(input); t.url = u; t.webView?.loadUrl(u, Perf.privacyHeaders) }
     fun snap(t: BrowserTab) {   // لقطة مصغّرة (40%) للتبويب الظاهر قبل مغادرته
         val w = t.webView ?: return
@@ -632,24 +649,29 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         dispose(t)
     }
     fun closeTab(i: Int) {
-        dispose(tabs[i]); tabs.removeAt(i)
+        pushClosed(tabs[i]); dispose(tabs[i]); tabs.removeAt(i)
         if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
         current = current.coerceIn(0, tabs.lastIndex)
     }
     fun closeAll() {
-        tabs.toList().filter { !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        tabs.toList().filter { !it.pinned }.forEach { pushClosed(it); dispose(it); tabs.remove(it) }
         if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
         current = current.coerceIn(0, tabs.lastIndex); showTabs = false
+    }
+    fun reopenClosed() {
+        if (closedTabs.isEmpty()) return
+        val u = closedTabs.removeAt(0).first
+        tabs.add(BrowserTab(nextId++, u)); current = tabs.lastIndex; showTabs = false
     }
     fun duplicate(i: Int) { val o = tabs[i]; snap(o); tabs.add(i + 1, BrowserTab(nextId++, o.url).also { it.tag = o.tag }); current = i + 1; showTabs = false }
     fun closeOthers(i: Int) {
         val keep = tabs[i]
-        tabs.toList().filter { it !== keep && !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        tabs.toList().filter { it !== keep && !it.pinned }.forEach { pushClosed(it); dispose(it); tabs.remove(it) }
         current = tabs.indexOf(keep).coerceAtLeast(0)
     }
     fun closeByTag(tag: Int) {
         val cur = tabs.getOrNull(current)
-        tabs.toList().filter { it.tag == tag && !it.pinned }.forEach { dispose(it); tabs.remove(it) }
+        tabs.toList().filter { it.tag == tag && !it.pinned }.forEach { pushClosed(it); dispose(it); tabs.remove(it) }
         if (tabs.isEmpty()) tabs.add(BrowserTab(nextId++))
         current = (cur?.let { tabs.indexOf(it) } ?: -1).let { if (it < 0) 0 else it }
     }
@@ -1029,7 +1051,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 tabs = tabs, current = current.coerceIn(0, tabs.lastIndex),
                 onSelect = { i -> if (i != current) snap(tab); current = i; showTabs = false },
                 onClose = { i -> closeTab(i) }, onNew = { newTab() }, onCloseAll = { closeAll() }, onBack = { showTabs = false },
-                onDuplicate = { i -> duplicate(i) }, onCloseOthers = { i -> closeOthers(i) }, onCloseTag = { g -> closeByTag(g) }
+                onDuplicate = { i -> duplicate(i) }, onCloseOthers = { i -> closeOthers(i) }, onCloseTag = { g -> closeByTag(g) },
+                canReopen = closedTabs.isNotEmpty(), onReopen = { reopenClosed() }
             )
         }
         fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
@@ -1140,9 +1163,17 @@ fun BottomPill(
     val haptic = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
     val hasPage = tab.url.isNotBlank()
+    var query by remember { mutableStateOf("") }          // نص الحقل أثناء الكتابة (لاقتراحات البحث)
+    var fill by remember { mutableStateOf<String?>(null) } // اقتراح طُلب إدراجه في الحقل
+    LaunchedEffect(editing) { if (!editing) { query = ""; fill = null } }
 
     Surface(Modifier.imePadding().fillMaxWidth(), shape = RectangleShape, color = cs.background) {
         Column(Modifier.navigationBarsPadding()) {
+            if (editing) SuggestionsPanel(
+                query = query,
+                onPick = { onGo(it); setEditing(false); focus.clearFocus() },
+                onFill = { fill = it }
+            )
             if (tab.loading && !editing) {
                 LinearProgressIndicator(progress = { tab.progress }, modifier = Modifier.fillMaxWidth().height(3.dp), color = cs.tertiary, trackColor = Color.Transparent)
             } else Spacer(Modifier.height(3.dp))
@@ -1158,10 +1189,11 @@ fun BottomPill(
                         val fr = remember { FocusRequester() }
                         var got by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) { fr.requestFocus() }
+                        LaunchedEffect(fill) { fill?.let { f -> field = TextFieldValue(f, TextRange(f.length)); query = f; fill = null } }
                         Icon(Icons.Default.Search, null, Modifier.padding(start = 10.dp), tint = cs.onSurfaceVariant)
                         Spacer(Modifier.width(10.dp))
                         BasicTextField(
-                            value = field, onValueChange = { field = it }, singleLine = true,
+                            value = field, onValueChange = { field = it; query = it.text }, singleLine = true,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface), cursorBrush = SolidColor(cs.primary),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                             keyboardActions = KeyboardActions(onGo = {
@@ -1176,7 +1208,7 @@ fun BottomPill(
                                 }
                             }
                         )
-                        IconButton(onClick = { field = TextFieldValue("") }) { Icon(Icons.Default.Close, L("مسح")) }
+                        IconButton(onClick = { field = TextFieldValue(""); query = "" }) { Icon(Icons.Default.Close, L("مسح")) }
                     } else {
                         RoundBtn(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
                             Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, if (tab.canBack) L("رجوع") else L("الرئيسية"))
@@ -1318,6 +1350,13 @@ fun MenuSheet(
                 }
                 QuickTile(L("مشاركة"), Icons.Default.Share, hasPage) { act(onShare) }
                 QuickTile(L("نسخ"), Icons.Default.Edit, hasPage) { act(onCopy) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickTile(L("الأعلى"), Icons.Default.KeyboardArrowUp, hasPage) { act { tab.webView?.let { WebSupport.scroll(it, true) } } }
+                QuickTile(L("الأسفل"), Icons.Default.KeyboardArrowDown, hasPage) { act { tab.webView?.let { WebSupport.scroll(it, false) } } }
+                QuickTile(L("وضع القراءة"), Icons.Default.Menu, hasPage) { act { tab.webView?.let { WebSupport.reader(it) } } }
+                QuickTile(L("تحديث كامل"), Icons.Default.Refresh, hasPage) { act { tab.webView?.let { WebSupport.hardReload(it) } } }
             }
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {

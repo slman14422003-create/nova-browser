@@ -24,3 +24,9 @@
 -keep class com.arthenica.ffmpegkit.** { *; }
 -keep class com.arthenica.smartexception.** { *; }
 -dontwarn com.arthenica.**
+
+# OkHttp / Okio (مزوّدات TLS الاختيارية غير موجودة على أندرويد)
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**

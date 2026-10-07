@@ -62,6 +62,8 @@ object Prefs {
     var pwaMode by mutableStateOf(true); private set        // وضع التطبيق (PWA) ليوتيوب ومواقع الذكاء الاصطناعي
     var ytNative by mutableStateOf(true); private set       // واجهة أصلية ليوتيوب (الصفحة تعمل خلفها كمصدر بيانات)
     var pwaHaptics by mutableStateOf(true); private set     // اهتزاز خفيف على أزرار صفحات وضع التطبيق
+    var boost by mutableStateOf(true); private set          // تسريع التنقل: جلب مسبق + تسخين DNS + إيقاف فيديو خارج الشاشة
+    var suggest by mutableStateOf(true); private set        // اقتراحات البحث أثناء الكتابة
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -88,6 +90,7 @@ object Prefs {
         autoUpdate = p.getBoolean("autoupd", true); adaptive = p.getBoolean("adaptive", true)
         smoothAnim = p.getBoolean("anim", true); cap60 = p.getBoolean("cap60", true)
         fitPages = p.getBoolean("fitpages", true); pwaMode = p.getBoolean("pwa", true); pwaHaptics = p.getBoolean("pwahap", true); ytNative = p.getBoolean("ytnative", true)
+        boost = p.getBoolean("boost", true); suggest = p.getBoolean("suggest", true)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -125,6 +128,8 @@ object Prefs {
     fun pickPwaMode(v: Boolean) { pwaMode = v; sp?.putBoolean("pwa", v) }
     fun pickYtNative(v: Boolean) { ytNative = v; sp?.putBoolean("ytnative", v) }
     fun pickPwaHaptics(v: Boolean) { pwaHaptics = v; sp?.putBoolean("pwahap", v) }
+    fun pickBoost(v: Boolean) { boost = v; sp?.putBoolean("boost", v) }
+    fun pickSuggest(v: Boolean) { suggest = v; sp?.putBoolean("suggest", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
@@ -280,6 +285,10 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
                     RowSpec(L("تحسين عرض الصفحات"), L("يضبط الصور والأكواد على عرض الشاشة ويمنع التمرير الأفقي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Settings, { Prefs.pickFitPages(!Prefs.fitPages) },
                         { Switch(checked = Prefs.fitPages, onCheckedChange = null) }),
+                    RowSpec(L("تسريع التنقل"), L("جلب مسبق لروابط الموقع عند اللمس، تسخين DNS، وإيقاف الفيديوهات الصامتة خارج الشاشة (يُطبَّق على التبويبات الجديدة)"), Icons.Default.PlayArrow, { Prefs.pickBoost(!Prefs.boost) },
+                        { Switch(checked = Prefs.boost, onCheckedChange = null) }),
+                    RowSpec(L("اقتراحات البحث"), L("تظهر أثناء الكتابة من المفضلة والسجل ومن محرك البحث المختار (يُرسل ما تكتبه إليه)"), Icons.Default.Search, { Prefs.pickSuggest(!Prefs.suggest) },
+                        { Switch(checked = Prefs.suggest, onCheckedChange = null) }),
                     RowSpec(L("وضع التطبيق (PWA)"), L("شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Star, { Prefs.pickPwaMode(!Prefs.pwaMode) },
                         { Switch(checked = Prefs.pwaMode, onCheckedChange = null) }),
                     RowSpec(L("واجهة تطبيق ليوتيوب"), L("قوائم وصفحة مشاهدة وتعليقات بتنسيق أصلي مع مشغّل يوتيوب الحقيقي. يُطبَّق على التبويبات الجديدة"), Icons.Default.Star, { Prefs.pickYtNative(!Prefs.ytNative) },
