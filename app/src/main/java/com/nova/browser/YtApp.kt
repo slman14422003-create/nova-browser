@@ -65,6 +65,10 @@ class YtSession {
     var saveFail by mutableStateOf(false)
     var speed by mutableStateOf(1.0)                    // آخر سرعة تشغيل ضُبطت من زر السرعة السريع
     var sleepMin by mutableStateOf(0)                   // مؤقت النوم بالدقائق (0 = متوقف)
+    /** آخر قوائم الصفحات التي زارها المستخدم (الرئيسية/البحث/…): تُعرض فوراً عند العودة بدل شاشة تحميل فارغة. */
+    val pageCache = object : LinkedHashMap<String, Pair<List<YtVideo>, List<Pair<String, Boolean>>>>() {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Pair<List<YtVideo>, List<Pair<String, Boolean>>>>?) = size > 8
+    }
 }
 
 /**
@@ -156,6 +160,7 @@ object YtApp {
                 s.chips = if (ch == null) emptyList() else (0 until ch.length()).mapNotNull { i ->
                     ch.optJSONObject(i)?.let { it.optString("x") to it.optBoolean("s") }
                 }
+                if (!s.key.startsWith("/watch") && s.items.isNotEmpty()) s.pageCache[s.key] = s.items to s.chips
                 val w = o.optJSONObject("w")
                 s.watch = if (w == null) null else YtWatchData(
                     w.optString("id"), w.optString("title"), w.optString("chan"), w.optString("subs"), w.optString("info"), w.optString("likes"),
@@ -327,7 +332,10 @@ object YtApp {
         tab.webView = null; tab.saved = null
         tab.url = next; tab.canBack = false; tab.canForward = false; tab.loading = true
         val s = tab.yt
-        s.items = emptyList(); s.chips = emptyList(); s.watch = null; s.comments = emptyList(); s.key = ""
+        // القائمة التي كان المستخدم يتصفحها قبل فتح الفيديو تظهر فوراً (والصفحة الحيّة تحدّثها حين تجهز) بدل شاشة فارغة
+        val cached = s.pageCache[urlKey(next)]
+        s.items = cached?.first ?: emptyList(); s.chips = cached?.second ?: emptyList(); s.key = if (cached != null) urlKey(next) else ""
+        s.watch = null; s.comments = emptyList()
         s.showComments = false; s.psOpen = false; s.ps = null; s.searching = false
         tab.epoch++
         return true

@@ -486,6 +486,14 @@ class MainActivity : ComponentActivity() {
             YtLog.add("native pip=$isInPictureInPictureMode fullscreen=$fullscreenActive")
             val css = if (fullscreenActive) "" else "window.__novaPip&&window.__novaPip($isInPictureInPictureMode);"
             w.evaluateJavascript(css + "window.__novaBg&&window.__novaBg($isInPictureInPictureMode)", null)
+            if (!isInPictureInPictureMode) {
+                // بعد العودة من النافذة المنبثقة قد يبقى سطح WebView أسود حتى يُعاد رسمه: نفرض إعادة التخطيط والرسم عدة مرات
+                for (d in longArrayOf(0L, 120L, 450L, 1100L)) w.postDelayed({
+                    w.resumeTimers(); w.onResume(); w.requestLayout(); w.invalidate()
+                    w.evaluateJavascript("window.dispatchEvent(new Event('resize'));window.__novaPip&&window.__novaPip(false)", null)
+                }, d)
+                YtMini.wake()
+            }
         }
     }
 

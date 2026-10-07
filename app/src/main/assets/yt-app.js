@@ -30,7 +30,11 @@
       '#player-container-id,.player-container{position:fixed!important;top:0!important;left:0!important;right:0!important;' +
       'width:100vw!important;height:56.25vw!important;max-height:56.25vw!important;z-index:2147483000!important;background:#000!important}' +
       'ytm-engagement-panel,ytm-bottom-sheet-renderer{opacity:0!important;pointer-events:none!important}' +
-      '.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-ce-element{display:none!important}';
+      '.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-ce-element{display:none!important}' +
+      // لمسة جمالية لأزرار المشغّل: تدرّج خفيف يوضّح الأزرار فوق أي فيديو، وأزرار الوسط بخلفية زجاجية مستديرة
+      '.player-controls-background{background:linear-gradient(180deg,rgba(0,0,0,.55) 0,rgba(0,0,0,0) 32%,rgba(0,0,0,0) 58%,rgba(0,0,0,.72) 100%)!important}' +
+      '.player-controls-middle button{background:rgba(0,0,0,.38)!important;border-radius:50%!important;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}' +
+      '.player-controls-top,.player-controls-bottom{text-shadow:0 1px 3px rgba(0,0,0,.65)}';
     // الترجمة (CC): تصميمها ومديرها في yt-fix.js (ملف دعم يوتيوب)
     function applyMode() {
       var want = mode && location.pathname === '/watch';
@@ -256,13 +260,21 @@
       last = j; post(o);
     }
     function sched() { if (!timer) timer = setTimeout(snap, 500); }
-    new MutationObserver(sched).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    // تغيّرات داخل المشغّل (الوقت، نص الترجمة، شريط التقدّم) لا تغيّر القوائم ولا بيانات الصفحة: تجاهلها يمنع لقطة كل نصف ثانية أثناء التشغيل
+    new MutationObserver(function (ms) {
+      var pl = playerEl();
+      for (var i = 0; i < ms.length; i++) {
+        var t = ms[i].target;
+        if (t && t.nodeType === 3) t = t.parentNode;
+        if (!pl || !t || !pl.contains(t)) { sched(); return; }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
     ['pushState', 'replaceState'].forEach(function (k) {
       var o = history[k];
       history[k] = function () { var r = o.apply(this, arguments); cOpen = false; sched(); return r; };
     });
     window.addEventListener('popstate', function () { cOpen = false; sched(); });
-    setInterval(snap, 2500);
+    setInterval(function () { if (!document.hidden) snap(); }, 2500);
 
     // ───────── المشغّل: إعدادات أصلية (جودة/سرعة/ترجمة) ─────────
     // قائمة الإعدادات الأصلية في يوتيوب مخفية خلف الواجهة الأصلية فلا يمكن لمسها، لذلك نلتقط ضغطة زر الترس

@@ -35,8 +35,7 @@
       'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important;' +
       'transition:bottom .22s cubic-bezier(.2,0,0,1),top .22s cubic-bezier(.2,0,0,1)!important;contain:layout style}' +
       // موضع الترجمة (يختاره المستخدم): b أسفل (فوق أزرار التحكم) • m وسط • t أعلى. --nova-cc-off نسبة مئوية للإزاحة الدقيقة نحو الداخل
-      'html:not([data-nova-ccpos]) .caption-window,html[data-nova-ccpos="b"] .caption-window{top:auto!important;bottom:calc(15% + var(--nova-cc-off,0)*1%)!important}' +
-      'html:not([data-nova-ccpos]) .ytp-autohide .caption-window,html[data-nova-ccpos="b"] .ytp-autohide .caption-window{bottom:calc(6% + var(--nova-cc-off,0)*1%)!important}' +
+      'html:not([data-nova-ccpos]) .caption-window,html[data-nova-ccpos="b"] .caption-window{top:auto!important;bottom:calc(var(--nova-cc-base,27%) + var(--nova-cc-off,0)*1%)!important}' +
       'html[data-nova-ccpos="m"] .caption-window{bottom:auto!important;top:calc(50% - var(--nova-cc-off,0)*1%)!important;transform:translate(-50%,-50%)!important}' +
       'html[data-nova-ccpos="t"] .caption-window{bottom:auto!important;top:calc(7% + var(--nova-cc-off,0)*1%)!important}' +
       '.ytp-caption-window-container .caption-visual-line{display:block!important;text-align:center!important;margin:2px 0!important}' +
@@ -207,4 +206,22 @@
       land = l; clearTimeout(rz); rz = setTimeout(refit, 400);
     });
   } catch (e) {}
+
+  // ───────── موضع الترجمة السفلي يتبع أزرار التحكم: فوقها وهي ظاهرة، وقريب من الحافة حين تختفي ─────────
+  (function () {
+    var last = '';
+    function shown() {
+      var c = document.querySelector('.player-controls-bottom,.ytp-chrome-bottom');
+      if (!c) return false;
+      var cs = getComputedStyle(c);
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05;
+    }
+    function tick() {
+      if (document.hidden || location.pathname !== '/watch') return;
+      var v = shown() ? '27%' : '9%';
+      if (v !== last) { last = v; document.documentElement.style.setProperty('--nova-cc-base', v); }
+    }
+    setInterval(tick, 400);
+    ['touchend', 'click'].forEach(function (e) { document.addEventListener(e, function () { setTimeout(tick, 80); }, true); });
+  })();
 })();
