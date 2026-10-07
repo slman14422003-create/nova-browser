@@ -129,6 +129,25 @@ private val NovaTypography = Typography().let { t ->
     )
 }
 
+/** سمة التطبيق المشتركة بين نافذة المتصفح ونافذة اللوحات (ألوان، خط، اتجاه RTL/LTR، ألوان أشرطة النظام). */
+@Composable
+fun NovaTheme(activity: ComponentActivity, content: @Composable () -> Unit) {
+    val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
+    SideEffect {
+        activity.enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+        )
+    }
+    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) {
+        // اتجاه الواجهة يتبع لغة التطبيق (العربية RTL، الإنجليزية LTR)
+        CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides
+            if (I18n.isEnglish()) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl) {
+            content()
+        }
+    }
+}
+
 class BrowserTab(val id: Int, startUrl: String = "") {
     var upgradedFrom: String? = null        // رابط http الأصلي إذا رُقّي إلى https
     var upgradedTo: String? = null
@@ -438,7 +457,11 @@ class MainActivity : ComponentActivity() {
     private var incomingSeq = 0
     @Volatile private var ready = false
 
-    companion object { private var cleanedThisProcess = false }
+    companion object {
+        private var cleanedThisProcess = false
+        /** صحيح بعد تهيئة الإعدادات والمخازن في هذه العملية (نافذة اللوحات تعتمد عليها). */
+        @Volatile var initialized = false
+    }
 
     // ---- نافذة منبثقة (Picture-in-Picture) ----
     var inPip by mutableStateOf(false)
@@ -515,6 +538,7 @@ class MainActivity : ComponentActivity() {
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
         DefaultBrowser.refresh(this)
+        initialized = true
         // لا نعيد فتح الرابط عند إعادة إنشاء الـ Activity (تدوير/استعادة العملية)
         val start = if (savedInstanceState == null) DefaultBrowser.urlFrom(intent) ?: "" else ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
@@ -542,20 +566,7 @@ class MainActivity : ComponentActivity() {
             val lvl = Adaptive.level
             LaunchedEffect(lvl, Prefs.cap60) { applyRefreshCap(lvl) }
             LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); Updater.check(applicationContext); WebEngine.checkLatest(applicationContext) }   // بعد استقرار الواجهة
-            val dark = when (Prefs.theme) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
-            SideEffect {
-                enableEdgeToEdge(
-                    statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
-                    navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
-                )
-            }
-            MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) {
-                // اتجاه الواجهة يتبع لغة التطبيق (العربية RTL، الإنجليزية LTR)
-                CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides
-                    if (I18n.isEnglish()) androidx.compose.ui.unit.LayoutDirection.Ltr else androidx.compose.ui.unit.LayoutDirection.Rtl) {
-                    BrowserApp(start, dlTrigger, inPip, incoming)
-                }
-            }
+            NovaTheme(this) { BrowserApp(start, dlTrigger, inPip, incoming) }
         }
         ready = true
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
@@ -602,14 +613,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     var current by remember { mutableIntStateOf(if (startUrl.isNotBlank()) tabs.lastIndex else prefs.getInt("cur", 0).coerceIn(0, tabs.lastIndex)) }
     var showTabs by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
-    var showDownloads by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showPasswords by remember { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<PendingSave?>(null) }
     var fillOffer by remember { mutableStateOf<FillOffer?>(null) }
     var ytUrl by remember { mutableStateOf<String?>(null) }
     var askedNotif by remember { mutableStateOf(false) }
-    LaunchedEffect(dlTrigger) { if (dlTrigger > 0) showDownloads = true }
+    LaunchedEffect(dlTrigger) { if (dlTrigger > 0) openPanel(activity, "downloads") }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية"))
     }
@@ -654,8 +662,9 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     fun go(t: BrowserTab, input: String) { val u = normalize(input); t.url = u; t.webView?.loadUrl(u, Perf.privacyHeaders) }
     fun snap(t: BrowserTab) {   // لقطة مصغّرة (40%) للتبويب الظاهر قبل مغادرته
         val w = t.webView ?: return
-        if (t.url.isBlank() || w.width <= 0 || w.height <= 0) return
+        if (t.url.isBlank() || w.width <= 0 || w.height <= 0 || w.visibility != View.VISIBLE) return   // مخفي تحت شاشة التبويبات: لا نلتقط لقطة فارغة
         if (Adaptive.level >= 2 && t.thumb != null) return   // وفّر المعالج عند السخونة
+        if (t.ytPlaying && t.thumb != null) return           // رسم صفحة فيها فيديو يعمل مكلف ويُسبب تقطيعاً
         runCatching {
             val k = 0.4f
             val bmp = Bitmap.createBitmap((w.width * k).toInt().coerceAtLeast(1), (w.height * k).toInt().coerceAtLeast(1), Bitmap.Config.RGB_565)
@@ -669,7 +678,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     // رابط جاء من تطبيق آخر: يُفتح في التبويب الحالي إن كان فارغاً وإلا في تبويب جديد، مع إغلاق أي لوحة مفتوحة
     LaunchedEffect(incoming) {
         val u = incoming?.second ?: return@LaunchedEffect
-        showSettings = false; showPasswords = false; showDownloads = false; showTabs = false; editing = false; Library.show = false
+        showTabs = false; editing = false
         val t = tabs.getOrNull(current)
         if (t != null && t.url.isBlank()) go(t, u) else openInNewTab(u)
     }
@@ -757,13 +766,26 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         Thread { runCatching { CacheCleaner.clean(activity.applicationContext) } }.start()
         toast(activity, L("تم مسح الذاكرة المؤقتة"))
     }
+    // اللوحات (الإعدادات/التنزيلات/المكتبة) تعيش في نافذة مستقلة؛ هذا الجسر هو كل ما تطلبه من المتصفح
+    DisposableEffect(Unit) {
+        PanelBus.clearData = { clearData() }
+        PanelBus.clearCache = { clearCacheNow() }
+        PanelBus.openUrl = { u -> val t = tabs.getOrNull(current); if (t != null && t.url.isBlank()) go(t, u) else openInNewTab(u) }
+        onDispose { PanelBus.clearData = null; PanelBus.clearCache = null; PanelBus.openUrl = null }
+    }
+    // شاشة التبويبات تغطي الصفحة بالكامل: نُخفي الـ WebView تحتها كي لا يبقى يرسم (ما لم يكن صوت يوتيوب يعمل في الخلفية)
+    LaunchedEffect(showTabs, tab.id, tab.epoch) {
+        if (showTabs) kotlinx.coroutines.delay(260)
+        val keep = Prefs.ytBg && YtMedia.owner != null
+        tab.webView?.visibility = if (showTabs && !keep) View.INVISIBLE else View.VISIBLE
+    }
     // عند ضغط الذاكرة: نحرر الـ WebView للتبويبات الخلفية (تُعاد عند الرجوع لها)
     DisposableEffect(Unit) {
         val cb = object : ComponentCallbacks2 {
             override fun onTrimMemory(level: Int) {
                 if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
                     val cur = tabs.getOrNull(current)
-                    tabs.toList().forEach { t -> if (t !== cur && t.webView != null) discard(t) }
+                    tabs.toList().forEach { t -> if (t !== cur) { if (t.webView != null) discard(t); t.thumb = null } }
                 }
             }
             override fun onConfigurationChanged(c: android.content.res.Configuration) {}
@@ -912,10 +934,6 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     BackHandler(enabled = tab.url.isNotBlank() && !tab.canBack) { home(tab) }   // آخر صفحة في السجل: العودة للرئيسية بدل إغلاق التطبيق
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
-    BackHandler(enabled = showDownloads) { showDownloads = false }
-    BackHandler(enabled = Library.show) { Library.show = false }
-    BackHandler(enabled = showSettings) { showSettings = false }
-    BackHandler(enabled = showPasswords) { showPasswords = false }
     BackHandler(enabled = showTabs) { showTabs = false }
     BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
 
@@ -980,7 +998,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                     tabsCount = tabs.size,
                                     activeDl = Downloader.tasks.count { it.status == Downloader.DOWNLOADING || it.status == Downloader.PREPARING },
                                     onSearchClick = { editing = true }, onAi = { go(tb, AI_MODE_URL) }, onOpen = { go(tb, it) },
-                                    onTabs = { openTabs() }, onDownloads = { showDownloads = true }
+                                    onTabs = { openTabs() }, onDownloads = { openPanel(activity, "downloads") }
                                 )
                             } else key(id, tb.epoch) {
                                 AndroidView(
@@ -993,6 +1011,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                             if (!restored) w.loadUrl(tb.url, Perf.privacyHeaders)
                                         }
                                         (wv.parent as? ViewGroup)?.removeView(wv)
+                                        wv.visibility = View.VISIBLE   // قد يكون أُخفي أثناء عرض شاشة التبويبات
                                         SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                                             setOnRefreshListener { wv.reload() }
@@ -1021,7 +1040,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     ) { YtMiniPlayer(Modifier, onExpand = { YtApp.expandMini(tab) }) }
                 }
                 AnimatedVisibility(
-                    visible = site != null && !ytApp && !showSettings && !showPasswords && !showDownloads,
+                    visible = site != null && !ytApp,
                     enter = NovaMotion.barEnter, exit = NovaMotion.barExit, modifier = Modifier.align(Alignment.TopCenter)
                 ) {
                     // آخر معلومات صالحة تبقى أثناء حركة الخروج كي لا يفرغ الشريط فجأة
@@ -1051,32 +1070,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { showDownloads = true }, onSettings = { showSettings = true }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
+                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
             }
-        }
-        AnimatedVisibility(
-            visible = showDownloads,
-            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
-        ) { DownloadsScreen(onBack = { showDownloads = false }) }
-        AnimatedVisibility(
-            visible = showSettings,
-            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
-        ) { SettingsScreen(onBack = { showSettings = false }, onClearData = { clearData() }, onClearCache = { clearCacheNow() }, onPasswords = { showPasswords = true }) }
-        AnimatedVisibility(
-            visible = showPasswords,
-            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
-        ) { PasswordsScreen(onBack = { showPasswords = false }) }
-        AnimatedVisibility(
-            visible = Library.show,
-            enter = NovaMotion.panelEnter, exit = NovaMotion.panelExit
-        ) {
-            LibraryScreen(onBack = { Library.show = false }, onOpen = { u ->
-                Library.show = false; showSettings = false
-                if (tab.url.isBlank()) go(tab, u) else openInNewTab(u)
-            })
         }
         if (Updater.prompt) UpdateDialog()
         AnimatedVisibility(
@@ -1092,7 +1090,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 canReopen = closedTabs.isNotEmpty(), onReopen = { reopenClosed() }
             )
         }
-        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing && !showSettings && !showPasswords }?.let { o ->
+        fillOffer?.takeIf { it.tabId == tab.id && !inPip && !editing }?.let { o ->
             FillBanner(
                 o, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
                 onClose = { fillOffer = null },
@@ -1412,7 +1410,7 @@ fun MenuSheet(
                 ListRow(groupShape(0, 5), if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"), null, {
                     act { toast(ctx, if (Library.toggleBookmark(tab.url, tab.title)) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) }
                 }, enabled = hasPage) { IconCircle { Icon(if (marked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) } }
-                ListRow(groupShape(1, 5), L("المكتبة"), L("المفضلة") + " • " + L("السجل"), { act { Library.show = true } }) { IconCircle { Icon(Icons.Default.Star, null) } }
+                ListRow(groupShape(1, 5), L("المكتبة"), L("المفضلة") + " • " + L("السجل"), { act { openPanel(ctx as android.app.Activity, "library") } }) { IconCircle { Icon(Icons.Default.Star, null) } }
                 ListRow(groupShape(2, 5), L("التنزيلات"), null, { act(onDownloads) }) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
                 ListRow(groupShape(3, 5), L("الإعدادات"), null, { act(onSettings) }) { IconCircle { Icon(Icons.Default.Settings, null) } }
                 ListRow(groupShape(4, 5), L("الرئيسية"), null, { act(onHome) }) { IconCircle { Icon(Icons.Default.Home, null) } }
