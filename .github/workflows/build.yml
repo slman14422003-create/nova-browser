@@ -186,7 +186,7 @@ jobs:
             echo "| التوقيع | ${SIGNING_MODE:-debug} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: FileManager-${{ env.BUILD_TYPE }}-apk
           path: dist/*.apk
