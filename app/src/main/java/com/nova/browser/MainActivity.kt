@@ -258,6 +258,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     WebSupport.installBoost(this)
     Pwa.install(this)
     YtApp.install(this, tab)
+    YtSupport.install(this)
     PasswordBridge.install(this, tab, h)
     YtBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -284,7 +285,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtMini.owns(v)) return   // صفحة المشغّل المصغّر: لا تغيّر حالة التبويب
             if (isYtVideo(u)) YtMini.close()   // فيديو جديد في التبويب: يُغلق المشغّل المصغّر القديم
-            tab.loading = true; tab.url = u; Perf.onPageStart(v); WebSupport.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtMedia.pageChanged(tab, u)
+            tab.loading = true; tab.url = u; Perf.onPageStart(v); WebSupport.onPageStart(v); Pwa.onPageStart(v, u); YtApp.onPageStart(v, u); YtSupport.onPageStart(v, u); YtMedia.pageChanged(tab, u)
         }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             if (YtMini.owns(v)) return

@@ -25,10 +25,18 @@ class YtWatchData(
     val avatar: String = ""
 )
 
-/** حالة المشغّل كما يعرضها يوتيوب: السرعة والجودة والترجمة (تصل عند فتح قائمة الإعدادات). */
+/** مسار ترجمة متاح للفيديو: المفتاح (vss_id) والاسم وهل هو مُولَّد تلقائياً. */
+class YtCap(val key: String, val name: String, val auto: Boolean)
+
+/**
+ * حالة المشغّل كما يعرضها يوتيوب: السرعة والجودة والترجمة (تصل عند فتح قائمة الإعدادات).
+ * ccReady=false يعني أن لغات الترجمة ما زالت تُحمَّل (تظهر حلقة انتظار بدل قسم فارغ).
+ */
 class YtPlayerInfo(
     val rate: Double, val loop: Boolean, val qualities: List<String>, val quality: String,
-    val captions: List<Pair<String, String>>, val caption: String
+    val captions: List<YtCap>, val caption: String,
+    val translations: List<Pair<String, String>> = emptyList(), val translateTo: String = "",
+    val ccReady: Boolean = false, val ccSize: String = "m", val ccBg: String = "glass"
 )
 
 /** حالة واجهة يوتيوب الأصلية لتبويب واحد. المصدر هو DOM الصفحة (يصل عبر yt-app.js). */
@@ -181,15 +189,22 @@ object YtApp {
             "diag" -> s.diag = o.optString("x")
             "gear" -> { if (!s.psOpen) { s.ps = null; s.psOpen = true }; call(tab, "ps()") }
             "ps" -> {
-                val q = o.optJSONArray("q"); val c = o.optJSONArray("caps")
+                val q = o.optJSONArray("q"); val c = o.optJSONArray("caps"); val tr = o.optJSONArray("trs")
                 s.ps = YtPlayerInfo(
                     rate = o.optDouble("rate", 1.0).takeIf { it > 0 } ?: 1.0, loop = o.optBoolean("loop"),
                     qualities = if (q == null) emptyList() else (0 until q.length()).map { q.optString(it) }.filter { it.isNotBlank() },
                     quality = o.optString("cq"),
                     captions = if (c == null) emptyList() else (0 until c.length()).mapNotNull { i ->
-                        c.optJSONObject(i)?.let { it.optString("c") to it.optString("n").ifBlank { it.optString("c") } }
-                    },
-                    caption = o.optString("cc")
+                        c.optJSONObject(i)?.let { YtCap(it.optString("c"), it.optString("n").ifBlank { it.optString("c") }, it.optInt("a") == 1) }
+                    }.filter { it.key.isNotBlank() },
+                    caption = o.optString("cc"),
+                    translations = if (tr == null) emptyList() else (0 until tr.length()).mapNotNull { i ->
+                        tr.optJSONObject(i)?.let { it.optString("c") to it.optString("n").ifBlank { it.optString("c") } }
+                    }.filter { it.first.isNotBlank() },
+                    translateTo = o.optString("tl"),
+                    ccReady = o.optBoolean("cr"),
+                    ccSize = o.optString("cs").ifBlank { "m" },
+                    ccBg = o.optString("cb").ifBlank { "glass" }
                 )
             }
         }
@@ -239,7 +254,12 @@ object YtApp {
     fun closeSettings(tab: BrowserTab) { tab.yt.psOpen = false }
     fun setRate(tab: BrowserTab, r: Double) = call(tab, "rate($r)")
     fun setQuality(tab: BrowserTab, q: String) = call(tab, "quality(${JSONObject.quote(q)})")
-    fun setCaption(tab: BrowserTab, code: String) = call(tab, "caption(${JSONObject.quote(code)})")
+    /** key: مفتاح مسار الترجمة (فارغ = إيقاف). translateTo: لغة الترجمة التلقائية (فارغ = بلا ترجمة). */
+    fun setCaption(tab: BrowserTab, key: String, translateTo: String = "") =
+        call(tab, "caption(${JSONObject.quote(key)},${JSONObject.quote(translateTo)})")
+    /** شكل الترجمة: الحجم (s/m/l/xl) والخلفية (glass/solid/none). */
+    fun setCcStyle(tab: BrowserTab, size: String, bg: String) =
+        call(tab, "ccStyle(${JSONObject.quote(size)},${JSONObject.quote(bg)})")
     fun setLoop(tab: BrowserTab, on: Boolean) = call(tab, "loop($on)")
 
     // ───────── ميزات إضافية في صفحة المشاهدة ─────────

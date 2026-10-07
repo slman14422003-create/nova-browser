@@ -29,27 +29,10 @@
       'ytm-mobile-topbar-renderer,ytm-pivot-bar-renderer,ytm-mealbar-promo-renderer{display:none!important}' +
       '#player-container-id,.player-container{position:fixed!important;top:0!important;left:0!important;right:0!important;' +
       'width:100vw!important;height:56.25vw!important;max-height:56.25vw!important;z-index:2147483000!important;background:#000!important}' +
-      'ytm-engagement-panel,ytm-bottom-sheet-renderer{opacity:0!important;pointer-events:none!important}';
-    // ───────── الترجمة (CC): تتوسّط أسفل المشغّل بتصميم حديث (خلفية زجاجية شفافة وزوايا مدوّرة) بغضّ النظر عن اتجاه اللغة ─────────
-    var CC_ID = 'nova-yt-cc-style';
-    var CC_CSS =
-      '.ytp-caption-window-container{pointer-events:none!important}' +
-      '.ytp-caption-window-container .caption-window,.caption-window{position:absolute!important;left:50%!important;right:auto!important;top:auto!important;' +
-      'bottom:11%!important;transform:translateX(-50%)!important;margin:0!important;width:auto!important;max-width:88%!important;' +
-      'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important;' +
-      'transition:bottom .2s ease!important}' +
-      '.ytp-caption-window-container .caption-visual-line{display:block!important;text-align:center!important;margin:1px 0!important}' +
-      '.ytp-caption-segment{background:rgba(14,14,18,.68)!important;color:#fff!important;font-family:Roboto,\'Segoe UI\',system-ui,sans-serif!important;' +
-      'line-height:1.5!important;padding:.1em .6em!important;border-radius:10px!important;text-shadow:none!important;text-align:center!important;' +
-      'direction:auto;unicode-bidi:plaintext;-webkit-box-decoration-break:clone;box-decoration-break:clone;' +
-      '-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}';
-    function applyCc() {
-      var want = location.pathname === '/watch', s = document.getElementById(CC_ID);
-      if (want && !s) { s = document.createElement('style'); s.id = CC_ID; s.textContent = CC_CSS; (document.head || document.documentElement).appendChild(s); }
-      else if (!want && s) s.remove();
-    }
+      'ytm-engagement-panel,ytm-bottom-sheet-renderer{opacity:0!important;pointer-events:none!important}' +
+      '.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-ce-element{display:none!important}';
+    // الترجمة (CC): تصميمها ومديرها في yt-fix.js (ملف دعم يوتيوب)
     function applyMode() {
-      applyCc();
       var want = mode && location.pathname === '/watch';
       var s = document.getElementById(STYLE_ID);
       if (want && !s) {
@@ -302,20 +285,22 @@
     }
     ['click', 'touchend'].forEach(function (n) { document.addEventListener(n, onGear, true); });
     function playerInfo() {
-      var p = playerEl(), v = videoEl();
-      var o = { t: 'ps', rate: v ? v.playbackRate : 1, loop: v ? !!v.loop : false, q: [], cq: '', caps: [], cc: '' };
+      var p = playerEl(), v = videoEl(), F = window.__novaYtFix;
+      var o = { t: 'ps', rate: v ? v.playbackRate : 1, loop: v ? !!v.loop : false, q: [], cq: '', caps: [], trs: [], cc: '', tl: '', cr: false, cs: 'm', cb: 'glass' };
       try { if (p && p.getAvailableQualityLevels) { o.q = (p.getAvailableQualityLevels() || []).slice(0, 12); if (p.getPlaybackQuality) o.cq = p.getPlaybackQuality() || ''; } } catch (e) {}
       try {
-        if (p && p.getOption) {
-          var tl = p.getOption('captions', 'tracklist') || [];
-          o.caps = tl.slice(0, 40).map(function (c) {
-            var n = c.displayName || (c.languageName && (c.languageName.simpleText || c.languageName)) || c.languageCode || '';
-            return { c: c.languageCode || '', n: String(n) };
-          }).filter(function (c) { return c.c; });
-          var cur = p.getOption('captions', 'track'); o.cc = (cur && cur.languageCode) || '';
+        if (F && F.cc) {
+          var ci = F.cc.info(), st = F.cc.styleOf();
+          o.caps = ci.caps.slice(0, 60); o.trs = ci.trs.slice(0, 120); o.cc = ci.cc; o.tl = ci.tl; o.cr = !!ci.ready; o.cs = st.size; o.cb = st.bg;
         }
       } catch (e) {}
       post(o);
+    }
+    // فتح الإعدادات: لقطة فورية ثم لقطة ثانية بعد تحميل لغات الترجمة (القائمة تكون فارغة قبل تحميل وحدة الترجمة)
+    function openPs() {
+      playerInfo();
+      var F = window.__novaYtFix;
+      if (F && F.cc) F.cc.prepare(function () { playerInfo(); });
     }
 
     var MINI_ID = 'nova-yt-mini-style';
@@ -353,21 +338,22 @@
       more: function () { window.scrollTo(0, document.documentElement.scrollHeight); },
       chip: function (i) { var e = chipEls[i]; if (e) e.click(); },
       mode: function (on) { mode = !!on; applyMode(); sched(); },
-      ps: function () { playerInfo(); },
+      ps: function () { openPs(); },
       rate: function (r) { var v = videoEl(); if (v && r > 0) v.playbackRate = r; setTimeout(playerInfo, 200); },
       quality: function (q) {
         var p = playerEl();
         try { if (p && p.setPlaybackQualityRange) p.setPlaybackQualityRange(q, q); if (p && p.setPlaybackQuality) p.setPlaybackQuality(q); } catch (e) {}
         setTimeout(playerInfo, 600);
       },
-      caption: function (code) {
-        var p = playerEl();
-        try {
-          if (!p) return;
-          if (!code) { if (p.unloadModule) p.unloadModule('captions'); }
-          else { if (p.loadModule) p.loadModule('captions'); if (p.setOption) p.setOption('captions', 'track', { languageCode: code }); }
-        } catch (e) {}
-        setTimeout(playerInfo, 600);
+      caption: function (key, tl) {
+        var F = window.__novaYtFix;
+        try { if (F && F.cc) F.cc.set(key, tl || ''); } catch (e) {}
+        setTimeout(playerInfo, 800); setTimeout(playerInfo, 1800);
+      },
+      ccStyle: function (size, bg) {
+        var F = window.__novaYtFix;
+        try { if (F && F.cc) F.cc.style(size, bg); } catch (e) {}
+        playerInfo();
       },
       loop: function (on) { var v = videoEl(); if (v) v.loop = !!on; setTimeout(playerInfo, 100); },
       mini: function (on) { applyMini(on); if (!on) sched(); },

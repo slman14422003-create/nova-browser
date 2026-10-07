@@ -28,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -52,7 +53,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -62,6 +65,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -463,11 +467,6 @@ private fun qualityLabel(q: String): String = when (q) {
 private fun rateLabel(r: Double): String = if (r == 1.0) L("عادية") else (if (r % 1.0 == 0.0) r.toInt().toString() else r.toString()) + "x"
 
 @Composable
-private fun SheetLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-}
-
-@Composable
 private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Surface(
@@ -481,41 +480,140 @@ private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** قائمة إعدادات المشغّل الأصلية: سرعة، جودة، ترجمة، تكرار. تنفَّذ عبر واجهة المشغّل الحيّ في الصفحة. */
+private fun sizeLabel(k: String): String = when (k) { "s" -> L("صغير"); "l" -> L("كبير"); "xl" -> L("ضخم"); else -> L("متوسط") }
+private fun bgLabel(k: String): String = when (k) { "solid" -> L("غامقة"); "none" -> L("بلا خلفية"); else -> L("زجاجية") }
+
+/** لغات الترجمة التلقائية الأكثر استخداماً تظهر أولاً كشرائح سريعة؛ الباقي في قائمة «كل اللغات». */
+private val popularTr = listOf("ar", "en", "fr", "tr", "es", "de", "ru", "fa", "ur", "hi", "id", "pt", "it", "ja", "ko", "zh-Hans")
+
+/** بطاقة قسم في قائمة الإعدادات: عنوان صغير ومحتوى على خلفية مدوّرة. */
+@Composable
+private fun SheetCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
+        content()
+    }
+}
+
+/** صف اختيار (لغة ترجمة…) مع علامة الصح للمحدد. */
+@Composable
+private fun PickRow(label: String, sub: String?, selected: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(if (selected) cs.tertiary.copy(alpha = 0.16f) else Color.Transparent)
+            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                label, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                color = if (selected) cs.tertiary else cs.onSurface, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+            if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+        }
+        if (selected) Icon(Icons.Default.Check, null, Modifier.size(20.dp), tint = cs.tertiary)
+    }
+}
+
+/** معاينة حيّة لشكل الترجمة (الحجم والخلفية) فوق لقطة داكنة، كما ستظهر في منتصف أسفل المشغّل. */
+@Composable
+private fun CcPreview(size: String, bg: String) {
+    val k = when (size) { "s" -> 0.82f; "l" -> 1.22f; "xl" -> 1.5f; else -> 1f }
+    val fill = when (bg) { "solid" -> Color(0xEB000000); "none" -> Color.Transparent; else -> Color(0xAD0E0E12) }
+    Box(
+        Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(16.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF3B4F73), Color(0xFF0F172A)))),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Text(
+            L("هكذا ستظهر الترجمة"), color = Color.White, fontSize = (15f * k).sp, textAlign = TextAlign.Center,
+            style = if (bg == "none") TextStyle(shadow = Shadow(Color.Black, Offset(0f, 1f), 8f)) else TextStyle.Default,
+            modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp).background(fill, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp)
+        )
+    }
+}
+
+/**
+ * قائمة إعدادات المشغّل الأصلية: سرعة، جودة، ترجمة (لغات حقيقية + ترجمة تلقائية + شكل)، تكرار.
+ * تنفَّذ عبر واجهة المشغّل الحيّ في الصفحة. لغات الترجمة تصل بعد لحظة من فتح القائمة (تُحمَّل وحدة الترجمة أولاً).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun YtPlayerSheet(tab: BrowserTab) {
     val cs = MaterialTheme.colorScheme
     val info = tab.yt.ps
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var allCaps by remember { mutableStateOf(false) }
+    var allTr by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = { YtApp.closeSettings(tab) }, sheetState = state, containerColor = cs.background) {
         Column(
             Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(L("إعدادات المشغّل"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = cs.onSurface)
-            SheetLabel(L("سرعة التشغيل"))
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0).forEach { r ->
-                    OptionChip(rateLabel(r), info != null && kotlin.math.abs(info.rate - r) < 0.01) { YtApp.setRate(tab, r) }
+            SheetCard(L("سرعة التشغيل")) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0).forEach { r ->
+                        OptionChip(rateLabel(r), info != null && kotlin.math.abs(info.rate - r) < 0.01) { YtApp.setRate(tab, r) }
+                    }
                 }
             }
-            if (info != null && info.qualities.isNotEmpty()) {
-                SheetLabel(L("جودة الفيديو"))
+            if (info != null && info.qualities.isNotEmpty()) SheetCard(L("جودة الفيديو")) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     info.qualities.forEach { q -> OptionChip(qualityLabel(q), q == info.quality) { YtApp.setQuality(tab, q) } }
                 }
             }
-            if (info != null && info.captions.isNotEmpty()) {
-                SheetLabel(L("الترجمة"))
+            SheetCard(L("الترجمة (CC)")) {
+                if (info == null || (!info.ccReady && info.captions.isEmpty())) {
+                    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = cs.tertiary)
+                        Text(L("جارٍ تحميل لغات الترجمة…"), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                    }
+                } else if (info.captions.isEmpty()) {
+                    Text(L("لا توجد ترجمة متاحة لهذا الفيديو"), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+                } else {
+                    PickRow(L("إيقاف"), null, info.caption.isBlank()) { YtApp.setCaption(tab, "") }
+                    val shown = if (allCaps) info.captions else info.captions.take(6)
+                    shown.forEach { c ->
+                        PickRow(c.name, if (c.auto) L("مُولَّدة تلقائياً") else null, c.key == info.caption) { YtApp.setCaption(tab, c.key, info.translateTo) }
+                    }
+                    if (info.captions.size > 6) TextButton(onClick = { allCaps = !allCaps }) {
+                        Text(if (allCaps) L("عرض أقل") else L("عرض كل اللغات") + " (${info.captions.size})", color = cs.tertiary)
+                    }
+                }
+            }
+            if (info != null && info.captions.isNotEmpty() && info.translations.isNotEmpty()) SheetCard(L("ترجمة تلقائية إلى")) {
+                // المسار الأساسي: المحدد حالياً، وإن كانت الترجمة مُوقَفة فأول مسار (تفعيل الترجمة التلقائية يشغّل الترجمة)
+                val base = info.caption.ifBlank { info.captions.first().key }
+                val quick = popularTr.mapNotNull { code -> info.translations.firstOrNull { it.first == code } }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OptionChip(L("إيقاف"), info.caption.isBlank()) { YtApp.setCaption(tab, "") }
-                    info.captions.forEach { c -> OptionChip(c.second, c.first == info.caption) { YtApp.setCaption(tab, c.first) } }
+                    OptionChip(L("بدون"), info.translateTo.isBlank()) { if (info.caption.isNotBlank()) YtApp.setCaption(tab, base, "") }
+                    quick.forEach { t -> OptionChip(t.second, t.first == info.translateTo) { YtApp.setCaption(tab, base, t.first) } }
+                }
+                TextButton(onClick = { allTr = !allTr }) { Text(if (allTr) L("إخفاء القائمة") else L("كل اللغات"), color = cs.tertiary) }
+                if (allTr) Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                    info.translations.forEach { t -> PickRow(t.second, null, t.first == info.translateTo) { YtApp.setCaption(tab, base, t.first) } }
+                }
+            }
+            SheetCard(L("شكل الترجمة")) {
+                val size = info?.ccSize ?: "m"
+                val bg = info?.ccBg ?: "glass"
+                CcPreview(size, bg)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("s", "m", "l", "xl").forEach { k -> OptionChip(sizeLabel(k), size == k) { YtApp.setCcStyle(tab, k, bg) } }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("glass", "solid", "none").forEach { k -> OptionChip(bgLabel(k), bg == k) { YtApp.setCcStyle(tab, size, k) } }
                 }
             }
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainer)
-                    .clickable { YtApp.setLoop(tab, info?.loop != true) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainer)
+                    .clickable { YtApp.setLoop(tab, info?.loop != true) }.padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(L("تكرار الفيديو"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurface, modifier = Modifier.weight(1f))
@@ -536,11 +634,11 @@ fun VideoCard(v: YtVideo, onClick: () -> Unit) {
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(bottom = 18.dp)) {
-        Box(Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp))) {
+        Box(Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))) {
             NetImage("https://i.ytimg.com/vi/${v.id}/hqdefault.jpg", Modifier.fillMaxSize())
             if (v.dur.isNotEmpty()) Text(
                 v.dur, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xCC000000), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xB3000000), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 2.dp)
             )
         }
         Row(Modifier.padding(start = 12.dp, end = 2.dp, top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
