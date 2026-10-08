@@ -223,6 +223,11 @@ object YtWeb {
      */
     fun afterFullscreen(w: WebView?) {
         w ?: return
+        // سطح الفيديو يبقى أسود بعد إزالة عرض ملء الشاشة: نُعيد ربطه بإخفاء/إظهار قصير. الصفحة تعدّ نفسها ظاهرة (الحماية فعّالة)
+        // فلا تُفرّغ المصدر ولا توقف التشغيل كما كان يحدث دون الحماية.
+        w.postDelayed({
+            if (owns(w) && w.isShown) { w.visibility = View.INVISIBLE; w.post { w.visibility = View.VISIBLE; w.invalidate() } }
+        }, 200L)
         for (d in longArrayOf(0L, 350L, 800L, 1500L)) w.postDelayed({
             w.requestLayout(); w.invalidate()
             w.evaluateJavascript("window.__novaRefit&&window.__novaRefit(${d >= 800L})", null)
@@ -235,7 +240,7 @@ object YtWeb {
         w ?: return
         if (!Prefs.ytBg) return
         if (on) w.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)
-        else w.postDelayed({ background(w, false) }, 400)
+        else w.postDelayed({ background(w, false) }, 1300)   // الحماية تبقى فعّالة أثناء إعادة ربط السطح أدناه
     }
 
     /**

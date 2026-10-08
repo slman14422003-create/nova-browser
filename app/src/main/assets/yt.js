@@ -50,7 +50,9 @@ try {
       // يمنع ارتداد الصفحة (overscroll) الذي يقطع تمرير القوائم داخل WebView
       'html,body{overscroll-behavior-y:none}' +
       // طبقة «الفيديوهات المقترحة» عند الإيقاف تحجب المشغّل وتبطّئ اللمس
-      '.ytp-pause-overlay,.ytp-pause-overlay-container{display:none!important}';
+      '.ytp-pause-overlay,.ytp-pause-overlay-container{display:none!important}' +
+      // «الإضاءة السينمائية/المحيطية»: طبقة كانفس ضبابية خلف المشغّل لا تُعاد رسمها بعد الدوران فتظهر ضبابية ثم سوداء
+      '#cinematics,.ytp-cinematic-container,.cinematic-container,.ytp-cinematic-container-shown,ytm-cinematic-container-renderer,.ytp-ambient-light{display:none!important}';
     // إخفاء شورتس (اختياري). القاعدة التي تستعمل :has منفصلة كي لا تُسقط القواعد الأخرى في المحركات القديمة
     var SHORTS = UI.shorts
       ? 'ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2{display:none!important}' : '';
