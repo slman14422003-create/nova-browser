@@ -27,13 +27,16 @@ import java.net.URL
 
 class MediaService : Service() {
     companion object { @Volatile var instance: MediaService? = null }
+    @Volatile private var stopped = false
+    private var fg = true
+    private val idleStop = Runnable { shutdown() }
 
     private lateinit var session: MediaSession
     private val main = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
-        instance = this
+        instance = this; stopped = false; fg = true
         getSystemService(NotificationManager::class.java)
             .createNotificationChannel(NotificationChannel("media", L("تشغيل الوسائط"), NotificationManager.IMPORTANCE_LOW))
         session = MediaSession(this, "NovaBrowser").apply {
@@ -57,16 +60,36 @@ class MediaService : Service() {
     }
 
     fun refresh() = main.post {
-        if (instance == null) return@post
+        if (stopped || instance == null) return@post
         applySession()
-        getSystemService(NotificationManager::class.java).notify(2, build())
+        val nm = getSystemService(NotificationManager::class.java)
+        val n = build()
+        if (YtMedia.playing) {
+            main.removeCallbacks(idleStop)
+            if (fg) nm.notify(2, n)
+            else runCatching { startForeground(2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK); fg = true }.onFailure { nm.notify(2, n) }
+        } else {
+            // متوقف مؤقتاً: يبقى الإشعار قابلاً للإزاحة بالسحب ولا تبقى الخدمة في المقدمة؛ وتُغلق نهائياً بعد 10 دقائق من الخمول
+            nm.notify(2, n)
+            if (fg) { runCatching { stopForeground(STOP_FOREGROUND_DETACH) }; fg = false }
+            main.removeCallbacks(idleStop); main.postDelayed(idleStop, 10 * 60_000L)
+        }
     }
 
-    fun shutdown() = main.post {
-        YtMedia.playing = false
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+    fun shutdown() {
+        // نعطّل الخدمة فوراً (قبل onDestroy) كي لا يعيد أي تحديث متأخر نشر الإشعار بعد إزالته
+        stopped = true; instance = null
+        main.post {
+            YtMedia.playing = false
+            main.removeCallbacks(idleStop)
+            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            runCatching { getSystemService(NotificationManager::class.java).cancel(2) }
+            stopSelf()
+        }
     }
+
+    // سحب التطبيق من قائمة التطبيقات الأخيرة: لا يبقى إشعار تشغيل بلا تطبيق
+    override fun onTaskRemoved(rootIntent: Intent?) { shutdown(); super.onTaskRemoved(rootIntent) }
 
     private fun applySession() {
         val st = if (YtMedia.playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
@@ -116,6 +139,7 @@ class MediaService : Service() {
 
     override fun onDestroy() {
         instance = null
+        main.removeCallbacksAndMessages(null)
         runCatching { session.release() }
         super.onDestroy()
     }

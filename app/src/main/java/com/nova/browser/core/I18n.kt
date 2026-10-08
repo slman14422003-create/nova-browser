@@ -11,6 +11,9 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "سجل الأعطال" to "Crash log",
+        "لا توجد أعطال مسجلة" to "No crashes recorded",
+        "اضغط لعرض آخر عطل ونسخه" to "Tap to view and copy the latest crash",
         "صوت" to "Audio",
         "صورة" to "Image",
         "مستند" to "Document",

@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
 
     private fun pipParams(): android.app.PictureInPictureParams = android.app.PictureInPictureParams.Builder()
         .setAspectRatio(android.util.Rational(16, 9))
-        .apply { if (Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(pipAuto) }
+        .apply { if (Build.VERSION.SDK_INT >= 31) { setAutoEnterEnabled(pipAuto); setSeamlessResizeEnabled(false) } }
         .build()
 
     fun refreshPip() { runCatching { setPictureInPictureParams(pipParams()) } }
@@ -139,6 +139,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DefaultBrowser.refresh(this)   // قد يغيّر المستخدم الافتراضي من إعدادات النظام
+        inPip = isInPictureInPictureMode   // لا نترك الحالة عالقة إن فاتنا إشعار الخروج من المنبثقة
         if (!inPip) { val w = wvProvider(); YtWeb.background(w, false); if (YtWeb.owns(w)) YtWeb.recover(w) }   // تنظيف أنماط المنبثقة إن بقيت
     }
 
@@ -160,6 +161,10 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
         YtLog.add("native pip=$isInPictureInPictureMode fullscreen=$fullscreenActive")
+        // الخروج من المنبثقة بلا عودة للواجهة = أُغلقت بزر ✕ (بعض الأجهزة لا تستدعي onStop فوراً): نتحقق بعد لحظة
+        if (!isInPictureInPictureMode) window.decorView.postDelayed({
+            if (!isFinishing && !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) onPipDismissed()
+        }, 500)
         val w = wvProvider() ?: return
         if (YtWeb.owns(w)) YtWeb.onPip(w, isInPictureInPictureMode, fullscreenActive)
         else {
@@ -171,6 +176,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
+        CrashLog.install(this)
         enableEdgeToEdge()
         Prefs.init(this)
         GoogleAccounts.init(this)
@@ -220,9 +226,24 @@ class MainActivity : ComponentActivity() {
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
         android.os.Looper.myQueue().addIdleHandler { Perf.warmUp(applicationContext); runCatching { WebView(applicationContext).destroy() }; false }
     }
+    private fun onPipDismissed() {
+        YtLog.add("native pip dismissed")
+        inPip = false
+        val w = wvProvider()
+        if (YtWeb.owns(w)) YtWeb.background(w, false)
+        YtMedia.stop(pause = true)   // إغلاق المنبثقة يوقف الفيديو ويزيل الإشعار
+    }
+
     override fun onStop() {
         super.onStop()
         Perf.flushCookies(true)
+        if (inPip && !isInPictureInPictureMode) onPipDismissed()
+    }
+
+    override fun onDestroy() {
+        // الخروج من التطبيق نهائياً: لا يبقى إشعار تشغيل لفيديو لم يعد له صفحة
+        if (isFinishing) YtMedia.stop()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -456,6 +477,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             val inPipNow = (activity as? MainActivity)?.inPip == true
             if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
                 val ytLive = Prefs.ytBg && (YtMedia.owner != null || inPipNow)
+                if (!ytLive && customView == null) YtMedia.stop()   // الخلفية معطّلة: لا إشعار تشغيل بعد الخروج
                 if (ytLive) YtWeb.background(w, true)   // لا نجمّد الصفحة أثناء تشغيل يوتيوب
                 else if (Prefs.pauseBg && customView == null) { w?.onPause(); w?.pauseTimers() }
             } else if (e == androidx.lifecycle.Lifecycle.Event.ON_START) {

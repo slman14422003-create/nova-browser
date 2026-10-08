@@ -351,6 +351,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             RowSpec("Nova Browser", L("الإصدار ") + BuildConfig.VERSION_NAME, Icons.Default.Star, {}),
             RowSpec(L("التحديث التلقائي"), L("فحص الإصدارات الجديدة من GitHub كل 12 ساعة"), Icons.Default.Refresh, { Prefs.pickAutoUpdate(!Prefs.autoUpdate) },
                 { Switch(checked = Prefs.autoUpdate, onCheckedChange = null) }),
+            RowSpec(L("سجل الأعطال"), if (CrashLog.text().isBlank()) L("لا توجد أعطال مسجلة") else L("اضغط لعرض آخر عطل ونسخه"), Icons.Default.Warning, { dialog = "crash" }),
             RowSpec(L("التحقق من تحديث الآن"), updateStatus(), Icons.Default.Info, {
                 when (Updater.phase) {
                     UpdPhase.AVAILABLE -> Updater.showPrompt()
@@ -445,6 +446,17 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
         "engine" -> ChoiceDialog(L("محرك البحث"), Prefs.engines.map { it.first }, Prefs.engine, { Prefs.pickEngine(it) }) { dialog = null }
         "theme" -> ChoiceDialog(L("المظهر"), themeNames, Prefs.theme, { Prefs.pickTheme(it) }) { dialog = null }
         "conns" -> ChoiceDialog(L("الحد الأقصى للاتصالات"), connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.pickMaxConns(connOpts[it]) }) { dialog = null }
+        "crash" -> AlertDialog(
+            onDismissRequest = { dialog = null }, title = { Text(L("سجل الأعطال")) },
+            text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                Text(CrashLog.text().ifBlank { L("لا توجد أعطال مسجلة") }, style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { TextButton(onClick = { copyText(ctx, CrashLog.text()) }) { Text(L("نسخ")) } },
+            dismissButton = { Row {
+                TextButton(onClick = { CrashLog.clear(); dialog = null }) { Text(L("مسح السجل")) }
+                TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) }
+            } }
+        )
         "seclog" -> AlertDialog(
             onDismissRequest = { dialog = null }, title = { Text(L("سجل الأمان")) },
             text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) } },
