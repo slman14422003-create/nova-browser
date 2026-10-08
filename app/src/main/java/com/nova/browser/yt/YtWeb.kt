@@ -242,10 +242,12 @@ object YtWeb {
      * فحص ذاتي بعد الدوران/الخروج من ملء الشاشة: إن فقد المشغّل مصدره يُعاد تحميله من نفس الثانية، وإن بقي أسود فتُعاد الصفحة بنفس الموضع.
      * المراحل: 1.2ث (إنعاش)، 3ث (إعادة تحميل المشغّل)، 6ث (إعادة فتح الصفحة كحل أخير).
      */
+    @Volatile private var healGen = 0
     fun heal(w: WebView?) {
         w ?: return
+        val g = ++healGen   // استدعاءات متتابعة (دوران + خروج من ملء الشاشة) تُدمج في فحص واحد
         for ((i, d) in longArrayOf(1200L, 3000L, 6000L).withIndex()) w.postDelayed({
-            if (owns(w)) w.evaluateJavascript("window.__novaHeal&&window.__novaHeal(${i})") { r -> if (r != null && r.length > 2) YtLog.add("heal#$i -> $r") }
+            if (g == healGen && owns(w)) w.evaluateJavascript("window.__novaHeal&&window.__novaHeal(${i})") { r -> if (r != null && r.length > 2) YtLog.add("heal#$i -> $r") }
         }, d)
     }
 

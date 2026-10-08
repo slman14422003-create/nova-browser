@@ -341,6 +341,34 @@ try {
 
   window.__novaBg = function (b) { b = !!b; if (bg && !b) graceUntil = Date.now() + 1500; bg = b; log('bg=' + bg); };
 
+  // ───────── استعادة الموضع إذا أعاد يوتيوب تحميل الفيديو من الصفر أثناء الخروج للخلفية ─────────
+  // السجل: عند الضغط على زر الرئيسية يوقف النظام الفيديو (vis=hidden) ثم يُفرّغ يوتيوب المصدر (emptied t=0) فيبدأ من البداية.
+  // نحفظ آخر موضع ومعرّف الفيديو، وإن حدث التفريغ أثناء الخلفية/بعدها بلحظات نقفز لنفس الموضع عند جاهزية المصدر الجديد (لنفس الفيديو فقط).
+  var lastT = 0, lastId = '', lastBgAt = 0, restore = null;
+  function curId() { try { var p = document.getElementById('movie_player'); var d = p && p.getVideoData && p.getVideoData(); return (d && d.video_id) || ''; } catch (x) { return ''; } }
+  var _bgFn = window.__novaBg;
+  window.__novaBg = function (b) { lastBgAt = Date.now(); return _bgFn(b); };
+  document.addEventListener('timeupdate', function (ev) {
+    var e = ev.target; if (!e || e.tagName !== 'VIDEO' || e.ended || !(e.currentTime > 1)) return;
+    lastT = e.currentTime; lastId = curId();
+  }, true);
+  document.addEventListener('emptied', function (ev) {
+    if (!ev.target || ev.target.tagName !== 'VIDEO') return;
+    if ((guard() || Date.now() - lastBgAt < 6000) && lastT > 3) { restore = { t: lastT, id: lastId, at: Date.now() }; log('will restore ' + Math.round(lastT)); }
+  }, true);
+  function tryRestore(ev) {
+    var e = ev.target; if (!restore || !e || e.tagName !== 'VIDEO') return;
+    if (Date.now() - restore.at > 20000) { restore = null; return; }
+    var id = curId(); if (restore.id && id && id !== restore.id) { restore = null; return; }
+    if (e.currentTime < restore.t - 2) {
+      var r = restore; restore = null;
+      try { e.currentTime = r.t; } catch (x) {}
+      log('restored ' + Math.round(r.t));
+      if (!userPaused) { var pl = e.play(); if (pl && pl.catch) pl.catch(function () {}); }
+    } else restore = null;
+  }
+  ['loadedmetadata', 'canplay'].forEach(function (n) { document.addEventListener(n, tryRestore, true); });
+
   // ───────── إصلاح الشاشة السوداء بعد الدوران/ملء الشاشة ─────────
   // الصفحة تُعدّ مخفية لحظة الدوران فيُفرّغ يوتيوب مصدر الفيديو (emptied) ويبقى المشغّل أسود حتى إعادة التحميل.
   // الفحص: هل للعنصر مصدر وإطار مرسوم؟ إن لا → نطلب من المشغّل إعادة التحميل من نفس الثانية، وفي المرحلة الأخيرة نعيد فتح الصفحة بنفس الموضع.
