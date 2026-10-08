@@ -217,6 +217,18 @@ object YtWeb {
         }, d)
     }
 
+    /**
+     * بعد الخروج من ملء الشاشة: الدوران لوضع الطول يحتاج وقتاً، ثم يُعاد قياس المشغّل وتُنعش طبقة الفيديو (yt.js → __novaRefit).
+     * لا نُخفي الـ WebView هنا (الإخفاء يجعل يوتيوب يوقف الفيديو)؛ التنشيط يتم بإعادة التخطيط والرسم فقط.
+     */
+    fun afterFullscreen(w: WebView?) {
+        w ?: return
+        for (d in longArrayOf(0L, 350L, 800L, 1500L)) w.postDelayed({
+            w.requestLayout(); w.invalidate()
+            w.evaluateJavascript("window.__novaRefit&&window.__novaRefit(${d >= 800L})", null)
+        }, d)
+    }
+
     /** دخول/خروج النافذة المنبثقة. */
     fun onPip(w: WebView?, inPip: Boolean, fullscreen: Boolean) {
         w ?: return

@@ -19,31 +19,30 @@ try {
 
     var CSS =
       // مقاسات الترجمة (تُضرب في الحجم المتجاوب)
-      ':root{--nova-cc-k:1;--nova-cc-bg:rgba(14,14,18,.68);--nova-cc-blur:8px;--nova-cc-sh:none}' +
+      ':root{--nova-cc-k:1;--nova-cc-bg:rgba(14,14,18,.72);--nova-cc-sh:none}' +
       'html[data-nova-ccsize="s"]{--nova-cc-k:.82}html[data-nova-ccsize="l"]{--nova-cc-k:1.22}html[data-nova-ccsize="xl"]{--nova-cc-k:1.5}' +
-      'html[data-nova-ccbg="solid"]{--nova-cc-bg:rgba(0,0,0,.92);--nova-cc-blur:0px}' +
-      'html[data-nova-ccbg="none"]{--nova-cc-bg:transparent;--nova-cc-blur:0px;' +
+      'html[data-nova-ccbg="solid"]{--nova-cc-bg:rgba(0,0,0,.92)}' +
+      'html[data-nova-ccbg="none"]{--nova-cc-bg:transparent;' +
       '--nova-cc-sh:0 0 3px #000,0 0 3px #000,0 1px 6px rgba(0,0,0,.95),0 0 10px rgba(0,0,0,.8)}' +
-      // الحاوية: لا تلتقط اللمس فتصل الضغطات للمشغّل
-      '.ytp-caption-window-container{pointer-events:none!important}' +
-      // النافذة: وسط أفقي دائماً بغضّ النظر عن اتجاه لغة الترجمة
-      '.ytp-caption-window-container .caption-window,.caption-window{position:absolute!important;left:50%!important;right:auto!important;' +
-      'transform:translateX(-50%)!important;margin:0!important;width:auto!important;max-width:90%!important;' +
-      'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important;' +
-      'transition:bottom .22s cubic-bezier(.2,0,0,1),top .22s cubic-bezier(.2,0,0,1)!important;contain:layout style}' +
+      // الحاوية تملأ المشغّل وتوزّع النوافذ بـ flex: توسيط أفقي مضمون بلا transform ولا left/margin (يوتيوب يضع مقاسات بكسل خاصة به)
+      // وبلا transition ولا backdrop-filter (كانا سبب التقطيع وأحياناً سواد الفيديو مع الترجمة التلقائية)
+      '.ytp-caption-window-container{pointer-events:none!important;position:absolute!important;left:0!important;right:0!important;width:auto!important;height:auto!important;' +
+      'display:flex!important;flex-direction:column!important;align-items:center!important;margin:0!important;padding:0 4%!important;box-sizing:border-box!important}' +
+      '.ytp-caption-window-container .caption-window,.caption-window{position:static!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;' +
+      'transform:none!important;transition:none!important;margin:0 0 4px 0!important;width:auto!important;max-width:100%!important;' +
+      'text-align:center!important;display:flex!important;flex-direction:column!important;align-items:center!important}' +
       // الموضع: b أسفل (فوق أزرار التحكم) • m وسط • t أعلى. --nova-cc-off إزاحة دقيقة نحو الداخل (٪)
-      'html:not([data-nova-ccpos]) .caption-window,html[data-nova-ccpos="b"] .caption-window{top:auto!important;bottom:calc(var(--nova-cc-base,27%) + var(--nova-cc-off,0)*1%)!important}' +
-      'html[data-nova-ccpos="m"] .caption-window{bottom:auto!important;top:calc(50% - var(--nova-cc-off,0)*1%)!important;transform:translate(-50%,-50%)!important}' +
-      'html[data-nova-ccpos="t"] .caption-window{bottom:auto!important;top:calc(7% + var(--nova-cc-off,0)*1%)!important}' +
+      'html:not([data-nova-ccpos]) .ytp-caption-window-container,html[data-nova-ccpos=\"b\"] .ytp-caption-window-container{top:0!important;justify-content:flex-end!important;bottom:calc(var(--nova-cc-base,27%) + var(--nova-cc-off,0)*1%)!important}' +
+      'html[data-nova-ccpos=\"m\"] .ytp-caption-window-container{top:0!important;bottom:0!important;justify-content:center!important}' +
+      'html[data-nova-ccpos=\"t\"] .ytp-caption-window-container{bottom:0!important;justify-content:flex-start!important;top:calc(7% + var(--nova-cc-off,0)*1%)!important}' +
       '.ytp-caption-window-container .caption-visual-line{display:block!important;text-align:center!important;margin:2px 0!important}' +
       // النص: حجم متجاوب مع عرض الشاشة، يلتف السطر ولا يقتصّ
       '.ytp-caption-segment{background:var(--nova-cc-bg)!important;color:#fff!important;' +
-      'font-family:Roboto,"Segoe UI","Noto Naskh Arabic","Noto Sans Arabic",system-ui,sans-serif!important;' +
+      'font-family:Roboto,\"Segoe UI\",\"Noto Naskh Arabic\",\"Noto Sans Arabic\",system-ui,sans-serif!important;' +
       'font-size:calc(clamp(13px,3.9vw,26px)*var(--nova-cc-k))!important;line-height:1.55!important;' +
       'padding:.12em .6em!important;border-radius:10px!important;text-shadow:var(--nova-cc-sh)!important;text-align:center!important;' +
       'unicode-bidi:plaintext;white-space:pre-wrap!important;word-break:break-word;' +
-      '-webkit-box-decoration-break:clone;box-decoration-break:clone;' +
-      '-webkit-backdrop-filter:blur(var(--nova-cc-blur));backdrop-filter:blur(var(--nova-cc-blur))}' +
+      '-webkit-box-decoration-break:clone;box-decoration-break:clone}' +
       // ── طبقات إصلاحية عامة ──
       '*{-webkit-tap-highlight-color:transparent}' +
       // لافتات الدعوة لتثبيت تطبيق يوتيوب (لا تمسّ الإعلانات)
@@ -92,25 +91,48 @@ try {
       land = l; clearTimeout(rz); rz = setTimeout(refit, 400);
     });
 
-    // ───────── موضع الترجمة السفلي يتبع أزرار التحكم: فوقها وهي ظاهرة، وقريب من الحافة حين تختفي ─────────
-    // مؤقّت واحد يتوقف تماماً مع الفيديو/الصفحة المخفية (كان يعمل كل 400ms دائماً)
-    var last = '', tickT = 0;
-    function shown() {
-      var c = document.querySelector('.player-controls-bottom,.ytp-chrome-bottom');
+    // ───────── موضع الترجمة السفلي يتبع أزرار التحكم: فوقها تماماً وهي ظاهرة، وقريب من الحافة حين تختفي ─────────
+    // لا عمل إطلاقاً ما لم تكن هناك ترجمة معروضة؛ يُقاس ارتفاع الشريط فقط عند تغيّر حالته، والمتغيّر يُضبط على المشغّل لا على <html>
+    // (ضبطه على <html> كان يُبطل أنماط الصفحة كلها في كل مرة)
+    var lastShown = null, lastEl = null, tickT = 0;
+    function player() { return document.getElementById('movie_player') || document.querySelector('.html5-video-player'); }
+    function ctl() { return document.querySelector('.player-controls-bottom,.ytp-chrome-bottom'); }
+    function shown(c) {
       if (!c) return false;
       var cs = getComputedStyle(c);
       return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05;
     }
     function tick() {
       if (document.hidden || location.pathname !== '/watch') return;
-      var v = shown() ? '27%' : '9%';
-      if (v !== last) { last = v; root().style.setProperty('--nova-cc-base', v); }
+      if (!document.querySelector('.ytp-caption-window-container .caption-window')) return;
+      var p = player(); if (!p) return;
+      var c = ctl(), s = shown(c);
+      if (s === lastShown && p === lastEl) return;
+      lastShown = s; lastEl = p;
+      var b = '9%';
+      if (s) {
+        var d = p.getBoundingClientRect().bottom - c.getBoundingClientRect().top;
+        b = (d > 20 && d < p.clientHeight * 0.6) ? Math.round(d + 6) + 'px' : '27%';
+      }
+      p.style.setProperty('--nova-cc-base', b);
     }
-    function arm() { if (!tickT) tickT = setInterval(tick, 500); }
+    function arm() { if (!tickT) tickT = setInterval(tick, 700); }
     function disarm() { if (tickT) { clearInterval(tickT); tickT = 0; } }
     document.addEventListener('visibilitychange', function () { if (document.hidden) disarm(); else arm(); });
     ['touchend', 'click'].forEach(function (e) { document.addEventListener(e, function () { setTimeout(tick, 80); }, true); });
+    window.addEventListener('yt-navigate-finish', function () { lastShown = null; });
     arm();
+
+    // ───────── بعد الخروج من ملء الشاشة/الدوران: إعادة قياس المشغّل وإيقاظ طبقة الفيديو (يمنع الشاشة السوداء) ─────────
+    function nudge() {
+      var v = document.querySelector('video.html5-main-video'); if (!v) return;
+      v.style.setProperty('transform', 'translateZ(0)', 'important');
+      requestAnimationFrame(function () { requestAnimationFrame(function () { v.style.removeProperty('transform'); }); });
+    }
+    window.__novaRefit = function (deep) { lastShown = null; refit(); if (deep) nudge(); setTimeout(tick, 80); };
+    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (n) {
+      document.addEventListener(n, function () { setTimeout(function () { window.__novaRefit(false); }, 250); setTimeout(function () { window.__novaRefit(true); }, 900); }, true);
+    });
 
     // ───────── العودة للأعلى (اسم الموقع في الشريط العلوي يستدعيها) ─────────
     window.__novaTop = function () {

@@ -512,7 +512,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             },
             openTab = { openInNewTab(it) },
             showCustom = { v, cb -> customView = v; customCb = cb },
-            hideCustom = { customView = null; customCb = null },
+            hideCustom = {
+                // فصل عرض الفيديو صراحةً من حاويته ثم إنعاش المشغّل بعد الرجوع (كانت الشاشة تبقى سوداء)
+                customView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
+                customView = null; customCb = null
+                tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.afterFullscreen(it) }
+            },
             onLoginForm = { t, _, host ->
                 if (t === tabs.getOrNull(current)) {
                     val cs = Vault.forHost(host)
@@ -572,7 +577,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
     BackHandler(enabled = showTabs) { showTabs = false }
-    BackHandler(enabled = customView != null) { customCb?.onCustomViewHidden(); customView = null; customCb = null }
+    BackHandler(enabled = customView != null) {
+        customView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
+        customCb?.onCustomViewHidden(); customView = null; customCb = null
+        tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.afterFullscreen(it) }
+    }
 
     // ربط الـ Activity: مزوّد الـ WebView الحالي + تفعيل الدخول التلقائي للنافذة المنبثقة أثناء تشغيل فيديو يوتيوب
     val mainAct = activity as? MainActivity
