@@ -146,7 +146,7 @@ fun PasswordsScreen(onBack: () -> Unit) {
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
-                        ListRow(groupShape(i, list.size), c.host, c.user.ifBlank { "—" }, { sel = c; revealed = false }) {
+                        ListRow(groupShape(i, list.size), c.host, c.user.ifBlank { "—" }, { sel = c; revealed = false }, modifier = Modifier.animateItem()) {
                             IconCircle { Icon(Icons.Default.Lock, null) }
                         }
                     }

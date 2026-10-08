@@ -66,6 +66,27 @@ try {
     addStyle('nova-yt-fix-style', CSS + SHORTS);
     addStyle('nova-yt-fix-style2', SHORTS2);
 
+    // ───────── لمسات جمالية وسلاسة لقوائم يوتيوب (لا تمسّ المشغّل ولا صفحة المشاهدة نفسها) ─────────
+    var POLISH =
+      'html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}' +
+      '::-webkit-scrollbar{display:none}' +
+      // صور مصغّرة بحواف مدوّرة (قوائم الرئيسية والبحث والمقترحات فقط)
+      '.video-thumbnail-container-large,.video-thumbnail-container-compact,.media-item-thumbnail-container{border-radius:12px;overflow:hidden}' +
+      // يقلّل كلفة إعادة الحساب أثناء التمرير الطويل
+      'ytm-rich-item-renderer,ytm-media-item,ytm-compact-video-renderer,ytm-video-with-context-renderer{contain:layout style}' +
+      // أزرار وشرائح: انتقال ناعم عند اللمس
+      '.yt-spec-button-shape-next,ytm-chip-cloud-chip-renderer,ytm-button-renderer{transition:transform .16s cubic-bezier(.2,0,0,1)}';
+    var ANIM =
+      '@keyframes novaIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}' +
+      // ظهور تدريجي لبطاقات الفيديو الجديدة (التمرير اللانهائي والبحث) بحركة قصيرة على الطبقة فقط (opacity/transform)
+      'ytm-rich-item-renderer,ytm-media-item,ytm-compact-video-renderer,ytm-video-with-context-renderer{animation:novaIn .3s cubic-bezier(.2,0,0,1) both}' +
+      // ضغط خفيف على البطاقات والأزرار
+      'ytm-media-item:active,ytm-compact-video-renderer:active,ytm-rich-item-renderer:active{transform:scale(.99);transition:transform .12s ease-out}' +
+      '.yt-spec-button-shape-next:active,ytm-chip-cloud-chip-renderer:active,ytm-button-renderer:active{transform:scale(.95)}' +
+      '@media (prefers-reduced-motion:reduce){ytm-rich-item-renderer,ytm-media-item,ytm-compact-video-renderer,ytm-video-with-context-renderer{animation:none!important}}';
+    addStyle('nova-yt-polish', POLISH);
+    if (UI.anim) addStyle('nova-yt-anim', ANIM);
+
     // إعدادات الترجمة تأتي من إعدادات التطبيق مباشرة (لا تخزين محلي ولا واجهة وسيطة)
     (function applyCc() {
       var r = root(); if (!r) { setTimeout(applyCc, 20); return; }
@@ -384,6 +405,28 @@ try {
       return true;
     } catch (err) { return false; }   // محمي/ملوّث: لا نحكم
   }
+  // يفحص هل عنصر الفيديو مرئي فعلاً داخل المشغّل (مقاس/موضع/شفافية). refit القديم يمسح مقاسات يوتيوب المضمّنة فقد يبقى العنصر بلا مقاس
+  // والصوت والترجمة يعملان بلا صورة. إن وجدنا خللاً نثبّت مقاساً صريحاً يملأ المشغّل (object-fit: contain يحفظ النسبة).
+  function fixLayout(e, p) {
+    var info = {};
+    try {
+      var r = e.getBoundingClientRect(), pr = (p || e.parentElement).getBoundingClientRect(), cs = getComputedStyle(e);
+      info = { v: [Math.round(r.width), Math.round(r.height), Math.round(r.left), Math.round(r.top)], p: [Math.round(pr.width), Math.round(pr.height), Math.round(pr.left), Math.round(pr.top)],
+        d: cs.display, vis: cs.visibility, op: cs.opacity, of: cs.objectFit };
+      var bad = r.width < pr.width * 0.4 || r.height < pr.height * 0.3 || Math.abs(r.left - pr.left) > pr.width * 0.5 || Math.abs(r.top - pr.top) > pr.height * 0.5 ||
+        cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) < 0.1;
+      info.bad = bad;
+      if (bad && pr.width > 50 && pr.height > 50) {
+        var st = e.style;
+        st.setProperty('display', 'block', 'important'); st.setProperty('visibility', 'visible', 'important'); st.setProperty('opacity', '1', 'important');
+        st.setProperty('position', 'absolute', 'important'); st.setProperty('left', '0px', 'important'); st.setProperty('top', '0px', 'important');
+        st.setProperty('width', Math.round(pr.width) + 'px', 'important'); st.setProperty('height', Math.round(pr.height) + 'px', 'important');
+        st.setProperty('object-fit', 'contain', 'important');
+        info.fixed = 1;
+      }
+    } catch (x) { info.err = String(x); }
+    return info;
+  }
   window.__novaHeal = function (stage) {
     try {
       if (location.pathname !== '/watch') return 'skip';
@@ -392,6 +435,7 @@ try {
       var ok = e.readyState >= 2 && e.videoWidth > 0 && !!e.currentSrc;
       var loading = e.networkState === 2 && e.readyState < 2;     // ما زال يحمّل: ننتظر
       if (ok) {
+        var lay = fixLayout(e, p); log('heal diag stage=' + stage + ' ' + JSON.stringify(lay) + ' black=' + blackFrame(e) + ' rs=' + e.readyState + ' vw=' + e.videoWidth + ' t=' + Math.round(e.currentTime));
         // يعمل (صوت وترجمة) لكن قد لا تُرسم الصورة: نقرأ إطاراً صغيراً من الفيديو؛ إن كان أسود كلياً نعيد إنشاء المشغّل
         if (stage >= 1 && blackFrame(e)) {
           var id0 = '', t1 = Math.floor(e.currentTime || 0);

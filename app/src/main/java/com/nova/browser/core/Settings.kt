@@ -379,7 +379,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             }
             AnimatedContent(
                 targetState = section, modifier = Modifier.weight(1f), label = "settings",
-                transitionSpec = { fadeIn(tween(Adaptive.ms(200))) togetherWith fadeOut(tween(Adaptive.ms(120))) }
+                transitionSpec = { val fwd = targetState != null; NovaMotion.axisEnter(fwd) togetherWith NovaMotion.axisExit(fwd) }
             ) { id ->
                 val sec = sections.firstOrNull { it.id == id }
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 24.dp)) {
