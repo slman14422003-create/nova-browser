@@ -52,7 +52,7 @@ try {
       // طبقة «الفيديوهات المقترحة» عند الإيقاف تحجب المشغّل وتبطّئ اللمس
       '.ytp-pause-overlay,.ytp-pause-overlay-container{display:none!important}' +
       // «الإضاءة السينمائية/المحيطية»: طبقة كانفس ضبابية خلف المشغّل لا تُعاد رسمها بعد الدوران فتظهر ضبابية ثم سوداء
-      '#cinematics,.ytp-cinematic-container,.cinematic-container,.ytp-cinematic-container-shown,ytm-cinematic-container-renderer,.ytp-ambient-light{display:none!important}';
+      '#cinematics canvas,.ytp-cinematic-container canvas,ytm-cinematic-container-renderer canvas{display:none!important}';
     // إخفاء شورتس (اختياري). القاعدة التي تستعمل :has منفصلة كي لا تُسقط القواعد الأخرى في المحركات القديمة
     var SHORTS = UI.shorts
       ? 'ytm-reel-shelf-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2{display:none!important}' : '';
@@ -374,6 +374,16 @@ try {
   // ───────── إصلاح الشاشة السوداء بعد الدوران/ملء الشاشة ─────────
   // الصفحة تُعدّ مخفية لحظة الدوران فيُفرّغ يوتيوب مصدر الفيديو (emptied) ويبقى المشغّل أسود حتى إعادة التحميل.
   // الفحص: هل للعنصر مصدر وإطار مرسوم؟ إن لا → نطلب من المشغّل إعادة التحميل من نفس الثانية، وفي المرحلة الأخيرة نعيد فتح الصفحة بنفس الموضع.
+  function blackFrame(e) {
+    try {
+      if (e.paused && e.currentTime < 1) return false;
+      var c = document.createElement('canvas'); c.width = c.height = 8;
+      var x = c.getContext('2d'); x.drawImage(e, 0, 0, 8, 8);
+      var d = x.getImageData(0, 0, 8, 8).data;
+      for (var i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 12) return false;
+      return true;
+    } catch (err) { return false; }   // محمي/ملوّث: لا نحكم
+  }
   window.__novaHeal = function (stage) {
     try {
       if (location.pathname !== '/watch') return 'skip';
@@ -382,8 +392,18 @@ try {
       var ok = e.readyState >= 2 && e.videoWidth > 0 && !!e.currentSrc;
       var loading = e.networkState === 2 && e.readyState < 2;     // ما زال يحمّل: ننتظر
       if (ok) {
-        // يعمل لكن قد لا تُرسم الطبقة: نُجبر إعادة التركيب، وفي حالة الإيقاف نطلب إطاراً جديداً
-        e.style.setProperty('display', 'none', 'important'); void e.offsetHeight; e.style.removeProperty('display');
+        // يعمل (صوت وترجمة) لكن قد لا تُرسم الصورة: نقرأ إطاراً صغيراً من الفيديو؛ إن كان أسود كلياً نعيد إنشاء المشغّل
+        if (stage >= 1 && blackFrame(e)) {
+          var id0 = '', t1 = Math.floor(e.currentTime || 0);
+          try { var d0 = p && p.getVideoData && p.getVideoData(); id0 = d0 && d0.video_id || ''; } catch (x) {}
+          if (!id0) { var m0 = /[?&]v=([^&]+)/.exec(location.search); id0 = m0 ? m0[1] : ''; }
+          log('heal black frame stage=' + stage + ' id=' + id0);
+          if (id0) {
+            if (stage < 2 && p && p.loadVideoById) { try { p.loadVideoById(id0, t1); return 'black-reloaded-player'; } catch (x) {} }
+            if (stage >= 2) { location.replace('/watch?v=' + encodeURIComponent(id0) + (t1 > 3 ? '&t=' + t1 + 's' : '')); return 'black-reloaded-page'; }
+          }
+        }
+        e.style.setProperty('transform', 'translateZ(0)', 'important'); void e.offsetHeight; e.style.removeProperty('transform');
         if (e.paused) { try { var t0 = e.currentTime; e.currentTime = t0 > 0.05 ? t0 - 0.01 : t0; } catch (x) {} }
         return 'ok';
       }
