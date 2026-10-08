@@ -207,10 +207,10 @@ object YtWeb {
      */
     fun recover(w: WebView?, rebind: Boolean = false) {
         w ?: return
-        for (d in longArrayOf(0L, 150L, 500L, 1200L)) w.postDelayed({
+        for (d in longArrayOf(0L, 500L, 1200L)) w.postDelayed({
             w.resumeTimers(); w.onResume(); w.requestLayout(); w.invalidate()
             w.evaluateJavascript("window.__novaPip&&window.__novaPip(false);window.dispatchEvent(new Event('resize'))", null)
-            if (rebind && d == 500L && w.visibility == View.VISIBLE && w.isShown) {
+            if (rebind && d == 500L && !YtMedia.playing && w.visibility == View.VISIBLE && w.isShown) {   // الإخفاء يفرّغ الفيديو الجاري: لا نفعله أثناء التشغيل
                 w.visibility = View.INVISIBLE
                 w.post { w.visibility = View.VISIBLE; w.invalidate() }
             }

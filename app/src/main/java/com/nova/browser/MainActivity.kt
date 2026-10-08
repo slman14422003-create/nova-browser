@@ -413,7 +413,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     // شاشة التبويبات تغطي الصفحة بالكامل: نُخفي الـ WebView تحتها كي لا يبقى يرسم (ما لم يكن صوت يوتيوب يعمل في الخلفية)
     LaunchedEffect(showTabs, tab.id, tab.epoch) {
         if (showTabs) kotlinx.coroutines.delay(260)
-        val keep = Prefs.ytBg && YtMedia.owner != null
+        // فيديو يوتيوب يعمل/مفتوح لا يُخفى أبداً: إخفاء الـ WebView يجعل الصفحة hidden فيفرّغ يوتيوب الفيديو (emptied) ويتوقف
+        val keep = (Prefs.ytBg && YtMedia.owner != null) || YtWeb.isLive(tab)
         tab.webView?.visibility = if (showTabs && !keep) View.INVISIBLE else View.VISIBLE
     }
     // عند ضغط الذاكرة: نحرر الـ WebView للتبويبات الخلفية (تُعاد عند الرجوع لها)
