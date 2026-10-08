@@ -371,13 +371,6 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         val name = (t.title.ifBlank { "Nova" } + " - " + hostOf(t.url)).take(60)
         runCatching { pm.print(name, w.createPrintDocumentAdapter(name), android.print.PrintAttributes.Builder().build()) }
     }
-    fun openCustomTab(t: BrowserTab) {
-        val pkg = androidx.browser.customtabs.CustomTabsClient.getPackageName(activity, null)
-        if (pkg == null) { toast(activity, L("لا يوجد متصفح يدعم Custom Tabs")); return }
-        val ci = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
-        ci.intent.setPackage(pkg)
-        runCatching { ci.launchUrl(activity, Uri.parse(t.url)) }
-    }
     fun translatePage(t: BrowserTab) {
         if (t.url.isBlank()) return
         val target = Prefs.siteLangCode().ifEmpty { I18n.code() }
@@ -702,7 +695,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
+                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
