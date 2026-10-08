@@ -191,8 +191,10 @@ class MainActivity : ComponentActivity() {
         WebSupport.init(this)
         Thread({ Security.deviceWarnings(applicationContext).forEach { Security.log(L("الجهاز"), it) } }, "nova-sec").start()
         Downloader.init(this)
+        Notif.ensureChannels(applicationContext)
         DefaultBrowser.refresh(this)
         initialized = true
+        if (intent?.getBooleanExtra("upd", false) == true) Updater.showPrompt()
         // لا نعيد فتح الرابط عند إعادة إنشاء الـ Activity (تدوير/استعادة العملية)
         val start = if (savedInstanceState == null) DefaultBrowser.urlFrom(intent) ?: "" else ""
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
@@ -250,6 +252,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("dl", false)) dlTrigger++
+        if (intent.getBooleanExtra("upd", false)) Updater.showPrompt()
         DefaultBrowser.urlFrom(intent)?.let { incoming = ++incomingSeq to it }   // رابط من واتساب/تيليجرام… والتطبيق مفتوح
     }
 }
@@ -279,11 +282,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     var pendingSave by remember { mutableStateOf<PendingSave?>(null) }
     var fillOffer by remember { mutableStateOf<FillOffer?>(null) }
     var ytUrl by remember { mutableStateOf<String?>(null) }
-    var askedNotif by remember { mutableStateOf(false) }
+    var notifPrompt by remember { mutableStateOf(false) }
     LaunchedEffect(dlTrigger) { if (dlTrigger > 0) openPanel(activity, "downloads") }
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية"))
-    }
+    val notif = rememberNotifState { ok -> if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية")) }
+    // يُعرض شرح الإذن مرة واحدة عند أول حاجة (تنزيل أو تشغيل في الخلفية)، ولا تتكرر الطلبات المتفرقة
+    val askNotif = { if (Notif.needsPermission && !Notif.enabled(activity) && !Prefs.notifAsked) { Prefs.pickNotifAsked(true); notifPrompt = true } }
     var customView by remember { mutableStateOf<View?>(null) }
     var customCb by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     val tab = tabs[current.coerceIn(0, tabs.lastIndex)]
@@ -536,12 +539,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 }
             },
             openTab = { openInNewTab(it) },
-            showCustom = { v, cb -> customView = v; customCb = cb },
+            showCustom = { v, cb ->
+                customView = v; customCb = cb
+                tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.onFullscreen(it, true) }
+            },
             hideCustom = {
                 // فصل عرض الفيديو صراحةً من حاويته ثم إنعاش المشغّل بعد الرجوع (كانت الشاشة تبقى سوداء)
                 customView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
                 customView = null; customCb = null
-                tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.afterFullscreen(it) }
+                tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.onFullscreen(it, false); YtWeb.afterFullscreen(it) }
             },
             onLoginForm = { t, _, host ->
                 if (t === tabs.getOrNull(current)) {
@@ -558,9 +564,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 }
             },
             onYtState = {
-                if (Build.VERSION.SDK_INT >= 33 && !askedNotif && !granted(Manifest.permission.POST_NOTIFICATIONS)) {
-                    askedNotif = true; notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
+                askNotif()
             },
             onDownload = { u, ua, cd, mime, ref ->
                 if (!Shield.downloadAllowed(hostOf(ref ?: u))) toast(activity, L("تم حظر تنزيلات تلقائية متتابعة من الصفحة"))
@@ -569,13 +573,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     val start = {
                         Downloader.start(activity, u, ua, cd, mime, ref)
                         toast(activity, L("بدأ التنزيل — القائمة ⋮ ثم التنزيلات"))
-                        if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
-                            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        askNotif()
                         Unit
                     }
                     if (Security.isRiskyFile(u, cd)) {
                         Security.log(L("تنزيل"), (L("تحذير ملف تنفيذي من ") + (hostOf(u))))
-                        AlertDialog.Builder(activity).setTitle(L("ملف قد يكون خطيراً"))
+                        novaDialog(activity).setTitle(L("ملف قد يكون خطيراً"))
                             .setMessage((L("هذا النوع من الملفات (تطبيق/ملف تنفيذي) قد يضر بجهازك. نزّله فقط من مصدر تثق به.\n\n") + (hostOf(u))))
                             .setPositiveButton(L("تنزيل")) { _, _ -> start() }.setNegativeButton(L("إلغاء"), null).show()
                     } else start()
@@ -605,7 +608,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     BackHandler(enabled = customView != null) {
         customView?.let { v -> (v.parent as? ViewGroup)?.removeView(v) }
         customCb?.onCustomViewHidden(); customView = null; customCb = null
-        tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.afterFullscreen(it) }
+        tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.onFullscreen(it, false); YtWeb.afterFullscreen(it) }
     }
 
     // ربط الـ Activity: مزوّد الـ WebView الحالي + تفعيل الدخول التلقائي للنافذة المنبثقة أثناء تشغيل فيديو يوتيوب
@@ -776,13 +779,16 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         }
     }
 
+    if (notifPrompt) NotifPermissionDialog(
+        onAllow = { notifPrompt = false; notif.request() },
+        onLater = { notifPrompt = false }
+    )
     sitePrompt?.let { p ->
-        AlertDialog(
-            onDismissRequest = { sitePrompt = null; p.onDeny() },
-            title = { Text(p.title) }, text = { Text(p.message) },
-            confirmButton = { TextButton(onClick = { sitePrompt = null; p.onAllow() }) { Text(L("سماح")) } },
-            dismissButton = { TextButton(onClick = { sitePrompt = null; p.onDeny() }) { Text(L("رفض")) } }
-        )
+        NovaDialog(
+            title = p.title, icon = Icons.Default.Info, onDismiss = { sitePrompt = null; p.onDeny() },
+            confirmText = L("سماح"), onConfirm = { sitePrompt = null; p.onAllow() },
+            dismissText = L("رفض"), onDismissClick = { sitePrompt = null; p.onDeny() }
+        ) { DialogText(p.message) }
     }
     pendingSave?.let { p ->
         SavePasswordDialog(
@@ -794,20 +800,17 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     }
     ytUrl?.let { u ->
         YtDownloadSheet(u, onDismiss = { ytUrl = null }, onStarted = {
-            if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS)) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            askNotif()
         })
     }
     settingsMsg?.let { m ->
-        AlertDialog(
-            onDismissRequest = { settingsMsg = null },
-            title = { Text(L("الإذن مطلوب")) }, text = { Text(m) },
-            confirmButton = {
-                TextButton(onClick = {
-                    settingsMsg = null
-                    activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.packageName, null)))
-                }) { Text(L("فتح الإعدادات")) }
-            },
-            dismissButton = { TextButton(onClick = { settingsMsg = null }) { Text(L("لاحقاً")) } }
-        )
+        NovaDialog(
+            title = L("الإذن مطلوب"), icon = Icons.Default.Lock, onDismiss = { settingsMsg = null },
+            confirmText = L("فتح الإعدادات"), dismissText = L("لاحقاً"),
+            onConfirm = {
+                settingsMsg = null
+                activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.packageName, null)))
+            }
+        ) { DialogText(m) }
     }
 }

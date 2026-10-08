@@ -203,9 +203,11 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
     }
 
-    if (help) AlertDialog(
-        onDismissRequest = { help = false }, title = { Text(L("استيراد بيانات كروم")) },
-        text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+    if (help) NovaDialog(
+        title = L("استيراد بيانات كروم"), icon = Icons.Default.Info, onDismiss = { help = false },
+        confirmText = L("اختيار الملفات"), onConfirm = { help = false; picker.launch(arrayOf("*/*")) }, dismissText = L("إغلاق")
+    ) {
+        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
             Text(L("أندرويد يمنع أي تطبيق من قراءة بيانات كروم مباشرة، لذلك يُستورد من ملفات يصدّرها كروم نفسه. اختر ملفاً أو عدة ملفات دفعة واحدة:"), style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(10.dp))
             Text(L("• كلمات المرور: كروم ← الإعدادات ← مدير كلمات المرور ← تصدير (ملف CSV). احذف الملف بعد الاستيراد."), style = MaterialTheme.typography.bodySmall)
@@ -215,20 +217,19 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             Text(L("• من كروم سطح المكتب: ملف Bookmarks.html (مدير الإشارات ← تصدير) أو ملفا Bookmarks وHistory من مجلد ملف التعريف."), style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
             Text(L("لا يمكن نقل الكوكيز وتبويبات كروم المفتوحة؛ كروم لا يصدّرها."), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-        } },
-        confirmButton = { TextButton(onClick = { help = false; picker.launch(arrayOf("*/*")) }) { Text(L("اختيار الملفات")) } },
-        dismissButton = { TextButton(onClick = { help = false }) { Text(L("إغلاق")) } }
-    )
+        }
+    }
 
     result?.let { r ->
-        AlertDialog(
-            onDismissRequest = { result = null }, title = { Text(L("اكتمل الاستيراد")) },
-            text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+        NovaDialog(
+            title = L("اكتمل الاستيراد"), icon = Icons.Default.Check, onDismiss = { result = null },
+            confirmText = L("إغلاق"), onConfirm = { result = null }, dismissText = null
+        ) {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 Text(L("المفضلة") + ": ${r.bookmarks}\n" + L("السجل") + ": ${r.history}\n" + L("كلمات المرور") + ": ${r.passwords}\n" + L("متجاهَل") + ": ${r.skipped}")
                 if (r.notes.isNotEmpty()) { Spacer(Modifier.height(8.dp)); Text(r.notes.joinToString("\n"), style = MaterialTheme.typography.bodySmall, color = cs.error) }
-            } },
-            confirmButton = { TextButton(onClick = { result = null }) { Text(L("إغلاق")) } }
-        )
+            }
+        }
     }
     if (confirmClear) {
         val now = System.currentTimeMillis()
@@ -239,19 +240,16 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             L("آخر ساعة") to now - 3_600_000L, L("اليوم") to midnight,
             L("آخر 7 أيام") to now - 7 * 86_400_000L, L("كل السجل") to 0L
         )
-        AlertDialog(
-            onDismissRequest = { confirmClear = false }, title = { Text(L("مسح السجل")) },
-            text = {
-                Column {
-                    opts.forEach { (name, since) ->
-                        TextButton(onClick = { Library.clearHistorySince(since); confirmClear = false; toast(ctx, L("تم المسح")) }, modifier = Modifier.fillMaxWidth()) {
-                            Text(name, modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                }
-            },
-            confirmButton = {}, dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(L("إلغاء")) } }
-        )
+        NovaDialog(
+            title = L("مسح السجل"), icon = Icons.Default.Delete, danger = true, onDismiss = { confirmClear = false }, dismissText = L("إلغاء")
+        ) {
+            opts.forEach { (name, since) ->
+                Surface(
+                    onClick = { Library.clearHistorySince(since); confirmClear = false; toast(ctx, L("تم المسح")) },
+                    shape = RoundedCornerShape(16.dp), color = cs.surfaceContainerHighest.copy(alpha = 0.55f), modifier = Modifier.fillMaxWidth()
+                ) { Text(name, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), style = MaterialTheme.typography.bodyLarge) }
+            }
+        }
     }
 }
 

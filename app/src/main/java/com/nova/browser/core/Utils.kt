@@ -120,8 +120,18 @@ fun shareText(c: Context, t: String) {
     c.startActivity(Intent.createChooser(i, null))
 }
 
+/** منشئ حوار أصلي بهوية Nova (حواف مدوّرة وألوان التطبيق) بدل شكل النظام الافتراضي. */
+fun novaDialog(c: Context): AlertDialog.Builder {
+    val dark = when (Prefs.theme) {
+        1 -> false
+        2 -> true
+        else -> (c.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+    return AlertDialog.Builder(android.view.ContextThemeWrapper(c, if (dark) R.style.Theme_Nova_Dialog_Dark else R.style.Theme_Nova_Dialog_Light))
+}
+
 fun choose(c: Context, items: List<Pair<String, () -> Unit>>) {
-    AlertDialog.Builder(c).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
+    novaDialog(c).setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }.show()
 }
 
 fun errorHtml(url: String, desc: String): String {

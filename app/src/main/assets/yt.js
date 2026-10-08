@@ -341,6 +341,39 @@ try {
 
   window.__novaBg = function (b) { b = !!b; if (bg && !b) graceUntil = Date.now() + 1500; bg = b; log('bg=' + bg); };
 
+  // ───────── إصلاح الشاشة السوداء بعد الدوران/ملء الشاشة ─────────
+  // الصفحة تُعدّ مخفية لحظة الدوران فيُفرّغ يوتيوب مصدر الفيديو (emptied) ويبقى المشغّل أسود حتى إعادة التحميل.
+  // الفحص: هل للعنصر مصدر وإطار مرسوم؟ إن لا → نطلب من المشغّل إعادة التحميل من نفس الثانية، وفي المرحلة الأخيرة نعيد فتح الصفحة بنفس الموضع.
+  window.__novaHeal = function (stage) {
+    try {
+      if (location.pathname !== '/watch') return 'skip';
+      var e = v(), p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+      if (!e) return 'novideo';
+      var ok = e.readyState >= 2 && e.videoWidth > 0 && !!e.currentSrc;
+      var loading = e.networkState === 2 && e.readyState < 2;     // ما زال يحمّل: ننتظر
+      if (ok) {
+        // يعمل لكن قد لا تُرسم الطبقة: نُجبر إعادة التركيب، وفي حالة الإيقاف نطلب إطاراً جديداً
+        e.style.setProperty('display', 'none', 'important'); void e.offsetHeight; e.style.removeProperty('display');
+        if (e.paused) { try { var t0 = e.currentTime; e.currentTime = t0 > 0.05 ? t0 - 0.01 : t0; } catch (x) {} }
+        return 'ok';
+      }
+      if (document.querySelector('.ad-showing,.ad-interrupting')) return 'ad';
+      if (loading && (stage < 2 || e.currentSrc)) return 'loading';
+      var id = '', t = Math.floor(e.currentTime || 0);
+      try { var d = p && p.getVideoData && p.getVideoData(); id = d && d.video_id || ''; if (p && p.getCurrentTime) t = Math.floor(p.getCurrentTime() || t); } catch (x) {}
+      if (!id) { var m = /[?&]v=([^&]+)/.exec(location.search); id = m ? m[1] : ''; }
+      log('heal stage=' + stage + ' rs=' + e.readyState + ' id=' + id + ' t=' + t);
+      if (!id) return 'noid';
+      if (stage < 2) {
+        if (p && p.loadVideoById) { try { p.loadVideoById(id, t); if (userPaused && p.pauseVideo) setTimeout(function () { try { p.pauseVideo(); } catch (x) {} }, 800); return 'reloaded-player'; } catch (x) {} }
+        var pl = e.play(); if (pl && pl.catch) pl.catch(function () {});
+        return 'play';
+      }
+      location.replace('/watch?v=' + encodeURIComponent(id) + (t > 3 ? '&t=' + t + 's' : ''));
+      return 'reloaded-page';
+    } catch (x) { return 'err'; }
+  };
+
   // إيقاف جاء من خارج الصفحة (نظام/WebView): نستأنف ما لم يطلب المستخدم الإيقاف
   var burstAt = 0, burstN = 0, retryT = 0;
   document.addEventListener('play', function () { userPaused = false; }, true);

@@ -265,19 +265,27 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onGeolocationPermissionsShowPrompt(origin: String, cb: GeolocationPermissions.Callback) = h.geo(origin, cb)
         override fun onJsAlert(v: WebView, url: String, msg: String, r: JsResult): Boolean {
             if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }   // إغراق نوافذ
-            AlertDialog.Builder(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("حسناً")) { _, _ -> r.confirm() }
+            novaDialog(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("حسناً")) { _, _ -> r.confirm() }
                 .setOnCancelListener { r.cancel() }.show()
             return true
         }
         override fun onJsConfirm(v: WebView, url: String, msg: String, r: JsResult): Boolean {
             if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }
-            AlertDialog.Builder(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("موافق")) { _, _ -> r.confirm() }
+            novaDialog(ctx).setTitle(hostOf(url)).setMessage(msg.take(600)).setPositiveButton(L("موافق")) { _, _ -> r.confirm() }
                 .setNegativeButton(L("إلغاء")) { _, _ -> r.cancel() }.setOnCancelListener { r.cancel() }.show()
             return true
         }
         override fun onJsPrompt(v: WebView, url: String, message: String?, defaultValue: String?, r: JsPromptResult): Boolean {
             if (!Shield.dialogAllowed(hostOf(url))) { r.cancel(); return true }
-            return false   // النافذة الافتراضية للنظام
+            val et = android.widget.EditText(ctx).apply { setText(defaultValue ?: ""); setSingleLine(); setSelectAllOnFocus(true) }
+            val box = android.widget.FrameLayout(ctx).apply {
+                val pad = (24 * ctx.resources.displayMetrics.density).toInt()
+                setPadding(pad, (8 * ctx.resources.displayMetrics.density).toInt(), pad, 0); addView(et)
+            }
+            novaDialog(ctx).setTitle(hostOf(url)).setMessage(message?.take(600)).setView(box)
+                .setPositiveButton(L("موافق")) { _, _ -> r.confirm(et.text.toString()) }
+                .setNegativeButton(L("إلغاء")) { _, _ -> r.cancel() }.setOnCancelListener { r.cancel() }.show()
+            return true
         }
     }
 }

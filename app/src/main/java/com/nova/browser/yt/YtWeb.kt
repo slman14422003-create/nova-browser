@@ -227,6 +227,26 @@ object YtWeb {
             w.requestLayout(); w.invalidate()
             w.evaluateJavascript("window.__novaRefit&&window.__novaRefit(${d >= 800L})", null)
         }, d)
+        heal(w)
+    }
+
+    /** يدخل ملء الشاشة: نخبر الصفحة أنها «ظاهرة» كي لا تُفرّغ مصدر الفيديو لحظة الدوران (سبب الشاشة السوداء). */
+    fun onFullscreen(w: WebView?, on: Boolean) {
+        w ?: return
+        if (!Prefs.ytBg) return
+        if (on) w.evaluateJavascript("window.__novaBg&&window.__novaBg(true)", null)
+        else w.postDelayed({ background(w, false) }, 400)
+    }
+
+    /**
+     * فحص ذاتي بعد الدوران/الخروج من ملء الشاشة: إن فقد المشغّل مصدره يُعاد تحميله من نفس الثانية، وإن بقي أسود فتُعاد الصفحة بنفس الموضع.
+     * المراحل: 1.2ث (إنعاش)، 3ث (إعادة تحميل المشغّل)، 6ث (إعادة فتح الصفحة كحل أخير).
+     */
+    fun heal(w: WebView?) {
+        w ?: return
+        for ((i, d) in longArrayOf(1200L, 3000L, 6000L).withIndex()) w.postDelayed({
+            if (owns(w)) w.evaluateJavascript("window.__novaHeal&&window.__novaHeal(${i})") { r -> if (r != null && r.length > 2) YtLog.add("heal#$i -> $r") }
+        }, d)
     }
 
     /** بعد تدوير الشاشة: يوتيوب يترك مقاسات قديمة على الفيديو، فنعيد التخطيط ونطلب إعادة القياس على مراحل. */
@@ -236,6 +256,7 @@ object YtWeb {
             w.requestLayout(); w.invalidate()
             w.evaluateJavascript("window.__novaRefit&&window.__novaRefit(${d >= 1000L})", null)
         }, d)
+        heal(w)
     }
 
     /** دخول/خروج النافذة المنبثقة. */

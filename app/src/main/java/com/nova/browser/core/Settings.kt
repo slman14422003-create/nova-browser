@@ -79,6 +79,9 @@ object Prefs {
     var pwaHaptics by mutableStateOf(true); private set     // اهتزاز خفيف على أزرار صفحات وضع التطبيق
     var boost by mutableStateOf(true); private set          // تسريع التنقل: جلب مسبق + تسخين DNS + إيقاف فيديو خارج الشاشة
     var suggest by mutableStateOf(true); private set        // اقتراحات البحث أثناء الكتابة
+    var notifDone by mutableStateOf(true); private set      // إشعار اكتمال التنزيل
+    var notifUpdate by mutableStateOf(true); private set    // إشعار تحديث متاح
+    var notifAsked by mutableStateOf(false); private set    // سبق عرض طلب إذن الإشعارات
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -109,6 +112,7 @@ object Prefs {
         ytNoShorts = p.getBoolean("ytnoshorts", false)
         ytResume = p.getBoolean("ytresume", true); ytKeepRate = p.getBoolean("ytkeeprate", true); ytHold2x = p.getBoolean("ythold2x", true)
         boost = p.getBoolean("boost", true); suggest = p.getBoolean("suggest", true)
+        notifDone = p.getBoolean("notifdone", true); notifUpdate = p.getBoolean("notifupd", true); notifAsked = p.getBoolean("notifasked", false)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
@@ -155,6 +159,9 @@ object Prefs {
     fun pickPwaHaptics(v: Boolean) { pwaHaptics = v; sp?.putBoolean("pwahap", v) }
     fun pickBoost(v: Boolean) { boost = v; sp?.putBoolean("boost", v) }
     fun pickSuggest(v: Boolean) { suggest = v; sp?.putBoolean("suggest", v) }
+    fun pickNotifDone(v: Boolean) { notifDone = v; sp?.putBoolean("notifdone", v) }
+    fun pickNotifUpdate(v: Boolean) { notifUpdate = v; sp?.putBoolean("notifupd", v) }
+    fun pickNotifAsked(v: Boolean) { notifAsked = v; sp?.putBoolean("notifasked", v) }
     fun pickPopups(v: Boolean) { popups = v; sp?.putBoolean("popups", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
@@ -170,22 +177,8 @@ private class RowSpec(
 private class SectionSpec(val id: String, val title: String, val sub: String, val icon: ImageVector, val rows: List<RowSpec>)
 
 @Composable
-private fun ChoiceDialog(title: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss, title = { Text(title) },
-        text = {
-            Column {
-                options.forEachIndexed { i, o ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onSelect(i); onDismiss() }.padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) { RadioButton(selected = i == selected, onClick = null); Spacer(Modifier.width(12.dp)); Text(o) }
-                }
-            }
-        },
-        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text(L("إغلاق")) } }
-    )
-}
+private fun ChoiceDialog(title: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) =
+    NovaChoiceDialog(title, options, selected, Icons.Default.Settings, onSelect, onDismiss)
 
 private fun autofillStatus(c: Context): String {
     val svc = android.provider.Settings.Secure.getString(c.contentResolver, "autofill_service") ?: ""
@@ -230,6 +223,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val ccPosNames = listOf(L("أسفل"), L("وسط"), L("أعلى"))
     val pwNames = listOf(L("مدمج في المتصفح"), L("خدمة النظام (Samsung Pass وغيرها)"), L("متوقف"))
 
+    val notif = rememberNotifState()
     var section by remember { mutableStateOf<String?>(null) }
     BackHandler(enabled = section != null && !overlayOpen) { section = null }
     val sections = listOf(
@@ -285,6 +279,19 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 { Switch(checked = Prefs.ytNoShorts, onCheckedChange = null) }),
             RowSpec(L("سجل التشخيص"), L("يساعد في معرفة سبب توقف الفيديو (انسخه وأرسله)"), Icons.Default.Info, { dialog = "ytlog" })
         )),
+        SectionSpec("notifications", L("الإشعارات"), L("الإذن • اكتمال التنزيل • التحديثات"), Icons.Default.Notifications, listOf(
+            RowSpec(L("إشعارات Nova"),
+                if (notif.enabled) L("مفعّلة — اضغط لفتح إعدادات النظام") else if (Notif.needsPermission) L("معطّلة — اضغط للسماح بالإشعارات") else L("معطّلة من إعدادات النظام — اضغط لتفعيلها"),
+                Icons.Default.Notifications, { notif.request() },
+                { Switch(checked = notif.enabled, onCheckedChange = null) }),
+            RowSpec(L("اكتمال التنزيل"), L("إشعار عند انتهاء كل ملف مع فتحه بلمسة"), Icons.Default.KeyboardArrowDown, { Prefs.pickNotifDone(!Prefs.notifDone) },
+                { Switch(checked = Prefs.notifDone, onCheckedChange = null) }),
+            RowSpec(L("توفّر تحديث"), L("إشعار عند صدور إصدار جديد من Nova"), Icons.Default.Refresh, { Prefs.pickNotifUpdate(!Prefs.notifUpdate) },
+                { Switch(checked = Prefs.notifUpdate, onCheckedChange = null) }),
+            RowSpec(L("أزرار التشغيل في الخلفية"), L("إشعار التحكم بيوتيوب وشاشة القفل — يُضبط من قسم يوتيوب"), Icons.Default.PlayArrow, { Prefs.pickYtBg(!Prefs.ytBg) },
+                { Switch(checked = Prefs.ytBg, onCheckedChange = null) }),
+            RowSpec(L("قنوات الإشعارات"), L("الصوت والأهمية لكل نوع من إعدادات النظام"), Icons.Default.Settings, { Notif.openSystemSettings(ctx) })
+        )),
         SectionSpec("language", L("اللغة والعرض"), L("لغة التطبيق والمواقع • حجم الخط"), Icons.Default.Edit, listOf(
             RowSpec(L("لغة التطبيق"), langNames[Prefs.lang.coerceIn(0, 2)], Icons.Default.Settings, { dialog = "lang" }),
             RowSpec(L("لغة المواقع"), Prefs.siteLangs[Prefs.siteLang].let { if (it.first.isEmpty()) L(it.second) else it.second }, Icons.Default.Search, { dialog = "sitelang" }),
@@ -321,7 +328,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                 { Switch(checked = Prefs.suggest, onCheckedChange = null) }),
             RowSpec(L("وضع التطبيق (PWA)"), L("شريط علوي وتجربة تطبيق ليوتيوب ومواقع الذكاء الاصطناعي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Star, { Prefs.pickPwaMode(!Prefs.pwaMode) },
                 { Switch(checked = Prefs.pwaMode, onCheckedChange = null) }),
-            RowSpec(L("اهتزاز الأزرار في وضع التطبيق"), L("لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي"), Icons.Default.Notifications, { Prefs.pickPwaHaptics(!Prefs.pwaHaptics) },
+            RowSpec(L("اهتزاز الأزرار في وضع التطبيق"), L("لمسة اهتزاز خفيفة عند ضغط الأزرار داخل يوتيوب ومواقع الذكاء الاصطناعي"), Icons.Default.Face, { Prefs.pickPwaHaptics(!Prefs.pwaHaptics) },
                 { Switch(checked = Prefs.pwaHaptics, onCheckedChange = null) }),
             RowSpec(L("محرك العرض"), WebEngine.summary(), Icons.Default.Refresh,
                 { if (WebEngine.outdated) WebEngine.openStore(ctx) else WebEngine.checkLatest(ctx, true) }),
@@ -394,20 +401,19 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     }
 
     when (dialog) {
-        "ytlog" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("سجل التشخيص")) },
-            text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+        "ytlog" -> NovaDialog(
+            title = L("سجل التشخيص"), icon = Icons.Default.Info, onDismiss = { dialog = null },
+            confirmText = L("نسخ"), onConfirm = { copyText(ctx, YtLog.text()) },
+            extraAction = { TextButton(onClick = { YtLog.clear(); dialog = null }) { Text(L("مسح السجل")) } }
+        ) {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Text(YtLog.text().ifBlank { L("لا يوجد سجل بعد") }, style = MaterialTheme.typography.bodySmall)
-            } },
-            confirmButton = { TextButton(onClick = { copyText(ctx, YtLog.text()) }) { Text(L("نسخ")) } },
-            dismissButton = { Row {
-                TextButton(onClick = { YtLog.clear() ; dialog = null }) { Text(L("مسح السجل")) }
-                TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) }
-            } }
-        )
-        "gacct" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("حسابات Google")) },
-            text = {
+            }
+        }
+        "gacct" -> NovaDialog(
+            title = L("حسابات Google"), icon = Icons.Default.Person, onDismiss = { dialog = null },
+            confirmText = L("إضافة"), onConfirm = { if (GoogleAccounts.add(gEmail)) { gEmail = ""; gErr = false } else gErr = true }
+        ) {
                 Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                     GoogleAccounts.accounts.toList().forEach { a ->
                         Row(
@@ -432,48 +438,40 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp)
                     )
                 }
-            },
-            confirmButton = { TextButton(onClick = { if (GoogleAccounts.add(gEmail)) { gEmail = ""; gErr = false } else gErr = true }) { Text(L("إضافة")) } },
-            dismissButton = { TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) } }
-        )
-        "pwmode" -> ChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), { Prefs.pickPwMode(it) }) { dialog = null }
-        "lang" -> ChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), { Prefs.pickLang(it) }) { dialog = null }
-        "sitelang" -> ChoiceDialog(L("لغة المواقع"), Prefs.siteLangs.map { if (it.first.isEmpty()) L(it.second) else it.second }, Prefs.siteLang, { Prefs.pickSiteLang(it) }) { dialog = null }
+        }
+        "pwmode" -> NovaChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), Icons.Default.Lock, { Prefs.pickPwMode(it) }) { dialog = null }
+        "lang" -> NovaChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), Icons.Default.Settings, { Prefs.pickLang(it) }) { dialog = null }
+        "sitelang" -> NovaChoiceDialog(L("لغة المواقع"), Prefs.siteLangs.map { if (it.first.isEmpty()) L(it.second) else it.second }, Prefs.siteLang, Icons.Default.Search, { Prefs.pickSiteLang(it) }) { dialog = null }
         "zoom" -> ChoiceDialog(L("حجم الخط في المواقع"), zoomNames, Prefs.textZoom, { Prefs.pickTextZoom(it) }) { dialog = null }
         "yccsize" -> ChoiceDialog(L("حجم الترجمة"), ccSizeNames, Prefs.ytCcSize.coerceIn(0, 3), { Prefs.pickYtCcSize(it) }) { dialog = null }
         "yccbg" -> ChoiceDialog(L("خلفية الترجمة"), ccBgNames, Prefs.ytCcBg.coerceIn(0, 2), { Prefs.pickYtCcBg(it) }) { dialog = null }
         "yccpos" -> ChoiceDialog(L("موضع الترجمة"), ccPosNames, Prefs.ytCcPos.coerceIn(0, 2), { Prefs.pickYtCcPos(it) }) { dialog = null }
-        "engine" -> ChoiceDialog(L("محرك البحث"), Prefs.engines.map { it.first }, Prefs.engine, { Prefs.pickEngine(it) }) { dialog = null }
-        "theme" -> ChoiceDialog(L("المظهر"), themeNames, Prefs.theme, { Prefs.pickTheme(it) }) { dialog = null }
+        "engine" -> NovaChoiceDialog(L("محرك البحث"), Prefs.engines.map { it.first }, Prefs.engine, Icons.Default.Search, { Prefs.pickEngine(it) }) { dialog = null }
+        "theme" -> NovaChoiceDialog(L("المظهر"), themeNames, Prefs.theme, Icons.Default.Star, { Prefs.pickTheme(it) }) { dialog = null }
         "conns" -> ChoiceDialog(L("الحد الأقصى للاتصالات"), connNames, connOpts.indexOf(Prefs.maxConns).coerceAtLeast(0), { Prefs.pickMaxConns(connOpts[it]) }) { dialog = null }
-        "crash" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("سجل الأعطال")) },
-            text = { Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+        "crash" -> NovaDialog(
+            title = L("سجل الأعطال"), icon = Icons.Default.Warning, onDismiss = { dialog = null },
+            confirmText = L("نسخ"), onConfirm = { copyText(ctx, CrashLog.text()) },
+            extraAction = { TextButton(onClick = { CrashLog.clear(); dialog = null }) { Text(L("مسح السجل")) } }
+        ) {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 Text(CrashLog.text().ifBlank { L("لا توجد أعطال مسجلة") }, style = MaterialTheme.typography.bodySmall)
-            } },
-            confirmButton = { TextButton(onClick = { copyText(ctx, CrashLog.text()) }) { Text(L("نسخ")) } },
-            dismissButton = { Row {
-                TextButton(onClick = { CrashLog.clear(); dialog = null }) { Text(L("مسح السجل")) }
-                TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) }
-            } }
-        )
-        "seclog" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("سجل الأمان")) },
-            text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) } },
-            confirmButton = { TextButton(onClick = { dialog = null }) { Text(L("إغلاق")) } },
-            dismissButton = { TextButton(onClick = { Security.clearLog(); dialog = null }) { Text(L("مسح السجل")) } }
-        )
-        "cache" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("مسح الذاكرة المؤقتة؟")) },
-            text = { Text(L("سيتم حذف ملفات الكاش المؤقتة فقط. قد يبطؤ تحميل الصفحات المرة القادمة قليلاً.")) },
-            confirmButton = { TextButton(onClick = { dialog = null; onClearCache(); cacheTick++ }) { Text(L("مسح")) } },
-            dismissButton = { TextButton(onClick = { dialog = null }) { Text(L("إلغاء")) } }
-        )
-        "clear" -> AlertDialog(
-            onDismissRequest = { dialog = null }, title = { Text(L("مسح بيانات التصفح؟")) },
-            text = { Text(L("سيتم حذف الكوكيز والذاكرة المؤقتة وسجل التبويبات. لن تُحذف التنزيلات.")) },
-            confirmButton = { TextButton(onClick = { dialog = null; onClearData() }) { Text(L("مسح")) } },
-            dismissButton = { TextButton(onClick = { dialog = null }) { Text(L("إلغاء")) } }
-        )
+            }
+        }
+        "seclog" -> NovaDialog(
+            title = L("سجل الأمان"), icon = Icons.Default.Lock, onDismiss = { dialog = null },
+            confirmText = L("إغلاق"), onConfirm = { dialog = null },
+            dismissText = L("مسح السجل"), onDismissClick = { Security.clearLog(); dialog = null }
+        ) {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) }
+        }
+        "cache" -> NovaDialog(
+            title = L("مسح الذاكرة المؤقتة؟"), icon = Icons.Default.Delete, danger = true, onDismiss = { dialog = null },
+            confirmText = L("مسح"), onConfirm = { dialog = null; onClearCache(); cacheTick++ }, dismissText = L("إلغاء")
+        ) { DialogText(L("سيتم حذف ملفات الكاش المؤقتة فقط. قد يبطؤ تحميل الصفحات المرة القادمة قليلاً.")) }
+        "clear" -> NovaDialog(
+            title = L("مسح بيانات التصفح؟"), icon = Icons.Default.Delete, danger = true, onDismiss = { dialog = null },
+            confirmText = L("مسح"), onConfirm = { dialog = null; onClearData() }, dismissText = L("إلغاء")
+        ) { DialogText(L("سيتم حذف الكوكيز والذاكرة المؤقتة وسجل التبويبات. لن تُحذف التنزيلات.")) }
     }
 }

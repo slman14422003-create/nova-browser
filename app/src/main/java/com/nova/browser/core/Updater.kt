@@ -124,6 +124,7 @@ object Updater {
                         info = UpdateInfo(tag.removePrefix("v"), j.optString("body"), size, apk, j.optString("html_url"), sha)
                         phase = if (apkFile(app).exists() && apkFile(app).length() == size && size > 0) UpdPhase.READY else UpdPhase.AVAILABLE
                         prompt = true
+                        Notif.updateAvailable(app, info?.version ?: tag)
                     } else { info = null; phase = UpdPhase.UP_TO_DATE }
                 }
             } catch (e: Exception) {

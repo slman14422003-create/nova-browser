@@ -37,8 +37,7 @@ class MediaService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this; stopped = false; fg = true
-        getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(NotificationChannel("media", L("تشغيل الوسائط"), NotificationManager.IMPORTANCE_LOW))
+        Notif.ensureChannels(this)
         session = MediaSession(this, "NovaBrowser").apply {
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() = YtMedia.control("play")

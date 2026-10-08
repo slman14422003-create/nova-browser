@@ -461,7 +461,27 @@ object I18n {
         "إبقاء الشاشة" to "Keep screen on",
         "نسخ النص" to "Copy text",
         "إخفاء لافتات الكوكيز" to "Hide cookie banners",
-        "يخفي نوافذ الموافقة المعروفة ويفتح قفل التمرير الذي تسببه (يُطبَّق على الصفحات الجديدة)" to "Hides known consent pop-ups and unlocks the scrolling they block (applies to new pages)"
+        "يخفي نوافذ الموافقة المعروفة ويفتح قفل التمرير الذي تسببه (يُطبَّق على الصفحات الجديدة)" to "Hides known consent pop-ups and unlocks the scrolling they block (applies to new pages)",
+        "تحديثات التطبيق" to "App updates",
+        "تحديث جديد لـ Nova" to "New Nova update",
+        " جاهز للتنزيل" to " is ready to download",
+        "تفعيل الإشعارات" to "Turn on notifications",
+        "السماح" to "Allow",
+        "لمتابعة التنزيلات وأزرار التشغيل في الخلفية، ومعرفة اكتمال التنزيل وتوفّر التحديثات، يحتاج Nova إلى إذن الإشعارات." to "To follow downloads, show playback controls in the background, and tell you when a download finishes or an update is available, Nova needs notification permission.",
+        "يمكنك تخصيصها أو إيقافها لاحقاً من الإعدادات ← الإشعارات." to "You can customize or turn them off later in Settings → Notifications.",
+        "الإشعارات" to "Notifications",
+        "الإذن • اكتمال التنزيل • التحديثات" to "Permission • Download complete • Updates",
+        "إشعارات Nova" to "Nova notifications",
+        "مفعّلة — اضغط لفتح إعدادات النظام" to "On — tap to open system settings",
+        "معطّلة — اضغط للسماح بالإشعارات" to "Off — tap to allow notifications",
+        "معطّلة من إعدادات النظام — اضغط لتفعيلها" to "Off in system settings — tap to turn on",
+        "إشعار عند انتهاء كل ملف مع فتحه بلمسة" to "A notification when each file finishes, tap to open it",
+        "توفّر تحديث" to "Update available",
+        "إشعار عند صدور إصدار جديد من Nova" to "A notification when a new Nova version is released",
+        "أزرار التشغيل في الخلفية" to "Background playback controls",
+        "إشعار التحكم بيوتيوب وشاشة القفل — يُضبط من قسم يوتيوب" to "YouTube controls in the notification and lock screen — also set in the YouTube section",
+        "قنوات الإشعارات" to "Notification channels",
+        "الصوت والأهمية لكل نوع من إعدادات النظام" to "Sound and importance for each type, in system settings"
     )
 }
 

@@ -169,12 +169,10 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
             }
         }
     }
-    if (confirmDelete) AlertDialog(
-        onDismissRequest = { confirmDelete = false }, title = { Text(L("حذف الملف؟")) },
-        text = { Text(L("سيُحذف الملف من جهازك نهائياً.")) },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; Downloader.remove(t, true) }) { Text(L("حذف")) } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(L("إلغاء")) } }
-    )
+    if (confirmDelete) NovaDialog(
+        title = L("حذف الملف؟"), icon = Icons.Default.Delete, danger = true, onDismiss = { confirmDelete = false },
+        confirmText = L("حذف"), onConfirm = { confirmDelete = false; Downloader.remove(t, true) }, dismissText = L("إلغاء")
+    ) { DialogText(L("سيُحذف الملف من جهازك نهائياً.")) }
 }
 
 @Composable
@@ -262,10 +260,8 @@ fun DownloadsScreen(onBack: () -> Unit) {
             }
         }
     }
-    if (confirmClear) AlertDialog(
-        onDismissRequest = { confirmClear = false }, title = { Text(L("مسح المكتملة من القائمة؟")) },
-        text = { Text(L("تُزال من القائمة فقط، وتبقى الملفات على جهازك.")) },
-        confirmButton = { TextButton(onClick = { confirmClear = false; all.filter(isDone).forEach { Downloader.remove(it, false) } }) { Text(L("مسح")) } },
-        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(L("إلغاء")) } }
-    )
+    if (confirmClear) NovaDialog(
+        title = L("مسح المكتملة من القائمة؟"), icon = Icons.Default.Delete, danger = true, onDismiss = { confirmClear = false },
+        confirmText = L("مسح"), onConfirm = { confirmClear = false; all.filter(isDone).forEach { Downloader.remove(it, false) } }, dismissText = L("إلغاء")
+    ) { DialogText(L("تُزال من القائمة فقط، وتبقى الملفات على جهازك.")) }
 }

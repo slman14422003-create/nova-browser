@@ -97,9 +97,7 @@ object Downloader {
         if (engineOn) return
         engineOn = true
         System.setProperty("http.maxConnections", "32")
-        val nm = app.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("dl", L("التنزيلات الجارية"), NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel("done", L("اكتمال التنزيل"), NotificationManager.IMPORTANCE_DEFAULT))
+        Notif.ensureChannels(app)
         Executors.newSingleThreadScheduledExecutor()
             .scheduleWithFixedDelay({ runCatching { tick() } }, 400, 400, TimeUnit.MILLISECONDS)
     }
@@ -397,6 +395,7 @@ object Downloader {
     }
 
     private fun notifyDone(t: DlTask) {
+        if (!Prefs.notifDone || !Notif.enabled(app)) return
         ensureEngine()
         runCatching {
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
