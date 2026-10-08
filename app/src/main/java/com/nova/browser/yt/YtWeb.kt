@@ -229,6 +229,15 @@ object YtWeb {
         }, d)
     }
 
+    /** بعد تدوير الشاشة: يوتيوب يترك مقاسات قديمة على الفيديو، فنعيد التخطيط ونطلب إعادة القياس على مراحل. */
+    fun afterRotate(w: WebView?) {
+        w ?: return
+        for (d in longArrayOf(150L, 500L, 1000L, 1800L)) w.postDelayed({
+            w.requestLayout(); w.invalidate()
+            w.evaluateJavascript("window.__novaRefit&&window.__novaRefit(${d >= 1000L})", null)
+        }, d)
+    }
+
     /** دخول/خروج النافذة المنبثقة. */
     fun onPip(w: WebView?, inPip: Boolean, fullscreen: Boolean) {
         w ?: return

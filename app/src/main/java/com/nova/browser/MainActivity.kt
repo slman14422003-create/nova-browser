@@ -142,6 +142,15 @@ class MainActivity : ComponentActivity() {
         if (!inPip) { val w = wvProvider(); YtWeb.background(w, false); if (YtWeb.owns(w)) YtWeb.recover(w) }   // تنظيف أنماط المنبثقة إن بقيت
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val w = wvProvider()
+        if (YtWeb.owns(w)) {
+            YtLog.add("config orientation=" + newConfig.orientation + " fullscreen=" + fullscreenActive)
+            if (!inPip) YtWeb.afterRotate(w)
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (pipAuto && Build.VERSION.SDK_INT < 31) enterPip()

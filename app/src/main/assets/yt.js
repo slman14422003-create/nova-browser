@@ -265,7 +265,8 @@ try {
   var BG = __BG__;
   var bg = false, userPaused = false, lastResume = 0, nlog = 0, lastGesture = 0;
   // الحماية من إيقاف الصفحة للفيديو أثناء الخلفية/النافذة المنبثقة (إن فُعّلت من الإعدادات)
-  function guard() { return BG && bg; }
+  var graceUntil = 0;   // بعد العودة للواجهة يصل أحياناً إيقاف متأخر من النظام (تدوير الشاشة): نبقي الحماية لحظة
+  function guard() { return BG && (bg || Date.now() < graceUntil); }
 
   function send(o) { try { window.NovaYt.postMessage(JSON.stringify(o)); } catch (e) {} }
   function log(m) { if (nlog++ < 150) send({ t: 'log', m: String(m).slice(0, 400) }); }
@@ -338,16 +339,24 @@ try {
     window.__novaOrigPause = origPause;
   } catch (e) {}
 
-  window.__novaBg = function (b) { bg = !!b; log('bg=' + bg); };
+  window.__novaBg = function (b) { b = !!b; if (bg && !b) graceUntil = Date.now() + 1500; bg = b; log('bg=' + bg); };
 
   // إيقاف جاء من خارج الصفحة (نظام/WebView): نستأنف ما لم يطلب المستخدم الإيقاف
+  var burstAt = 0, burstN = 0, retryT = 0;
   document.addEventListener('play', function () { userPaused = false; }, true);
   document.addEventListener('pause', function (ev) {
     var e = v();
     if (!guard() || userPaused || !e || ev.target !== e || e.ended) return;
     if (Date.now() - lastGesture < 900) { userPaused = true; return; }
     var now = Date.now();
-    if (now - lastResume < 400) return;
+    if (now - burstAt > 3000) { burstAt = now; burstN = 0; }
+    if (++burstN > 8) return;   // يوتيوب يصرّ على الإيقاف فعلاً: لا نتصارع معه
+    if (now - lastResume < 400) {
+      // إيقاف ثانٍ قريب جداً من الاستئناف (يحدث عند تدوير الشاشة) كان يُهمل فيبقى الفيديو متوقفاً: نعيد المحاولة بعد قليل
+      clearTimeout(retryT);
+      retryT = setTimeout(function () { if (guard() && !userPaused && e.paused) { var p2 = e.play(); if (p2 && p2.catch) p2.catch(function () {}); } }, 450);
+      return;
+    }
     lastResume = now;
     log('resuming after external pause vis=' + realVis());
     setTimeout(function () { if (guard() && !userPaused && e.paused) { var p = e.play(); if (p && p.catch) p.catch(function (x) { log('play rejected ' + x); }); } }, 120);
