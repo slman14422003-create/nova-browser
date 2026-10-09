@@ -57,7 +57,9 @@ object Updater {
         else {
             val mine = pm.getPackageInfo(c.packageName, flag).signingInfo?.apkContentsSigners
             val theirs = arch.signingInfo?.apkContentsSigners
-            if (mine != null && theirs != null && mine.isNotEmpty() && theirs.isNotEmpty() && mine.none { m -> theirs.any { it == m } }) "signature mismatch" else null
+            // فشل مغلق: إن لم نستطع قراءة توقيع الملف المنزَّل نرفضه بدل قبوله (النظام يفحص عند التثبيت أيضاً لكنه خط دفاع ثانٍ)
+            if (theirs == null || theirs.isEmpty()) "signature unreadable"
+            else if (mine != null && mine.isNotEmpty() && mine.none { m -> theirs.any { it == m } }) "signature mismatch" else null
         }
     } catch (_: Exception) { null }   // تعذّر الفحص المسبق: يبقى فحص النظام عند التثبيت
 

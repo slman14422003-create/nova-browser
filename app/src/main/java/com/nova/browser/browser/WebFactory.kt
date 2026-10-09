@@ -129,6 +129,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     Shield.install(this)
     Perf.installSmooth(this)
     WebSupport.configure(this)
+    WebCompat.install(this)
     Pwa.install(this)
     PasswordBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
@@ -154,7 +155,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     webViewClient = object : WebViewClient() {
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtWeb.isYtUrl(u)) { v.post { YtWeb.swapIfNeeded(tab, u) }; return }   // وصلنا ليوتيوب (تحويل من الخادم): يُكمل في الـ WebView المخصّص
-            tab.loading = true; tab.url = u; tab.shieldHost = Shield.hostFor(u); Shield.onPageStart(v); Perf.onPageStart(v); Pwa.onPageStart(v, u)
+            tab.loading = true; tab.url = u; tab.shieldHost = Shield.hostFor(u); Shield.onPageStart(v); Perf.onPageStart(v); Pwa.onPageStart(v, u); WebCompat.onPageStart(v, tab, u)
         }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
             // تنقّلات الصفحات أحادية الصفحة لا تستدعي onPageStarted
@@ -167,6 +168,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.canBack = v.canGoBack(); tab.canForward = v.canGoForward()
             (v.parent as? SwipeRefreshLayout)?.isRefreshing = false
             WebSupport.onPageDone(v)
+            WebCompat.onPageDone(tab)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             Library.visit(u, v.title)   // سجل التصفح
@@ -178,6 +180,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             (v.parent as? ViewGroup)?.removeView(v)
             runCatching { v.destroy() }
             tab.webView = null; tab.loading = false
+            tab.holdLoad = !WebCompat.rendererGone(tab)   // 3 انهيارات خلال 90 ثانية: لا حلقة إعادة تحميل، صفحة بزر إعادة المحاولة
             tab.epoch++
             return true
         }
@@ -230,13 +233,10 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 }
                 null, "about", "data", "blob" -> false
                 "intent" -> {
-                    runCatching {
-                        // الرابط البديل يجب أن يكون http(s) فقط: كان يُمرَّر كما هو فيُنفَّذ javascript: أو file: داخل الصفحة الحالية
-                        Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME)
-                            .getStringExtra("browser_fallback_url")?.let { f ->
-                                val fu = Uri.parse(f)
-                                if ((fu.scheme == "https" || fu.scheme == "http") && !Shield.isSpoofed(fu)) v.loadUrl(Security.cleanUrl(fu).toString(), Perf.privacyHeaders)
-                            }
+                    // الوجهة http(s) فقط (رابط بديل أو بيانات الرابط نفسه): كان الرابط يُبتلع فتبقى الخريطة معلّقة
+                    WebCompat.intentTarget(u.toString())?.let { f ->
+                        val fu = Uri.parse(f)
+                        if (!Shield.isSpoofed(fu)) v.loadUrl(Security.cleanUrl(fu).toString(), Perf.privacyHeaders)
                     }
                     true
                 }
@@ -252,6 +252,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onProgressChanged(v: WebView, p: Int) {
             val f = p / 100f   // نحدّث الحالة كل 5% فقط لتقليل إعادة التركيب
             if (p == 0 || p == 100 || kotlin.math.abs(f - tab.progress) >= 0.05f) tab.progress = f
+            WebCompat.onProgress(tab, p)   // اكتمال التقدّم = انتهاء التحميل حتى لو تأخّر onPageFinished
         }
         override fun onReceivedIcon(v: WebView, icon: Bitmap?) {
             val u = v.url ?: return
@@ -259,6 +260,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         }
         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
         override fun onShowCustomView(view: View, cb: CustomViewCallback) = h.showCustom(view, cb)
+        override fun getDefaultVideoPoster(): Bitmap? = WebCompat.videoPoster()   // null يُسقط بعض إصدارات المحرك عند عرض الفيديو
         override fun onHideCustomView() = h.hideCustom()
         override fun onShowFileChooser(v: WebView, cb: ValueCallback<Array<Uri>>, p: FileChooserParams) = h.chooser(cb, p)
         override fun onPermissionRequest(req: PermissionRequest) = h.permission(req)

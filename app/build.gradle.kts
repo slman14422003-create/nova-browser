@@ -77,12 +77,14 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("androidx.webkit:webkit:1.12.1")             // حقن سكربت الحماية قبل الصفحة
+    implementation("androidx.webkit:webkit:1.16.0")             // حقن سكربت الحماية قبل الصفحة (1.16: أحدث مستقر، يدعم ميزات المحرك الجديدة)
     implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
     implementation("com.squareup.okhttp3:okhttp:4.12.0")           // شبكة HTTP/2 مع كاش وإعادة استخدام الاتصالات (اقتراحات البحث)
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
     implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")   // تحويل الصوت إلى MP3 وغيره (FFmpeg)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
+    implementation("androidx.metrics:metrics-performance:1.0.0")   // JankStats: رصد الإطارات البطيئة (يُفعَّل في نسخة debug فقط)
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")   // كشف تسرّب الذاكرة (WebView/Activity) أثناء التطوير فقط؛ لا يدخل نسخة الإصدار
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
 }

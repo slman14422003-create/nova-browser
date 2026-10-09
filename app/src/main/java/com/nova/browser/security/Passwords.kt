@@ -170,7 +170,7 @@ fun PasswordsScreen(onBack: () -> Unit) {
                         TextButton(onClick = {
                             if (revealed) revealed = false else Auth.run(activity, L("تأكيد الهوية")) { revealed = true }
                         }) { Text(if (revealed) L("إخفاء") else L("إظهار")) }
-                        TextButton(onClick = { Auth.run(activity, L("تأكيد الهوية")) { copyText(activity, c.pass) } }) { Text(L("نسخ كلمة المرور")) }
+                        TextButton(onClick = { Auth.run(activity, L("تأكيد الهوية")) { copyText(activity, c.pass, sensitive = true) } }) { Text(L("نسخ كلمة المرور")) }
                     }
                     Row {
                         TextButton(onClick = { copyText(activity, c.user) }) { Text(L("نسخ المستخدم")) }

@@ -247,6 +247,14 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
+        if (BuildConfig.DEBUG) runCatching {
+            // JankStats: يسجّل الإطارات التي تتجاوز ميزانيتها (تقطيع) في Logcat بالوسم NovaJank
+            androidx.metrics.performance.JankStats.createAndTrack(window, object : androidx.metrics.performance.JankStats.OnFrameListener {
+                override fun onFrame(volatileFrameData: androidx.metrics.performance.FrameData) {
+                    if (volatileFrameData.isJank) android.util.Log.w("NovaJank", "frame ${volatileFrameData.frameDurationUiNanos / 1_000_000}ms")
+                }
+            })
+        }
         enableEdgeToEdge()
         Prefs.init(this)
         GoogleAccounts.init(this)
@@ -377,19 +385,32 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     var sitePrompt by remember { mutableStateOf<SitePrompt?>(null) }
     var settingsMsg by remember { mutableStateOf<String?>(null) }
     val decisions = remember { mutableStateMapOf<String, Boolean>() }
-    var permCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // طابور طلبات الأذونات: كان callback واحد يُستبدل عند طلب ثانٍ فلا يُجاب طلب الموقع أبداً (تحميل الخرائط اللانهائي)
+    val permQueue = remember { ArrayList<Pair<List<String>, () -> Unit>>() }
+    val permCur = remember { arrayOfNulls<Pair<List<String>, () -> Unit>>(1) }
+    val permPump = remember { arrayOfNulls<() -> Unit>(1) }
     fun granted(p: String) = ContextCompat.checkSelfPermission(activity, p) == PackageManager.PERMISSION_GRANTED
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { m ->
-        val cb = permCallback; permCallback = null
+        val cur = permCur[0]; permCur[0] = null
         val denied = m.filter { !it.value }.keys
         if (denied.any { !ActivityCompat.shouldShowRequestPermissionRationale(activity, it) })
             settingsMsg = L("تم رفض الإذن بشكل دائم. فعّله من إعدادات التطبيق ليعمل هذا الموقع.")
-        cb?.invoke()
+        cur?.second?.invoke()
+        permPump[0]?.invoke()
     }
+    fun pumpPerms() {
+        if (permCur[0] != null || permQueue.isEmpty()) return
+        val next = permQueue.removeAt(0)
+        val need = next.first.filter { !granted(it) }
+        if (need.isEmpty()) { next.second(); pumpPerms(); return }
+        permCur[0] = next
+        runCatching { permLauncher.launch(need.toTypedArray()) }.onFailure { permCur[0] = null; next.second(); pumpPerms() }
+    }
+    permPump[0] = { pumpPerms() }
     fun askPerms(perms: List<String>, cb: () -> Unit) {
-        if (perms.all { granted(it) }) cb()
-        else { permCallback = cb; permLauncher.launch(perms.filter { !granted(it) }.toTypedArray()) }
+        if (perms.all { granted(it) }) cb() else { permQueue.add(perms to cb); pumpPerms() }
     }
+    val geoWaiters = remember { HashMap<String, MutableList<GeolocationPermissions.Callback>>() }
 
     // آخر التبويبات المغلقة (لإعادة فتحها من شاشة التبويبات)
     val closedTabs = remember { mutableStateListOf<Pair<String, String>>() }
@@ -577,14 +598,16 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             permission = { req ->
                 activity.runOnUiThread {
                     val av = req.resources.filter { it == PermissionRequest.RESOURCE_VIDEO_CAPTURE || it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }
-                    if (av.isEmpty()) { req.deny(); return@runOnUiThread }
+                    // فيديو محمي (DRM/EME): كان يُرفض فيتعطّل التشغيل؛ هذا إذن معرّف الوسائط المحمية فقط وليس كاميرا ولا ميكروفون
+                    val prot = req.resources.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }.toTypedArray()
+                    if (av.isEmpty()) { if (prot.isNotEmpty()) req.grant(prot) else req.deny(); return@runOnUiThread }
                     fun perm(r: String) = if (r == PermissionRequest.RESOURCE_VIDEO_CAPTURE) Manifest.permission.CAMERA else Manifest.permission.RECORD_AUDIO
                     val label = av.joinToString(L(" و")) { if (it == PermissionRequest.RESOURCE_VIDEO_CAPTURE) L("الكاميرا") else L("الميكروفون") }
                     fun finish(allow: Boolean) {
                         if (!allow) { req.deny(); return }
                         askPerms(av.map { perm(it) }) {
                             val ok = av.filter { granted(perm(it)) }.toTypedArray()
-                            if (ok.isEmpty()) req.deny() else req.grant(ok)
+                            if (ok.isEmpty() && prot.isEmpty()) req.deny() else req.grant(ok + prot)
                         }
                     }
                     val key = req.origin.toString() + "|av"
@@ -598,22 +621,30 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             },
             geo = { origin, cb ->
                 activity.runOnUiThread {
-                    fun finish(allow: Boolean) {
-                        if (!allow) { cb.invoke(origin, false, false); return }
-                        val perms = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                        askPerms(perms) { cb.invoke(origin, perms.any { granted(it) }, false) }
-                    }
                     val key = origin + "|geo"
+                    val list = geoWaiters.getOrPut(key) { ArrayList() }
+                    list.add(cb)
+                    if (list.size > 1 && sitePrompt != null) return@runOnUiThread   // طلب مكرر والحوار ظاهر: يُجاب كل المنتظرين معاً
+                    fun done(allow: Boolean) {
+                        val cbs = geoWaiters.remove(key).orEmpty()
+                        if (!allow) { cbs.forEach { it.invoke(origin, false, false) }; return }
+                        val perms = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                        askPerms(perms) { val ok = perms.any { granted(it) }; cbs.forEach { it.invoke(origin, ok, false) } }
+                    }
                     when (decisions[key]) {
-                        true -> finish(true)
-                        false -> cb.invoke(origin, false, false)
+                        true -> done(true)
+                        false -> done(false)
                         null -> sitePrompt = SitePrompt(L("السماح بالموقع؟"), ("" + (hostOf(origin)) + L(" يريد معرفة موقعك")),
-                            { decisions[key] = true; finish(true) }, { decisions[key] = false; finish(false) })
+                            { decisions[key] = true; done(true) }, { decisions[key] = false; done(false) })
                     }
                 }
             },
             openTab = { openInNewTab(it) },
             showCustom = { v, cb ->
+                if (customView != null && customView !== v) {   // عرض ملء شاشة جديد فوق قديم: نُعلم القديم بإخفائه كي لا يتسرّب
+                    customView?.let { (it.parent as? ViewGroup)?.removeView(it) }
+                    runCatching { customCb?.onCustomViewHidden() }
+                }
                 customView = v; customCb = cb
                 tabs.getOrNull(current)?.webView?.takeIf { YtWeb.owns(it) }?.let { YtWeb.onFullscreen(it, true) }
             },
@@ -752,7 +783,12 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                             tb.webView = w
                                             val sv = tb.saved; tb.saved = null
                                             val restored = sv != null && w.restoreState(sv) != null
-                                            if (!restored) w.loadUrl(tb.url, Perf.privacyHeaders)
+                                            if (!restored) {
+                                                if (tb.holdLoad) {   // انهارت العملية مراراً: صفحة بزر إعادة المحاولة بدل حلقة تحميل لا تنتهي
+                                                    tb.holdLoad = false
+                                                    w.loadDataWithBaseURL(tb.url, errorHtml(tb.url, L("تعطّلت عملية عرض الصفحة عدة مرات. أغلق تبويبات أخرى لتحرير الذاكرة ثم أعد المحاولة.")), "text/html", "UTF-8", tb.url)
+                                                } else w.loadUrl(tb.url, Perf.privacyHeaders)
+                                            }
                                         }
                                         (wv.parent as? ViewGroup)?.removeView(wv)
                                         wv.visibility = View.VISIBLE   // قد يكون أُخفي أثناء عرض شاشة التبويبات
