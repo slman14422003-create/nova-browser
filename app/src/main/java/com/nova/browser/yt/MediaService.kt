@@ -49,8 +49,14 @@ class MediaService : Service() {
             isActive = true
         }
         applySession()
-        startForeground(2, build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        // قيود الخلفية قد ترفض بدء الخدمة في المقدمة: لا نُسقط التطبيق، بل نُنهي الخدمة بهدوء
+        runCatching { startForeground(2, build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) }.onFailure {
+            stopped = true; instance = null; stopSelf()
+        }
     }
+
+    // مهلة خدمات الوسائط/المزامنة في أندرويد 15: إنهاء نظيف بدل إسقاط التطبيق
+    override fun onTimeout(startId: Int, fgsType: Int) { shutdown() }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val a = intent?.action ?: return START_NOT_STICKY

@@ -91,6 +91,9 @@ object Downloader {
 
     @Volatile private var engineOn = false
 
+    /** مهام معالجة بعد التنزيل (دمج/تحويل): تُبقي خدمة الإشعار حيّة كي لا يختفي الإشعار وتُقتل العملية أثناء الدمج. */
+    val work = AtomicInteger(0)
+
     /** تشغيل كسول لمحرك التنزيل: قنوات الإشعارات ومؤقّت التقدّم (كل 400ms) لا يعملان إلا حين يبدأ تنزيل فعلي. */
     @Synchronized
     fun ensureEngine() {
@@ -391,24 +394,47 @@ object Downloader {
         t.downloaded = t.total; t.segSnap = emptyList(); t.status = DONE
         save()
         val cb = t.onDone
-        if (cb == null) notifyDone(t) else pool.execute { runCatching { cb(t) } }
+        if (cb == null) notifyDone(t)
+        else { work.incrementAndGet(); pool.execute { try { runCatching { cb(t) } } finally { work.decrementAndGet() } } }
     }
+
+    private fun notifId(t: DlTask) = 100 + (t.id.hashCode() and 0x3fffffff) % 100000
 
     private fun notifyDone(t: DlTask) {
         if (!Prefs.notifDone || !Notif.enabled(app)) return
         ensureEngine()
         runCatching {
             val i = Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val pi = PendingIntent.getActivity(app, t.id.hashCode(), i, PendingIntent.FLAG_IMMUTABLE)
+            val pi = PendingIntent.getActivity(app, notifId(t), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             app.getSystemService(NotificationManager::class.java).notify(
-                t.id.hashCode(),
-                Notification.Builder(app, "done").setSmallIcon(android.R.drawable.stat_sys_download_done)
-                    .setContentTitle(L("اكتمل التنزيل")).setContentText(t.name).setContentIntent(pi).setAutoCancel(true).build()
+                notifId(t),
+                Notification.Builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle(L("اكتمل التنزيل")).setContentText(t.name)
+                    .setCategory(Notification.CATEGORY_STATUS).setShowWhen(true).setWhen(System.currentTimeMillis())
+                    .setContentIntent(pi).setAutoCancel(true).build()
             )
         }
     }
 
-    private fun fail(t: DlTask, msg: String) { t.error = msg; t.status = FAILED; t.speed = 0; save() }
+    /** فشل التنزيل كان صامتاً تماماً: الآن إشعار يفتح قائمة التنزيلات لإعادة المحاولة. */
+    private fun notifyFail(t: DlTask) {
+        if (!Prefs.notifDone || !Notif.enabled(app)) return
+        ensureEngine()
+        runCatching {
+            val open = Intent(app, MainActivity::class.java).putExtra("dl", true)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val pi = PendingIntent.getActivity(app, notifId(t), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            app.getSystemService(NotificationManager::class.java).notify(
+                notifId(t),
+                Notification.Builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentTitle(L("فشل التنزيل")).setContentText(t.name)
+                    .setCategory(Notification.CATEGORY_ERROR)
+                    .setContentIntent(pi).setAutoCancel(true).build()
+            )
+        }
+    }
+
+    private fun fail(t: DlTask, msg: String) { t.error = msg; t.status = FAILED; t.speed = 0; save(); notifyFail(t) }
 
     private fun deleteFile(t: DlTask) { runCatching { t.uri?.let { app.contentResolver.delete(it, null, null) } } }
 

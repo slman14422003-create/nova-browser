@@ -3,6 +3,7 @@ package com.nova.browser
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.PendingIntent
 import android.app.DownloadManager
 import android.content.*
 import android.content.pm.ActivityInfo
@@ -116,12 +117,73 @@ class MainActivity : ComponentActivity() {
     var fullscreenActive = false
     var wvProvider: () -> WebView? = { null }
 
-    private fun pipParams(): android.app.PictureInPictureParams = android.app.PictureInPictureParams.Builder()
-        .setAspectRatio(android.util.Rational(16, 9))
-        .apply { if (Build.VERSION.SDK_INT >= 31) { setAutoEnterEnabled(pipAuto); setSeamlessResizeEnabled(false) } }
-        .build()
+    private val PIP_PLAY = "nova.pip.play"
+    private val PIP_PAUSE = "nova.pip.pause"
+    private val PIP_BACK = "nova.pip.back"
+    private val PIP_FWD = "nova.pip.fwd"
+    private var pipExitAt = 0L          // لحظة الخروج من المنبثقة (لاكتشاف الإغلاق بزر ✕ حتى لو تأخر onStop)
+    private var pipPlayingShown: Boolean? = null
+    private var pipReceiverOn = false
+
+    /** أزرار التحكم داخل النافذة المنبثقة نفسها: رجوع/تشغيل-إيقاف/تقديم (لم تكن موجودة). */
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            when (i?.action) {
+                PIP_PLAY -> YtMedia.control("play")
+                PIP_PAUSE -> YtMedia.control("pause")
+                PIP_BACK -> YtMedia.control("back")
+                PIP_FWD -> YtMedia.control("fwd")
+            }
+            window.decorView.postDelayed({ refreshPip() }, 350)   // تبديل أيقونة التشغيل/الإيقاف بعد استجابة الصفحة
+        }
+    }
+
+    private fun pipAction(icon: Int, label: String, act: String, code: Int): android.app.RemoteAction {
+        val pi = PendingIntent.getBroadcast(this, code, Intent(act).setPackage(packageName), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, icon), label, label, pi)
+    }
+
+    private fun pipParams(): android.app.PictureInPictureParams {
+        val hasVideo = YtMedia.owner != null
+        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9))
+        if (hasVideo) {
+            val playing = YtMedia.playing
+            pipPlayingShown = playing
+            b.setActions(listOf(
+                pipAction(android.R.drawable.ic_media_rew, L("رجوع 10 ثوانٍ"), PIP_BACK, 21),
+                if (playing) pipAction(android.R.drawable.ic_media_pause, L("إيقاف مؤقت"), PIP_PAUSE, 22)
+                else pipAction(android.R.drawable.ic_media_play, L("تشغيل"), PIP_PLAY, 23),
+                pipAction(android.R.drawable.ic_media_ff, L("تقديم 10 ثوانٍ"), PIP_FWD, 24)
+            ))
+        }
+        if (Build.VERSION.SDK_INT >= 31) {
+            b.setAutoEnterEnabled(pipAuto).setSeamlessResizeEnabled(false)
+            if (hasVideo) b.setTitle(YtMedia.title.ifBlank { null }).setSubtitle(YtMedia.artist.ifBlank { null })
+        }
+        // انتقال أنعم: نحدّد مكان المشغّل في الصفحة ليتحوّل منه إطار المنبثقة
+        if (hasVideo && !fullscreenActive) runCatching {
+            val w = wvProvider()
+            val r = android.graphics.Rect()
+            if (w != null && w.getGlobalVisibleRect(r) && r.width() > 0) {
+                val hh = minOf(r.width() * 9 / 16, r.height())
+                if (hh > 0) b.setSourceRectHint(android.graphics.Rect(r.left, r.top, r.right, r.top + hh))
+            }
+        }
+        return b.build()
+    }
 
     fun refreshPip() { runCatching { setPictureInPictureParams(pipParams()) } }
+
+    /** تُستدعى عند كل حالة تشغيل جديدة: نحدّث أزرار المنبثقة فقط عندما يتغيّر تشغيل/إيقاف. */
+    fun onYtPlayState() { if (pipPlayingShown != YtMedia.playing) refreshPip() }
+
+    override fun onStart() {
+        super.onStart()
+        if (!pipReceiverOn) {
+            val f = IntentFilter().apply { addAction(PIP_PLAY); addAction(PIP_PAUSE); addAction(PIP_BACK); addAction(PIP_FWD) }
+            pipReceiverOn = runCatching { ContextCompat.registerReceiver(this, pipReceiver, f, ContextCompat.RECEIVER_NOT_EXPORTED) }.isSuccess
+        }
+    }
 
     fun enterPip() {
         if (packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
@@ -139,16 +201,21 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DefaultBrowser.refresh(this)   // قد يغيّر المستخدم الافتراضي من إعدادات النظام
+        pipExitAt = 0L
         inPip = isInPictureInPictureMode   // لا نترك الحالة عالقة إن فاتنا إشعار الخروج من المنبثقة
+        YtWeb.pip = inPip
         if (!inPip) { val w = wvProvider(); YtWeb.background(w, false); if (YtWeb.owns(w)) YtWeb.recover(w) }   // تنظيف أنماط المنبثقة إن بقيت
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         val w = wvProvider()
+        // الدخول للمنبثقة يطلق تغيير الإعدادات قبل onPictureInPictureModeChanged: لا نعتبره دوراناً (كان يعيد قياس الفيديو ويُفسد المنبثقة)
+        val pipNow = inPip || isInPictureInPictureMode
+        if (pipNow) YtWeb.pip = true
         if (YtWeb.owns(w)) {
-            YtLog.add("config orientation=" + newConfig.orientation + " fullscreen=" + fullscreenActive)
-            if (!inPip) YtWeb.afterRotate(w)
+            YtLog.add("config orientation=" + newConfig.orientation + " fullscreen=" + fullscreenActive + " pip=" + pipNow)
+            if (!pipNow) YtWeb.afterRotate(w)
         }
     }
 
@@ -160,7 +227,10 @@ class MainActivity : ComponentActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         inPip = isInPictureInPictureMode
+        YtWeb.pip = isInPictureInPictureMode
+        pipExitAt = if (isInPictureInPictureMode) 0L else android.os.SystemClock.elapsedRealtime()
         YtLog.add("native pip=$isInPictureInPictureMode fullscreen=$fullscreenActive")
+        if (isInPictureInPictureMode) refreshPip()
         // الخروج من المنبثقة بلا عودة للواجهة = أُغلقت بزر ✕ (بعض الأجهزة لا تستدعي onStop فوراً): نتحقق بعد لحظة
         if (!isInPictureInPictureMode) window.decorView.postDelayed({
             if (!isFinishing && !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) onPipDismissed()
@@ -239,7 +309,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Perf.flushCookies(true)
-        if (inPip && !isInPictureInPictureMode) onPipDismissed()
+        if (pipReceiverOn) { runCatching { unregisterReceiver(pipReceiver) }; pipReceiverOn = false }
+        // onPictureInPictureModeChanged(false) يسبق onStop دائماً، فـ inPip تكون false هنا؛ نعتمد على لحظة الخروج: إن أعقبه إيقاف بلا عودة = إغلاق ✕
+        val exited = pipExitAt != 0L && android.os.SystemClock.elapsedRealtime() - pipExitAt < 4000
+        if (exited && !isFinishing) { pipExitAt = 0L; onPipDismissed() }
+        else if (inPip && !isInPictureInPictureMode) onPipDismissed()
     }
 
     override fun onDestroy() {
@@ -565,6 +639,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             },
             onYtState = {
                 askNotif()
+                (activity as? MainActivity)?.onYtPlayState()
             },
             onDownload = { u, ua, cd, mime, ref ->
                 if (!Shield.downloadAllowed(hostOf(ref ?: u))) toast(activity, L("تم حظر تنزيلات تلقائية متتابعة من الصفحة"))
@@ -760,17 +835,30 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             )
         }
         customView?.let { v ->
-            Box(Modifier.fillMaxSize().background(Color.Black)) {
+            var pipTouch by remember(v) { mutableIntStateOf(0) }
+            var pipBtnShown by remember(v) { mutableStateOf(true) }
+            LaunchedEffect(pipTouch) { pipBtnShown = true; kotlinx.coroutines.delay(3500); pipBtnShown = false }
+            Box(
+                Modifier.fillMaxSize().background(Color.Black).pointerInput(v) {
+                    // نراقب اللمس دون استهلاكه: يظهر الزر مع أزرار يوتيوب ويختفي معها
+                    awaitPointerEventScope {
+                        while (true) {
+                            val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            if (ev.changes.any { it.pressed && !it.previousPressed }) pipTouch++
+                        }
+                    }
+                }
+            ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx -> FrameLayout(ctx).apply { setBackgroundColor(android.graphics.Color.BLACK); (v.parent as? ViewGroup)?.removeView(v); addView(v) } }
                 )
-                // زر النافذة المنبثقة فوق الفيديو في وضع ملء الشاشة (الأكثر موثوقية)
-                if (!inPip) Surface(
+                // زر النافذة المنبثقة: أعلى المنتصف (أزرار يوتيوب يميناً ويساراً فلا تداخل) ويختفي تلقائياً
+                if (!inPip && pipBtnShown) Surface(
                     onClick = { mainAct?.enterPip() }, shape = CircleShape, color = Color.Black.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 10.dp)
                 ) {
-                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.PlayArrow, null, Modifier.size(18.dp), tint = Color.White); Spacer(Modifier.width(6.dp))
                         Text(L("منبثق"), style = MaterialTheme.typography.labelLarge, color = Color.White)
                     }
