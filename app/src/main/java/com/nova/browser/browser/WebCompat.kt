@@ -127,6 +127,18 @@ object WebCompat {
         cand?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
     }.getOrNull()
 
+    /**
+     * هل الرابطان لنفس الصفحة (نفس النطاق والمسار بغض النظر عن www والاستعلام)؟
+     * صفحة الخرائط تحاول «فتح التطبيق» عبر intent:// وبياناته هي رابط الخريطة نفسه؛ تحميله ثانية = حلقة إعادة تحميل لا تنتهي.
+     */
+    fun samePage(a: String?, b: String?): Boolean {
+        val ua = runCatching { Uri.parse(a ?: "") }.getOrNull() ?: return false
+        val ub = runCatching { Uri.parse(b ?: "") }.getOrNull() ?: return false
+        fun host(u: Uri) = (u.host ?: "").lowercase().removePrefix("www.")
+        fun path(u: Uri) = (u.path ?: "").trimEnd('/')
+        return host(ua).isNotEmpty() && host(ua) == host(ub) && path(ua) == path(ub)
+    }
+
     // ---------- 5) دعم الفيديو ----------
     private val poster: Bitmap by lazy { Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888) }
     fun videoPoster(): Bitmap = poster

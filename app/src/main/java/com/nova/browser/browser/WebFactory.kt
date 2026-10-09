@@ -234,7 +234,8 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 null, "about", "data", "blob" -> false
                 "intent" -> {
                     // الوجهة http(s) فقط (رابط بديل أو بيانات الرابط نفسه): كان الرابط يُبتلع فتبقى الخريطة معلّقة
-                    WebCompat.intentTarget(u.toString())?.let { f ->
+                    // إن كانت الوجهة هي الصفحة الحالية نفسها (زر «افتح في التطبيق» في الخرائط) نتجاهلها: تحميلها ثانية يصنع حلقة تحديث
+                    WebCompat.intentTarget(u.toString())?.takeIf { !WebCompat.samePage(v.url, it) }?.let { f ->
                         val fu = Uri.parse(f)
                         if (!Shield.isSpoofed(fu)) v.loadUrl(Security.cleanUrl(fu).toString(), Perf.privacyHeaders)
                     }
