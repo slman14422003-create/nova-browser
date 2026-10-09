@@ -471,6 +471,7 @@ object I18n {
         "يمكنك تخصيصها أو إيقافها لاحقاً من الإعدادات ← الإشعارات." to "You can customize or turn them off later in Settings → Notifications.",
         "الإشعارات" to "Notifications",
         "جارٍ معالجة الملفات…" to "Processing files…",
+        "توقّفت إعادة تحميل متكررة لهذه الصفحة" to "Repeated reloads of this page were stopped",
         "تعطّلت عملية عرض الصفحة عدة مرات. أغلق تبويبات أخرى لتحرير الذاكرة ثم أعد المحاولة." to "The page renderer crashed several times. Close other tabs to free memory, then retry.",
         "التنزيلات متوقفة مؤقتاً" to "Downloads paused",
         "تنزيل واحد في الانتظار" to "1 download waiting",

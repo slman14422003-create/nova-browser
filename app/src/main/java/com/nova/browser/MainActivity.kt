@@ -798,7 +798,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                         } else SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                                             setOnRefreshListener { wv.reload() }
-                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || Pwa.kind(wv.url) != SiteKind.NONE }
+                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || Pwa.kind(wv.url) != SiteKind.NONE || WebCompat.noPullRefresh(wv.url) }
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
                                             useIosSpinner(spinnerInt)

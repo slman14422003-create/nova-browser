@@ -35,6 +35,45 @@ object WebCompat {
             (h == "goo.gl" && p.startsWith("/maps"))
     }
 
+    /**
+     * مواقع خرائط/تطبيقات ملء الشاشة: السحب لأسفل فيها يحرّك الخريطة داخل الصفحة بينما scrollY للـ WebView يبقى 0،
+     * فكان «السحب للتحديث» يلتقط كل سحبة ويعيد تحميل الصفحة (وهذا سبب إعادة التحميل المتكررة عند تحريك الخريطة).
+     */
+    fun noPullRefresh(url: String?): Boolean {
+        if (isMaps(url)) return true
+        val u = runCatching { Uri.parse(url ?: "") }.getOrNull() ?: return false
+        val h = (u.host ?: return false).lowercase().removePrefix("www.")
+        val p = u.path ?: ""
+        return h == "openstreetmap.org" || h == "waze.com" || h.endsWith(".waze.com") || h == "earth.google.com" ||
+            h == "maps.apple.com" || h == "windy.com" || h == "wego.here.com" || (h == "bing.com" && p.startsWith("/maps"))
+    }
+
+    // ---------- كاشف حلقة إعادة التحميل ----------
+    private class Hits { var n = 0; var t0 = 0L; var key = "" }
+    private val loops = WeakHashMap<BrowserTab, Hits>()
+
+    /**
+     * 8 بدايات تحميل لنفس المسار خلال 12 ثانية = حلقة (تحويل متبادل بين الموقع والتطبيق أو تحديث متكرر).
+     * عند ذلك نوقف التحميل ونعرض صفحة بزر «إعادة المحاولة» بدل حلقة لا تنتهي. يعيد true إن قطعنا الحلقة.
+     */
+    fun loopTrip(v: WebView, tab: BrowserTab, url: String): Boolean {
+        if (!url.startsWith("http")) return false
+        val u = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        val key = (u.host ?: "") + (u.path ?: "")
+        val now = SystemClock.elapsedRealtime()
+        val h = loops.getOrPut(tab) { Hits() }
+        if (h.key != key || now - h.t0 > 12_000) { h.key = key; h.n = 0; h.t0 = now }
+        h.n++
+        if (h.n < 8) return false
+        h.n = 0; h.t0 = now
+        v.post {
+            runCatching { v.stopLoading() }
+            tab.loading = false
+            runCatching { v.loadDataWithBaseURL(url, errorHtml(url, L("توقّفت إعادة تحميل متكررة لهذه الصفحة")), "text/html", "UTF-8", url) }
+        }
+        return true
+    }
+
     /** يُستدعى مع بدء كل صفحة: يضبط الإعدادات حسب الموقع ويعيدها عند مغادرته (فقط عند تغيّر الحالة). */
     fun onPageStart(v: WebView, tab: BrowserTab, url: String) {
         val maps = isMaps(url)
