@@ -112,7 +112,7 @@ object Perf {
     fun tune(wv: WebView) {
         val s = wv.settings
         s.cacheMode = WebSettings.LOAD_DEFAULT
-        s.setSafeBrowsingEnabled(true)
+        Wv.safeBrowsing(s)
         s.allowContentAccess = false
         s.allowFileAccess = false
         s.loadsImagesAutomatically = !Prefs.dataSaver
@@ -181,7 +181,7 @@ object Perf {
 
     /** تسخين محرك الويب وفحص الأمان مبكراً لتسريع أول تصفح. */
     fun warmUp(ctx: Context) {
-        runCatching { WebView.startSafeBrowsing(ctx.applicationContext, null) }
+        if (android.os.Build.VERSION.SDK_INT >= 27) runCatching { WebView.startSafeBrowsing(ctx.applicationContext, null) }
         runCatching { defaultUa(ctx) }
     }
 }
@@ -213,8 +213,11 @@ object Adaptive {
         val app = c.applicationContext
         val pm = app.getSystemService(PowerManager::class.java) ?: return
         saver = pm.isPowerSaveMode
-        thermal = pm.currentThermalStatus
-        runCatching { pm.addThermalStatusListener(ContextCompat.getMainExecutor(app)) { s -> thermal = s; recompute() } }
+        // الحرارة (Thermal API) من أندرويد 10؛ قبله نكتفي بوضع توفير الطاقة
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            thermal = pm.currentThermalStatus
+            runCatching { pm.addThermalStatusListener(ContextCompat.getMainExecutor(app)) { s -> thermal = s; recompute() } }
+        }
         ContextCompat.registerReceiver(app, object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, i: Intent?) { saver = pm.isPowerSaveMode; recompute() }
         }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -224,13 +227,18 @@ object Adaptive {
     /** مدة أنيميشن مناسبة للحالة الحالية (صفر عند الحرارة العالية أو إيقاف الحركة). */
     fun ms(base: Int): Int = when {
         !Prefs.smoothAnim -> 0
-        level == 0 -> base
-        level == 1 -> base * 6 / 10
-        else -> 0
+        level >= 2 -> 0
+        level == 1 -> if (LowEnd.on) base * 4 / 10 else base * 6 / 10
+        LowEnd.on -> (base * 5 / 10).coerceAtMost(140)   // أجهزة ضعيفة: حركة قصيرة وخفيفة بدل حذفها كلياً
+        else -> base
     }
 
     /** عدد التبويبات الحيّة المسموح به: يقلّ كلما سخن الجهاز. */
-    fun liveCap(base: Int): Int = when (level) { 0 -> base; 1 -> (base - 1).coerceAtLeast(2); else -> 2 }
+    fun liveCap(base: Int): Int = when (level) {
+        0 -> if (LowEnd.on) minOf(base, 2) else base
+        1 -> (base - 1).coerceAtLeast(2)
+        else -> 2
+    }
 }
 
 /**

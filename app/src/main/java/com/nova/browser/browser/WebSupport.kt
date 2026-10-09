@@ -76,7 +76,7 @@ object WebSupport {
         attached.add(wv)
         runCatching { wv.setNetworkAvailable(online) }
         // المحرك يخفّض أولوية عملية العرض للتبويبات غير الظاهرة (توفير ذاكرة وحرارة)
-        runCatching { wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true) }
+        if (android.os.Build.VERSION.SDK_INT >= 26) runCatching { wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true) }
         // إزالة ترويسة X-Requested-With (تكشف اسم الحزمة وتجعل بعض المواقع تعامل التطبيق كمتصفح مضمَّن)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST))
             runCatching { WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet()) }

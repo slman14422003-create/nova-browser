@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import androidx.core.app.ServiceCompat
 
 /**
  * خدمة التنزيل (إشعار التقدّم في شريط الإشعارات).
@@ -79,7 +80,7 @@ class DownloadService : Service() {
         runCatching { nm().cancel(ID_PAUSED) }
         // الاستدعاء إلزامي خلال 5 ثوانٍ من startForegroundService؛ فشله (قيود الخلفية) لا يُسقط التطبيق
         val ok = runCatching {
-            startForeground(ID_PROGRESS, build(active()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            ServiceCompat.startForeground(this, ID_PROGRESS, build(active()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)   // النوع يُطبَّق من أندرويد 10 فقط
         }.isSuccess
         if (!ok) { stopped = true; stopSelf(startId); return START_NOT_STICKY }
         h.removeCallbacks(loop); h.postDelayed(loop, 1000)
@@ -94,7 +95,7 @@ class DownloadService : Service() {
         if (stopped) return
         stopped = true
         h.removeCallbacks(loop)
-        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }   // الثابت الأصلي يحتاج أندرويد 7
         runCatching { nm().cancel(ID_PROGRESS) }
         if (userPaused) postPaused()
         stopSelf(lastStartId)
@@ -108,7 +109,7 @@ class DownloadService : Service() {
 
     private fun actionOf(icon: Int, label: String, action: String, code: Int, foreground: Boolean = false): Notification.Action {
         val i = Intent(this, DownloadService::class.java).setAction(action)
-        val pi = if (foreground) PendingIntent.getForegroundService(this, code, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val pi = if (foreground && Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, code, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         else PendingIntent.getService(this, code, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return Notification.Action.Builder(Icon.createWithResource(this, icon), label, pi).build()
     }
@@ -120,7 +121,7 @@ class DownloadService : Service() {
         runCatching {
             nm().notify(
                 ID_PAUSED,
-                Notification.Builder(this, Notif.CH_DL).setSmallIcon(android.R.drawable.stat_sys_download_done)
+                Notif.builder(this, Notif.CH_DL, low = true).setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setContentTitle(L("التنزيلات متوقفة مؤقتاً"))
                     .setContentText(if (n == 1) L("تنزيل واحد في الانتظار") else "$n" + L(" تنزيلات في الانتظار"))
                     .setCategory(Notification.CATEGORY_STATUS).setShowWhen(false)
@@ -136,7 +137,7 @@ class DownloadService : Service() {
         val done = act.sumOf { it.downloaded }
         val speed = act.sumOf { it.speed }
         val n = act.size
-        val b = Notification.Builder(this, Notif.CH_DL).setSmallIcon(android.R.drawable.stat_sys_download)
+        val b = Notif.builder(this, Notif.CH_DL, low = true).setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(
                 when {
                     n == 0 -> L("جارٍ معالجة الملفات…")

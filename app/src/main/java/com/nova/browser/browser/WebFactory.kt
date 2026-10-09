@@ -111,6 +111,9 @@ internal fun googleSignIn(v: WebView, h: Handlers, u: Uri): Boolean {
     return false
 }
 
+/** مواقع وافق المستخدم على شهادتها في هذه الجلسة (أندرويد 6 فقط). */
+private val oldAndroidCertOk = HashSet<String>()
+
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView(ctx).apply {
     tab.yt = false
@@ -132,7 +135,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
     WebCompat.install(this)
     Pwa.install(this)
     PasswordBridge.install(this, tab, h)
-    importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    Wv.autofill(this, Prefs.pwMode == 1)
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, !Prefs.blockThirdCookies)
     setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
@@ -152,6 +155,9 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             else -> false
         }
     }
+    // أندرويد 6: النظام لا يخبرنا إن كان التنقّل بلمسة مستخدم، فنقدّر ذلك من آخر لمسة (للحماية من التحويلات التلقائية)
+    var lastTouch = 0L
+    setOnTouchListener { _, e -> if (e.action == android.view.MotionEvent.ACTION_DOWN) lastTouch = android.os.SystemClock.uptimeMillis(); false }
     webViewClient = object : WebViewClient() {
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtWeb.isYtUrl(u)) { v.post { YtWeb.swapIfNeeded(tab, u) }; return }   // وصلنا ليوتيوب (تحويل من الخادم): يُكمل في الـ WebView المخصّص
@@ -185,6 +191,16 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             return true
         }
         override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
+            val host = e.url?.let { hostOf(it) } ?: ""
+            // أندرويد 6 وما قبل 7.1.1 لا يحوي جذر Let's Encrypt الحديث (ISRG Root X1) فتفشل مواقع كثيرة سليمة.
+            // نسمح بقرار صريح من المستخدم لهذا الموقع فقط (ولخطأ «غير موثوقة» فقط، لا منتهية ولا مخالفة للنطاق)
+            if (Build.VERSION.SDK_INT < 25 && e.primaryError == SslError.SSL_UNTRUSTED && host.isNotEmpty()) {
+                if (host in oldAndroidCertOk) { h.proceed(); return }
+                novaDialog(ctx).setTitle(host).setMessage(L("شهادة هذا الموقع غير معروفة لنظامك. على أندرويد 6 غالباً يكون السبب أن النظام قديم ولا يحوي شهادات حديثة، لكن قد يكون هجوماً أيضاً. تابع فقط إن كنت تثق بالموقع ولا تُدخل كلمات مرور أو بيانات بنكية."))
+                    .setPositiveButton(L("متابعة (غير آمن)")) { _, _ -> oldAndroidCertOk.add(host); h.proceed() }
+                    .setNegativeButton(L("إلغاء")) { _, _ -> h.cancel() }.setOnCancelListener { h.cancel() }.show()
+                return
+            }
             h.cancel()   // لا نتجاوز أخطاء الشهادات أبداً
             Security.log(L("شهادة"), (L("رُفض اتصال غير موثوق: ") + (e.url?.let { hostOf(it) })))
             val u = e.url ?: v.url ?: ""
@@ -207,14 +223,20 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                 v.loadDataWithBaseURL(u, errorHtml(u, e.description.toString()), "text/html", "UTF-8", u)
             }
         }
-        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-            val u = r.url
+        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean = nav(v, r.url, r.isForMainFrame, r.hasGesture())
+
+        // أندرويد 6: هذه الدالة هي الوحيدة التي يستدعيها النظام (النسخة ذات WebResourceRequest من أندرويد 7)
+        @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+        override fun shouldOverrideUrlLoading(v: WebView, url: String): Boolean =
+            nav(v, Uri.parse(url), true, android.os.SystemClock.uptimeMillis() - lastTouch < 1500)
+
+        private fun nav(v: WebView, u: Uri, mainFrame: Boolean, gesture: Boolean): Boolean {
             return when (u.scheme) {
                 "http", "https" -> {
-                    if (!r.isForMainFrame) false
+                    if (!mainFrame) false
                     else if (YtWeb.isYtUrl(u.toString())) { v.post { YtWeb.swapIfNeeded(tab, u.toString()) }; true }   // يوتيوب له WebView مخصّص منفصل
                     else if (Shield.isSpoofed(u)) { toast(ctx, L("تم حظر رابط مخادع يُخفي وجهته الحقيقية")); true }
-                    else if (!Shield.navAllowed(v, r.hasGesture(), u.host)) { toast(ctx, L("تم إيقاف تحويلات تلقائية متكررة")); true }
+                    else if (!Shield.navAllowed(v, gesture, u.host)) { toast(ctx, L("تم إيقاف تحويلات تلقائية متكررة")); true }
                     else if (GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u)) true
                     else {
                         var t = Security.cleanUrl(u)

@@ -13,14 +13,19 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- أندرويد 6–9: حفظ التنزيلات في Download/Nova (من أندرويد 10 يُستخدم MediaStore بلا إذن) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <queries>
         <intent><action android:name="android.support.customtabs.action.CustomTabsService" /></intent>
         <package android:name="com.samsung.android.samsungpassautofill" />
         <package android:name="com.samsung.android.samsungpass" />
     </queries>
     <application
-        android:label="Nova Browser"
+        android:label="Nova Go"
         android:supportsRtl="true"
         android:localeConfig="@xml/locales_config"
         android:allowBackup="false"
@@ -31,6 +36,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Nova">
         <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
+        <!-- مشاركة/فتح الملفات المنزَّلة مع التطبيقات الأخرى على أندرويد 7+ (file:// ممنوع) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:theme="@style/Theme.Nova.Splash"
@@ -38,7 +51,7 @@
             android:launchMode="singleTask"
             android:hardwareAccelerated="true"
             android:supportsPictureInPicture="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|density|fontScale|colorMode|uiMode"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|density|fontScale|uiMode"
             android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -77,7 +90,7 @@
             android:name=".PanelActivity"
             android:exported="false"
             android:hardwareAccelerated="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|density|fontScale|colorMode|uiMode"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|density|fontScale|uiMode"
             android:windowSoftInputMode="adjustResize" />
     <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
         <service android:name=".MediaService" android:exported="false" android:foregroundServiceType="mediaPlayback" />

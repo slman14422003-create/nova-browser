@@ -11,6 +11,15 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "الوضع الخفيف (أجهزة ضعيفة / Android Go)" to "Lite mode (weak devices / Android Go)",
+        "حركات أقصر وتبويبات حيّة أقل واتصالات تنزيل أقل" to "Shorter animations, fewer live tabs, fewer download connections",
+        "جهازك ضعيف: مفعّل" to "weak device: on",
+        "جهازك قوي: مُعطّل" to "strong device: off",
+        "مفعّل دائماً" to "Always on",
+        "معطّل" to "Off",
+        "شهادة هذا الموقع غير معروفة لنظامك. على أندرويد 6 غالباً يكون السبب أن النظام قديم ولا يحوي شهادات حديثة، لكن قد يكون هجوماً أيضاً. تابع فقط إن كنت تثق بالموقع ولا تُدخل كلمات مرور أو بيانات بنكية." to "This site's certificate is unknown to your system. On Android 6 this is often because the system is old and lacks modern certificates, but it could also be an attack. Continue only if you trust the site and do not enter passwords or banking details.",
+        "متابعة (غير آمن)" to "Continue (unsafe)",
+        "فتح في Chrome" to "Open in Chrome",
         "سجل الأعطال" to "Crash log",
         "لا توجد أعطال مسجلة" to "No crashes recorded",
         "اضغط لعرض آخر عطل ونسخه" to "Tap to view and copy the latest crash",

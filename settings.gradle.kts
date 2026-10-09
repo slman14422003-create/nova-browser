@@ -10,5 +10,5 @@ dependencyResolutionManagement {
         }
     }
 }
-rootProject.name = "NovaBrowser"
+rootProject.name = "NovaGo"
 include(":app")

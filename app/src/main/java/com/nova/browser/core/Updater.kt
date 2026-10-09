@@ -50,18 +50,20 @@ object Updater {
     @Suppress("DEPRECATION")
     private fun verifyApk(c: Context, f: File): String? = try {
         val pm = c.packageManager
-        val flag = PackageManager.GET_SIGNING_CERTIFICATES
+        // أندرويد 9+: signingInfo؛ قبله: signatures (الواجهة الجديدة غير موجودة على أندرويد 6–8)
+        val flag = if (android.os.Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
         val arch = pm.getPackageArchiveInfo(f.absolutePath, flag)
         if (arch == null) "invalid package"
         else if (arch.packageName != c.packageName) "package mismatch"
         else {
-            val mine = pm.getPackageInfo(c.packageName, flag).signingInfo?.apkContentsSigners
-            val theirs = arch.signingInfo?.apkContentsSigners
+            val installed = pm.getPackageInfo(c.packageName, flag)
+            val mine = if (android.os.Build.VERSION.SDK_INT >= 28) installed.signingInfo?.apkContentsSigners else installed.signatures
+            val theirs = if (android.os.Build.VERSION.SDK_INT >= 28) arch.signingInfo?.apkContentsSigners else arch.signatures
             // فشل مغلق: إن لم نستطع قراءة توقيع الملف المنزَّل نرفضه بدل قبوله (النظام يفحص عند التثبيت أيضاً لكنه خط دفاع ثانٍ)
             if (theirs == null || theirs.isEmpty()) "signature unreadable"
             else if (mine != null && mine.isNotEmpty() && mine.none { m -> theirs.any { it == m } }) "signature mismatch" else null
         }
-    } catch (_: Exception) { null }   // تعذّر الفحص المسبق: يبقى فحص النظام عند التثبيت
+    } catch (_: Throwable) { null }   // تعذّر الفحص المسبق: يبقى فحص النظام عند التثبيت
 
     private fun reject(f: File, why: String) {
         runCatching { f.delete() }
@@ -154,7 +156,7 @@ object Updater {
                 if (cn.responseCode != 200) throw java.io.IOException("HTTP " + cn.responseCode)
                 // بعد التحويلات: يجب أن نبقى على https وعلى نطاقات GitHub
                 if (!trustedUrl(cn.url.toString())) { cn.disconnect(); throw java.io.IOException("untrusted redirect") }
-                val total = cn.contentLengthLong.takeIf { it > 0 } ?: i.size
+                val total = (cn.getHeaderField("Content-Length")?.trim()?.toLongOrNull() ?: 0L).takeIf { it > 0 } ?: i.size
                 var done = 0L; var lastUi = 0L
                 val md = MessageDigest.getInstance("SHA-256")
                 cn.inputStream.use { ins -> tmp.outputStream().use { out ->
@@ -191,7 +193,7 @@ object Updater {
         val f = apkFile(app)
         if (!f.exists()) { error = "file missing"; phase = UpdPhase.AVAILABLE; return }
         verifyApk(app, f)?.let { reject(f, it); return }
-        if (!app.packageManager.canRequestPackageInstalls()) {
+        if (android.os.Build.VERSION.SDK_INT >= 26 && !app.packageManager.canRequestPackageInstalls()) {   // قبل أندرويد 8 لا يوجد إذن لكل تطبيق
             error = L("فعّل «السماح بالتثبيت من هذا المصدر» ثم اضغط تثبيت")
             phase = UpdPhase.READY
             runCatching { app.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + app.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }

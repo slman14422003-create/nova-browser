@@ -119,15 +119,8 @@ private val DarkColors = darkColorScheme(
     outline = Color(0xFF6B6A68), outlineVariant = Color(0xFF3A3835),
     surfaceContainer = Color(0xFF1F1E1D), surfaceContainerHigh = Color(0xFF2A2927), surfaceContainerHighest = Color(0xFF353330)
 )
-private val NovaTypography = Typography().let { t ->
-    val serif = androidx.compose.ui.text.font.FontFamily.Serif
-    t.copy(
-        displayLarge = t.displayLarge.copy(fontFamily = serif), displayMedium = t.displayMedium.copy(fontFamily = serif),
-        displaySmall = t.displaySmall.copy(fontFamily = serif), headlineLarge = t.headlineLarge.copy(fontFamily = serif),
-        headlineMedium = t.headlineMedium.copy(fontFamily = serif), headlineSmall = t.headlineSmall.copy(fontFamily = serif),
-        titleLarge = t.titleLarge.copy(fontFamily = serif)
-    )
-}
+// خط النظام الافتراضي (Roboto/Noto) بدل Serif: أوضح على الشاشات الصغيرة والقديمة، وأخف في التحميل
+private val NovaTypography = Typography()
 
 /** سمة التطبيق المشتركة بين نافذة المتصفح ونافذة اللوحات (ألوان، خط، اتجاه RTL/LTR، ألوان أشرطة النظام). */
 @Composable
@@ -136,7 +129,9 @@ fun NovaTheme(activity: ComponentActivity, content: @Composable () -> Unit) {
     SideEffect {
         activity.enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark },
-            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
+            // قبل أندرويد 8 لا توجد أيقونات تنقّل داكنة: شريط أسود ثابت يضمن ظهور الأزرار على أي خلفية
+            navigationBarStyle = if (android.os.Build.VERSION.SDK_INT < 26) SystemBarStyle.dark(android.graphics.Color.BLACK)
+                else SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT) { dark }
         )
     }
     MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, typography = NovaTypography) {

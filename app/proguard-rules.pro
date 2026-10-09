@@ -1,6 +1,12 @@
 -keepattributes *Annotation*
 -dontwarn java.lang.invoke.StringConcatFactory
 
+# مكتبة الـ core library desugaring (تشغّل APIs جافا حديثة زي
+# URLDecoder.decode(String, Charset) على أندرويد قديم). بدون هذه القاعدة
+# R8 بيحذفها في الريليس فيحصل NoSuchMethodError وقت التشغيل.
+-keep class j$.** { *; }
+-dontwarn j$.**
+
 # NewPipeExtractor + Rhino + jsoup
 -keep class org.schabi.newpipe.extractor.** { *; }
 -keep class org.mozilla.javascript.** { *; }
@@ -19,11 +25,6 @@
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn org.checkerframework.**
 -dontwarn javax.lang.model.**
-
-# FFmpegKit
--keep class com.arthenica.ffmpegkit.** { *; }
--keep class com.arthenica.smartexception.** { *; }
--dontwarn com.arthenica.**
 
 # OkHttp / Okio (مزوّدات TLS الاختيارية غير موجودة على أندرويد)
 -dontwarn okhttp3.internal.platform.**

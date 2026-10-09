@@ -132,7 +132,7 @@ fun BottomPill(
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
     onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit,
     onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit, onTranslate: () -> Unit = {},
-    onPrint: () -> Unit = {}
+    onPrint: () -> Unit = {}, onCustomTab: () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
@@ -226,7 +226,7 @@ fun BottomPill(
                             }
                         }
                         RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, L("المزيد")) }
-                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome, onTranslate, onPrint)
+                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome, onTranslate, onPrint, onCustomTab)
                     }
                 }
             }

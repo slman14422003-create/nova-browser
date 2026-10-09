@@ -4,6 +4,8 @@ import android.app.SearchManager
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.runtime.getValue
@@ -23,13 +25,20 @@ object DefaultBrowser {
 
     fun refresh(c: Context) {
         isDefault = runCatching {
-            val rm = c.getSystemService(RoleManager::class.java)
-            rm != null && rm.isRoleAvailable(RoleManager.ROLE_BROWSER) && rm.isRoleHeld(RoleManager.ROLE_BROWSER)
+            if (Build.VERSION.SDK_INT >= 29) {
+                val rm = c.getSystemService(RoleManager::class.java)
+                rm != null && rm.isRoleAvailable(RoleManager.ROLE_BROWSER) && rm.isRoleHeld(RoleManager.ROLE_BROWSER)
+            } else {
+                // قبل أندرويد 10 لا يوجد RoleManager: نسأل النظام من يفتح http افتراضياً
+                val ri = c.packageManager.resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://example.com")), PackageManager.MATCH_DEFAULT_ONLY)
+                ri?.activityInfo?.packageName == c.packageName
+            }
         }.getOrDefault(false)
     }
 
     /** يُرجع Intent طلب الدور، أو null إن لم يكن متاحاً (أو كان التطبيق هو الافتراضي أصلاً). */
     fun requestIntent(c: Context): Intent? = runCatching {
+        if (Build.VERSION.SDK_INT < 29) return null   // نفتح إعدادات التطبيقات الافتراضية بدلاً من ذلك
         val rm = c.getSystemService(RoleManager::class.java) ?: return null
         if (!rm.isRoleAvailable(RoleManager.ROLE_BROWSER) || rm.isRoleHeld(RoleManager.ROLE_BROWSER)) null
         else rm.createRequestRoleIntent(RoleManager.ROLE_BROWSER)

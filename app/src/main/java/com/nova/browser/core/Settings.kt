@@ -82,6 +82,7 @@ object Prefs {
     var notifDone by mutableStateOf(true); private set      // إشعار اكتمال التنزيل
     var notifUpdate by mutableStateOf(true); private set    // إشعار تحديث متاح
     var notifAsked by mutableStateOf(false); private set    // سبق عرض طلب إذن الإشعارات
+    var lite by mutableIntStateOf(0); private set           // الوضع الخفيف للأجهزة الضعيفة: 0 تلقائي، 1 تشغيل، 2 إيقاف
 
     val engines = listOf(
         "Google" to "https://www.google.com/search?q=",
@@ -93,6 +94,9 @@ object Prefs {
 
     fun init(c: Context) {
         val p = ConfStore.open(c); sp = p   // كل الإعدادات من ملف nova.conf دفعة واحدة إلى الرام
+        LowEnd.init(c)
+        val heavy = !LowEnd.device           // الأجهزة الضعيفة: ميزات الحقن الثقيلة معطّلة افتراضياً (يمكن تفعيلها يدوياً)
+        lite = p.getInt("lite", 0).coerceIn(0, 2)
         engine = p.getInt("engine", 0).coerceIn(0, engines.lastIndex)
         theme = p.getInt("theme", 0); desktop = p.getBoolean("desktop", false)
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
@@ -100,7 +104,7 @@ object Prefs {
         dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true); popups = p.getBoolean("popups", true)
         httpsFirst = p.getBoolean("https1", true); cleanUrls = p.getBoolean("cleanurl", true)
         blockThirdCookies = p.getBoolean("c3p", true); secureScreen = p.getBoolean("secscr", false)
-        antiFingerprint = p.getBoolean("antifp", true); shield = p.getBoolean("shield", true); pauseBg = p.getBoolean("pausebg", true)
+        antiFingerprint = p.getBoolean("antifp", heavy); shield = p.getBoolean("shield", true); pauseBg = p.getBoolean("pausebg", true)
         lang = p.getInt("lang", 0); siteLang = p.getInt("sitelang", 0).coerceIn(0, siteLangs.lastIndex)
         textZoom = p.getInt("zoom", 1).coerceIn(0, zoomValues.lastIndex); siteDark = p.getBoolean("sitedark", false)
         pwMode = if (p.contains("pwmode")) p.getInt("pwmode", 0).coerceIn(0, 2) else defaultPwMode(c)
@@ -111,15 +115,17 @@ object Prefs {
         ytCcSize = p.getInt("yccsize", 1).coerceIn(0, 3); ytCcBg = p.getInt("yccbg", 0).coerceIn(0, 2); ytCcPos = p.getInt("yccpos", 0).coerceIn(0, 2)
         ytNoShorts = p.getBoolean("ytnoshorts", false)
         ytResume = p.getBoolean("ytresume", true); ytKeepRate = p.getBoolean("ytkeeprate", true); ytHold2x = p.getBoolean("ythold2x", true)
-        boost = p.getBoolean("boost", true); suggest = p.getBoolean("suggest", true)
+        boost = p.getBoolean("boost", heavy); suggest = p.getBoolean("suggest", true)
         notifDone = p.getBoolean("notifdone", true); notifUpdate = p.getBoolean("notifupd", true); notifAsked = p.getBoolean("notifasked", false)
     }
 
     /** إن كانت خدمة تعبئة (Samsung Pass مثلاً) مفعّلة في النظام نبدأ بها تلقائياً، وإلا نستخدم المدير المدمج. */
     private fun defaultPwMode(c: Context): Int = runCatching {
+        if (android.os.Build.VERSION.SDK_INT < 26) return@runCatching 0   // خدمات التعبئة في النظام من أندرويد 8
         val am = c.getSystemService(android.view.autofill.AutofillManager::class.java)
         if (am != null && am.isEnabled && am.hasEnabledAutofillServices()) 1 else 0
     }.getOrDefault(0)
+    fun pickLite(v: Int) { lite = v; sp?.putInt("lite", v); Adaptive.refresh() }
     fun pickEngine(v: Int) { engine = v; sp?.putInt("engine", v) }
     fun pickTheme(v: Int) { theme = v; sp?.putInt("theme", v) }
     fun pickDesktop(v: Boolean) { desktop = v; sp?.putBoolean("desktop", v) }
@@ -221,6 +227,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     val ccSizeNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
     val ccBgNames = listOf(L("زجاجية"), L("غامقة"), L("بلا خلفية"))
     val ccPosNames = listOf(L("أسفل"), L("وسط"), L("أعلى"))
+    val liteNames = listOf(L("تلقائي") + (if (LowEnd.device) " (" + L("جهازك ضعيف: مفعّل") + ")" else " (" + L("جهازك قوي: مُعطّل") + ")"), L("مفعّل دائماً"), L("معطّل"))
     val pwNames = listOf(L("مدمج في المتصفح"), L("خدمة النظام (Samsung Pass وغيرها)"), L("متوقف"))
 
     val notif = rememberNotifState()
@@ -318,6 +325,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             RowSpec(L("فحص سلامة الجهاز"), if (warnings.isEmpty()) L("لا مؤشرات مقلقة") else warnings.joinToString(" • "), Icons.Default.Warning, {})
         )),
         SectionSpec("performance", L("الأداء والذاكرة المؤقتة"), L("الكاش • السرعة • توفير البيانات"), Icons.Default.Refresh, listOf(
+            RowSpec(L("الوضع الخفيف (أجهزة ضعيفة / Android Go)"), liteNames[Prefs.lite.coerceIn(0, 2)] + " • " + L("حركات أقصر وتبويبات حيّة أقل واتصالات تنزيل أقل"), Icons.Default.Settings, { dialog = "lite" }),
             RowSpec(L("مسح الكاش عند كل تشغيل"), L("يُحذف الكاش كلياً عند فتح التطبيق؛ تبقى كلمات المرور وإعدادات المواقع وتسجيلات الدخول"), Icons.Default.Refresh, { Prefs.pickAutoClean(!Prefs.autoClean) },
                 { Switch(checked = Prefs.autoClean, onCheckedChange = null) }),
             RowSpec(L("تحسين عرض الصفحات"), L("يضبط الصور والأكواد على عرض الشاشة ويمنع التمرير الأفقي (يُطبَّق على التبويبات الجديدة)"), Icons.Default.Settings, { Prefs.pickFitPages(!Prefs.fitPages) },
@@ -442,6 +450,7 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
         "pwmode" -> NovaChoiceDialog(L("وضع التعبئة التلقائية"), pwNames, Prefs.pwMode.coerceIn(0, 2), Icons.Default.Lock, { Prefs.pickPwMode(it) }) { dialog = null }
         "lang" -> NovaChoiceDialog(L("لغة التطبيق"), langNames, Prefs.lang.coerceIn(0, 2), Icons.Default.Settings, { Prefs.pickLang(it) }) { dialog = null }
         "sitelang" -> NovaChoiceDialog(L("لغة المواقع"), Prefs.siteLangs.map { if (it.first.isEmpty()) L(it.second) else it.second }, Prefs.siteLang, Icons.Default.Search, { Prefs.pickSiteLang(it) }) { dialog = null }
+        "lite" -> ChoiceDialog(L("الوضع الخفيف (أجهزة ضعيفة / Android Go)"), liteNames, Prefs.lite.coerceIn(0, 2), { Prefs.pickLite(it) }) { dialog = null }
         "zoom" -> ChoiceDialog(L("حجم الخط في المواقع"), zoomNames, Prefs.textZoom, { Prefs.pickTextZoom(it) }) { dialog = null }
         "yccsize" -> ChoiceDialog(L("حجم الترجمة"), ccSizeNames, Prefs.ytCcSize.coerceIn(0, 3), { Prefs.pickYtCcSize(it) }) { dialog = null }
         "yccbg" -> ChoiceDialog(L("خلفية الترجمة"), ccBgNames, Prefs.ytCcBg.coerceIn(0, 2), { Prefs.pickYtCcBg(it) }) { dialog = null }

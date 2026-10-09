@@ -92,7 +92,7 @@ object YtWeb {
             setSupportZoom(false); builtInZoomControls = false; displayZoomControls = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             cacheMode = WebSettings.LOAD_DEFAULT
-            setSafeBrowsingEnabled(true)
+            Wv.safeBrowsing(this)
             setOffscreenPreRaster(false)
             textZoom = 100                       // حجم الخط العام لا يُطبَّق: يكسر تخطيط يوتيوب
             loadsImagesAutomatically = true; blockNetworkImage = false   // توفير البيانات لا يُطبَّق: الصور المصغّرة جزء من الواجهة
@@ -103,20 +103,23 @@ object YtWeb {
             runCatching { WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, false) }
         isScrollbarFadingEnabled = true
         overScrollMode = View.OVER_SCROLL_NEVER
-        importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        Wv.autofill(this, false)
         WebSupport.configure(this)               // أولوية العملية + مراقبة التجمّد + إزالة X-Requested-With
         YtHub.install(this, tab, h)              // جسر الوسائط + yt.js
         CookieManager.getInstance().setAcceptCookie(true)
         // الدخول بحساب Google وموافقات يوتيوب تحتاج كوكيز بين نطاقات جوجل ويوتيوب؛ هذا الـ WebView لا يفتح إلا هذه النطاقات
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
         setDownloadListener { u, ua, cd, mime, _ -> h.onDownload(u, ua, cd, mime, this.url) }
-        webViewClient = Client(tab, h)
+        val client = Client(tab, h)
+        webViewClient = client
+        setOnTouchListener { _, e -> if (e.action == android.view.MotionEvent.ACTION_DOWN) client.lastTouch = android.os.SystemClock.uptimeMillis(); false }
         webChromeClient = Chrome(ctx, tab, h)
         // تسخين DNS لنطاقات التشغيل قبل أول طلب
         WebSupport.prefetchDns("m.youtube.com"); WebSupport.prefetchDns("i.ytimg.com"); WebSupport.prefetchDns("www.gstatic.com")
     }
 
     private class Client(val tab: BrowserTab, val h: Handlers) : WebViewClient() {
+        @Volatile var lastTouch = 0L   // أندرويد 6: تقدير «بلمسة مستخدم» من آخر لمسة
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             tab.loading = true; tab.url = u; tab.shieldHost = Shield.hostFor(u)
             YtHub.onPageStart(v, u); YtMedia.pageChanged(tab, u)
@@ -132,15 +135,20 @@ object YtWeb {
             Perf.flushCookies()
             Library.visit(u, v.title)
         }
-        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-            val u = r.url
+        override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean = nav(v, r.url, r.isForMainFrame, r.hasGesture())
+
+        @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
+        override fun shouldOverrideUrlLoading(v: WebView, url: String): Boolean =
+            nav(v, Uri.parse(url), true, android.os.SystemClock.uptimeMillis() - lastTouch < 1500)
+
+        private fun nav(v: WebView, u: Uri, mainFrame: Boolean, gesture: Boolean): Boolean {
             return when (u.scheme) {
                 "http", "https" -> {
-                    if (!r.isForMainFrame) false
+                    if (!mainFrame) false
                     else if (stays(u)) GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u)
                     else {
                         // وجهة خارج يوتيوب: تبويب جديد بلمسة المستخدم فقط؛ التحويلات التلقائية تُتجاهل. صفحة يوتيوب لا تُمسّ
-                        if (r.hasGesture() && !Shield.isSpoofed(u)) h.openTab(Security.cleanUrl(u).toString())
+                        if (gesture && !Shield.isSpoofed(u)) h.openTab(Security.cleanUrl(u).toString())
                         true
                     }
                 }

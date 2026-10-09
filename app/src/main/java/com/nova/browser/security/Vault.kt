@@ -4,8 +4,12 @@ import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.Intent
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Build
 import android.os.CancellationSignal
 import android.security.keystore.KeyGenParameterSpec
@@ -133,9 +137,24 @@ object Auth {
     @Suppress("DEPRECATION")
     private fun legacyCredential(b: BiometricPrompt.Builder) { b.setDeviceCredentialAllowed(true) }
 
+    /** أندرويد 6–9: نافذة قفل الشاشة القياسية (BiometricPrompt مع قفل الجهاز يحتاج أندرويد 10). */
+    @Suppress("DEPRECATION")
+    private fun runKeyguard(activity: Activity, km: KeyguardManager, title: String, onOk: () -> Unit) {
+        val ca = activity as? ComponentActivity
+        val intent = km.createConfirmDeviceCredentialIntent(title, null)
+        if (ca == null || intent == null) { toast(activity, L("تعذّر التحقق من الهوية")); return }
+        val holder = arrayOfNulls<ActivityResultLauncher<Intent>>(1)
+        holder[0] = ca.activityResultRegistry.register("nova-auth-" + System.nanoTime(), ActivityResultContracts.StartActivityForResult()) { r ->
+            holder[0]?.unregister()
+            if (r.resultCode == Activity.RESULT_OK) onOk()
+        }
+        runCatching { holder[0]?.launch(intent) }.onFailure { holder[0]?.unregister(); toast(activity, L("تعذّر التحقق من الهوية")) }
+    }
+
     fun run(activity: Activity, title: String, onOk: () -> Unit) {
         val km = activity.getSystemService(KeyguardManager::class.java)
         if (km == null || !km.isDeviceSecure) { onOk(); return }
+        if (Build.VERSION.SDK_INT < 29) { runKeyguard(activity, km, title, onOk); return }   // setDeviceCredentialAllowed من أندرويد 10
         val b = BiometricPrompt.Builder(activity).setTitle(title)
         if (Build.VERSION.SDK_INT >= 30)
             b.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)

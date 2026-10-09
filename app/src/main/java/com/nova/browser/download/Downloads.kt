@@ -42,12 +42,12 @@ fun fmtEta(s: Long): String {
 
 fun openFile(c: Context, t: DlTask) {
     runCatching {
-        c.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        c.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(t.uri?.let { Storage.shareUri(c, it) }, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }.onFailure { toast(c, L("لا يوجد تطبيق لفتح الملف")) }
 }
 
 fun shareFile(c: Context, t: DlTask) {
-    val i = Intent(Intent.ACTION_SEND).setType(t.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, t.uri)
+    val i = Intent(Intent.ACTION_SEND).setType(t.mime.ifBlank { "*/*" }).putExtra(Intent.EXTRA_STREAM, t.uri?.let { Storage.shareUri(c, it) })
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     c.startActivity(Intent.createChooser(i, null))
 }

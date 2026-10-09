@@ -1,19 +1,15 @@
 package com.nova.browser
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Notification
 import android.app.PendingIntent
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.system.Os
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -241,23 +237,15 @@ object Downloader {
                 val total = c.getHeaderField("Content-Range")?.substringAfterLast('/')?.trim()?.toLongOrNull() ?: -1L
                 return Probe(u, total, total > 0, mime, cd)
             }
-            if (code in 200..299) return Probe(u, c.contentLengthLong, false, mime, cd)
+            if (code in 200..299) return Probe(u, c.getHeaderField("Content-Length")?.trim()?.toLongOrNull() ?: -1L, false, mime, cd)   // getContentLengthLong يحتاج أندرويد 7
             throw IOException("HTTP $code")
         } finally { c.disconnect() }
     }
 
     private fun createSink(t: DlTask) {
-        val v = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, t.name)
-            if (t.mime.isNotBlank()) put(MediaStore.Downloads.MIME_TYPE, t.mime)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Nova")
-            put(MediaStore.Downloads.IS_PENDING, 1)
-        }
-        val uri = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IOException(L("تعذّر إنشاء الملف"))
+        val uri = try { Storage.create(app, t.name, t.mime) } catch (e: IOException) { throw IOException(L("تعذّر إنشاء الملف")) }
         t.uri = uri
-        app.contentResolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use {
-            if (it.moveToFirst()) t.name = it.getString(0)
-        }
+        Storage.displayName(app, uri)?.let { t.name = it }
     }
 
     private fun openSink(t: DlTask) {
@@ -273,7 +261,7 @@ object Downloader {
             total < 64_000_000 -> 8
             else -> 16
         }
-        return minOf(auto, if (Prefs.maxConns > 0) Prefs.maxConns else 16)
+        return minOf(auto, if (Prefs.maxConns > 0) Prefs.maxConns else if (LowEnd.on) 6 else 16)   // اتصالات أقل = رام ومعالج أقل على الأجهزة الضعيفة
     }
 
     private fun buildSegs(t: DlTask) {
@@ -386,9 +374,7 @@ object Downloader {
 
     private fun markDone(t: DlTask) {
         t.uri?.let { u ->
-            runCatching {
-                app.contentResolver.update(u, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
-            }
+            runCatching { Storage.finish(app, u, t.mime) }
         }
         if (t.total <= 0) t.total = downloadedOf(t)
         t.downloaded = t.total; t.segSnap = emptyList(); t.status = DONE
@@ -404,11 +390,11 @@ object Downloader {
         if (!Prefs.notifDone || !Notif.enabled(app)) return
         ensureEngine()
         runCatching {
-            val i = Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val i = Intent(Intent.ACTION_VIEW).setDataAndType(t.uri?.let { Storage.shareUri(app, it) }, t.mime.ifBlank { "*/*" }).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             val pi = PendingIntent.getActivity(app, notifId(t), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             app.getSystemService(NotificationManager::class.java).notify(
                 notifId(t),
-                Notification.Builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_sys_download_done)
+                Notif.builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setContentTitle(L("اكتمل التنزيل")).setContentText(t.name)
                     .setCategory(Notification.CATEGORY_STATUS).setShowWhen(true).setWhen(System.currentTimeMillis())
                     .setContentIntent(pi).setAutoCancel(true).build()
@@ -426,7 +412,7 @@ object Downloader {
             val pi = PendingIntent.getActivity(app, notifId(t), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             app.getSystemService(NotificationManager::class.java).notify(
                 notifId(t),
-                Notification.Builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_notify_error)
+                Notif.builder(app, Notif.CH_DONE).setSmallIcon(android.R.drawable.stat_notify_error)
                     .setContentTitle(L("فشل التنزيل")).setContentText(t.name)
                     .setCategory(Notification.CATEGORY_ERROR)
                     .setContentIntent(pi).setAutoCancel(true).build()
@@ -436,7 +422,7 @@ object Downloader {
 
     private fun fail(t: DlTask, msg: String) { t.error = msg; t.status = FAILED; t.speed = 0; save(); notifyFail(t) }
 
-    private fun deleteFile(t: DlTask) { runCatching { t.uri?.let { app.contentResolver.delete(it, null, null) } } }
+    private fun deleteFile(t: DlTask) { runCatching { t.uri?.let { Storage.delete(app, it) } } }
 
     fun downloadedOf(t: DlTask): Long =
         t.segs.sumOf { (minOf(it.pos, it.end + 1) - it.start).coerceAtLeast(0L) }

@@ -138,11 +138,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // النافذة المنبثقة (Picture-in-Picture) من أندرويد 8؛ على أندرويد 6/7 تُهمل بصمت
+    /** isInPictureInPictureMode موجودة من أندرويد 7 والمنبثقة الفعلية من 8: لا نقرأها قبل ذلك كي لا يسقط التطبيق بـ NoSuchMethodError. */
+    private fun pipNowActive(): Boolean = Build.VERSION.SDK_INT >= 26 && isInPictureInPictureMode
+
+    @android.annotation.TargetApi(26)
     private fun pipAction(icon: Int, label: String, act: String, code: Int): android.app.RemoteAction {
         val pi = PendingIntent.getBroadcast(this, code, Intent(act).setPackage(packageName), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, icon), label, label, pi)
     }
 
+    @android.annotation.TargetApi(26)
     private fun pipParams(): android.app.PictureInPictureParams {
         val hasVideo = YtMedia.owner != null
         val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9))
@@ -172,7 +178,7 @@ class MainActivity : ComponentActivity() {
         return b.build()
     }
 
-    fun refreshPip() { runCatching { setPictureInPictureParams(pipParams()) } }
+    fun refreshPip() { if (Build.VERSION.SDK_INT >= 26) runCatching { setPictureInPictureParams(pipParams()) } }
 
     /** تُستدعى عند كل حالة تشغيل جديدة: نحدّث أزرار المنبثقة فقط عندما يتغيّر تشغيل/إيقاف. */
     fun onYtPlayState() { if (pipPlayingShown != YtMedia.playing) refreshPip() }
@@ -186,7 +192,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun enterPip() {
-        if (packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
+        if (Build.VERSION.SDK_INT >= 26 && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
     }
 
     // أثناء أي إيقاف مؤقت للـ Activity (زر الرئيسية/المنبثق) نعلم الصفحة أنها في الخلفية قبل أن يتصرف يوتيوب
@@ -202,7 +208,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         DefaultBrowser.refresh(this)   // قد يغيّر المستخدم الافتراضي من إعدادات النظام
         pipExitAt = 0L
-        inPip = isInPictureInPictureMode   // لا نترك الحالة عالقة إن فاتنا إشعار الخروج من المنبثقة
+        inPip = pipNowActive()   // لا نترك الحالة عالقة إن فاتنا إشعار الخروج من المنبثقة
         YtWeb.pip = inPip
         if (!inPip) { val w = wvProvider(); YtWeb.background(w, false); if (YtWeb.owns(w)) YtWeb.recover(w) }   // تنظيف أنماط المنبثقة إن بقيت
     }
@@ -211,7 +217,7 @@ class MainActivity : ComponentActivity() {
         super.onConfigurationChanged(newConfig)
         val w = wvProvider()
         // الدخول للمنبثقة يطلق تغيير الإعدادات قبل onPictureInPictureModeChanged: لا نعتبره دوراناً (كان يعيد قياس الفيديو ويُفسد المنبثقة)
-        val pipNow = inPip || isInPictureInPictureMode
+        val pipNow = inPip || pipNowActive()
         if (pipNow) YtWeb.pip = true
         if (YtWeb.owns(w)) {
             YtLog.add("config orientation=" + newConfig.orientation + " fullscreen=" + fullscreenActive + " pip=" + pipNow)
@@ -247,14 +253,6 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
-        if (BuildConfig.DEBUG) runCatching {
-            // JankStats: يسجّل الإطارات التي تتجاوز ميزانيتها (تقطيع) في Logcat بالوسم NovaJank
-            androidx.metrics.performance.JankStats.createAndTrack(window, object : androidx.metrics.performance.JankStats.OnFrameListener {
-                override fun onFrame(volatileFrameData: androidx.metrics.performance.FrameData) {
-                    if (volatileFrameData.isJank) android.util.Log.w("NovaJank", "frame ${volatileFrameData.frameDurationUiNanos / 1_000_000}ms")
-                }
-            })
-        }
         enableEdgeToEdge()
         Prefs.init(this)
         GoogleAccounts.init(this)
@@ -304,7 +302,7 @@ class MainActivity : ComponentActivity() {
         }
         ready = true
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
-        android.os.Looper.myQueue().addIdleHandler { Perf.warmUp(applicationContext); runCatching { WebView(applicationContext).destroy() }; false }
+        android.os.Looper.myQueue().addIdleHandler { Perf.warmUp(applicationContext); if (!LowEnd.on) runCatching { WebView(applicationContext).destroy() }; false }
     }
     private fun onPipDismissed() {
         YtLog.add("native pip dismissed")
@@ -321,7 +319,7 @@ class MainActivity : ComponentActivity() {
         // onPictureInPictureModeChanged(false) يسبق onStop دائماً، فـ inPip تكون false هنا؛ نعتمد على لحظة الخروج: إن أعقبه إيقاف بلا عودة = إغلاق ✕
         val exited = pipExitAt != 0L && android.os.SystemClock.elapsedRealtime() - pipExitAt < 4000
         if (exited && !isFinishing) { pipExitAt = 0L; onPipDismissed() }
-        else if (inPip && !isInPictureInPictureMode) onPipDismissed()
+        else if (inPip && !pipNowActive()) onPipDismissed()
     }
 
     override fun onDestroy() {
@@ -369,6 +367,18 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     val notif = rememberNotifState { ok -> if (!ok) toast(activity, L("فعّل الإشعارات من الإعدادات لمتابعة التنزيل في الخلفية")) }
     // يُعرض شرح الإذن مرة واحدة عند أول حاجة (تنزيل أو تشغيل في الخلفية)، ولا تتكرر الطلبات المتفرقة
     val askNotif = { if (Notif.needsPermission && !Notif.enabled(activity) && !Prefs.notifAsked) { Prefs.pickNotifAsked(true); notifPrompt = true } }
+    // أندرويد 6–9: حفظ التنزيلات في Download/Nova يحتاج إذن التخزين (نطلبه مرة واحدة؛ إن رُفض نحفظ في مجلد التطبيق)
+    var askedStorage by remember { mutableStateOf(false) }
+    var afterStorage by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val storageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
+        val f = afterStorage; afterStorage = null; f?.invoke()
+    }
+    fun withStorage(block: () -> Unit) {
+        if (Storage.needsPermission(activity) && !askedStorage) {
+            askedStorage = true; afterStorage = block
+            storageLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else block()
+    }
     var customView by remember { mutableStateOf<View?>(null) }
     var customCb by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     val tab = tabs[current.coerceIn(0, tabs.lastIndex)]
@@ -499,6 +509,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         val name = (t.title.ifBlank { "Nova" } + " - " + hostOf(t.url)).take(60)
         runCatching { pm.print(name, w.createPrintDocumentAdapter(name), android.print.PrintAttributes.Builder().build()) }
     }
+    fun openCustomTab(t: BrowserTab) {
+        val pkg = androidx.browser.customtabs.CustomTabsClient.getPackageName(activity, null)
+        if (pkg == null) { toast(activity, L("لا يوجد متصفح يدعم Custom Tabs")); return }
+        val ci = androidx.browser.customtabs.CustomTabsIntent.Builder().build()
+        ci.intent.setPackage(pkg)
+        runCatching { ci.launchUrl(activity, Uri.parse(t.url)) }
+    }
     fun translatePage(t: BrowserTab) {
         if (t.url.isBlank()) return
         val target = Prefs.siteLangCode().ifEmpty { I18n.code() }
@@ -507,7 +524,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     }
     LaunchedEffect(Prefs.js) { tabs.forEach { it.webView?.settings?.javaScriptEnabled = Prefs.js } }
     LaunchedEffect(Prefs.pwMode) {
-        tabs.forEach { it.webView?.importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS }
+        tabs.forEach { t -> t.webView?.let { Wv.autofill(it, Prefs.pwMode == 1) } }
         fillOffer = null
     }
     LaunchedEffect(tab.url) { if (fillOffer?.host != Vault.norm(hostOf(tab.url))) fillOffer = null }
@@ -557,7 +574,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     // حدّ أقصى لعدد الـ WebView الحيّة حسب ذاكرة الجهاز؛ الأقدم استخداماً يُحرَّر ويُستعاد عند الرجوع
     val maxLive = remember {
         val am = activity.getSystemService(android.app.ActivityManager::class.java)
-        if (am.isLowRamDevice) 2 else if (am.memoryClass >= 256) 5 else 3
+        if (LowEnd.on || am.isLowRamDevice) 2 else if (am.memoryClass >= 256) 5 else 3
     }
     LaunchedEffect(current, tabs.size, Adaptive.level) {
         val cap = Adaptive.liveCap(maxLive)
@@ -677,9 +694,11 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 else if (u.startsWith("blob:") || u.startsWith("data:")) toast(activity, L("هذا النوع من التنزيل غير مدعوم بعد"))
                 else {
                     val start = {
-                        Downloader.start(activity, u, ua, cd, mime, ref)
-                        toast(activity, L("بدأ التنزيل — القائمة ⋮ ثم التنزيلات"))
-                        askNotif()
+                        withStorage {
+                            Downloader.start(activity, u, ua, cd, mime, ref)
+                            toast(activity, L("بدأ التنزيل — القائمة ⋮ ثم التنزيلات"))
+                            askNotif()
+                        }
                         Unit
                     }
                     if (Security.isRiskyFile(u, cd)) {
@@ -840,7 +859,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) },
+                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onCustomTab = { openCustomTab(tab) },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
@@ -922,6 +941,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             onDismiss = { pendingSave = null }
         )
     }
+    LaunchedEffect(ytUrl) { if (ytUrl != null) withStorage { } }   // اطلب إذن التخزين قبل أن يختار المستخدم جودة التنزيل
     ytUrl?.let { u ->
         YtDownloadSheet(u, onDismiss = { ytUrl = null }, onStarted = {
             askNotif()

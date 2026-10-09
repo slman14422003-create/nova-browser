@@ -1,7 +1,6 @@
 package com.nova.browser
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -18,6 +17,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.webkit.WebView
+import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -50,7 +50,7 @@ class MediaService : Service() {
         }
         applySession()
         // قيود الخلفية قد ترفض بدء الخدمة في المقدمة: لا نُسقط التطبيق، بل نُنهي الخدمة بهدوء
-        runCatching { startForeground(2, build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) }.onFailure {
+        runCatching { ServiceCompat.startForeground(this, 2, build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) }.onFailure {
             stopped = true; instance = null; stopSelf()
         }
     }
@@ -72,11 +72,11 @@ class MediaService : Service() {
         if (YtMedia.playing) {
             main.removeCallbacks(idleStop)
             if (fg) nm.notify(2, n)
-            else runCatching { startForeground(2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK); fg = true }.onFailure { nm.notify(2, n) }
+            else runCatching { ServiceCompat.startForeground(this, 2, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK); fg = true }.onFailure { nm.notify(2, n) }
         } else {
             // متوقف مؤقتاً: يبقى الإشعار قابلاً للإزاحة بالسحب ولا تبقى الخدمة في المقدمة؛ وتُغلق نهائياً بعد 10 دقائق من الخمول
             nm.notify(2, n)
-            if (fg) { runCatching { stopForeground(STOP_FOREGROUND_DETACH) }; fg = false }
+            if (fg) { runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_DETACH) }; fg = false }
             main.removeCallbacks(idleStop); main.postDelayed(idleStop, 10 * 60_000L)
         }
     }
@@ -87,7 +87,7 @@ class MediaService : Service() {
         main.post {
             YtMedia.playing = false
             main.removeCallbacks(idleStop)
-            runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            runCatching { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) }
             runCatching { getSystemService(NotificationManager::class.java).cancel(2) }
             stopSelf()
         }
@@ -122,7 +122,7 @@ class MediaService : Service() {
 
     private fun build(): Notification {
         val open = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        val b = Notification.Builder(this, "media")
+        val b = Notif.builder(this, Notif.CH_MEDIA, low = true)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(YtMedia.title.ifBlank { "YouTube" })
             .setContentText(YtMedia.artist)

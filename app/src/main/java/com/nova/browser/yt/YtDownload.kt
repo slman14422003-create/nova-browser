@@ -1,15 +1,12 @@
 package com.nova.browser
 
-import android.content.ContentValues
 import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.net.Uri
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -185,21 +182,15 @@ object YtDownload {
         val r = app.contentResolver
         var out: Uri? = null
         try {
-            val cv = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, "$base.mp4")
-                put(MediaStore.Downloads.MIME_TYPE, "video/mp4")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Nova")
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val dst = r.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv) ?: throw IOException("insert failed")
+            val dst = Storage.create(app, "$base.mp4", "video/mp4")
             out = dst
             Mux.mux(app, v.uri ?: throw IOException("no video"), a.uri ?: throw IOException("no audio"), dst)
-            r.update(dst, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            Storage.finish(app, dst, "video/mp4")
             val size = r.openFileDescriptor(dst, "r")?.use { it.statSize } ?: -1L
-            Downloader.addFinished("$base.mp4", dst, "video/mp4", size)
+            Downloader.addFinished(Storage.displayName(app, dst) ?: "$base.mp4", dst, "video/mp4", size)
             Downloader.removeOnMain(v, true); Downloader.removeOnMain(a, true)
         } catch (e: Throwable) {
-            out?.let { runCatching { r.delete(it, null, null) } }
+            out?.let { runCatching { Storage.delete(app, it) } }
             ui.post { toast(app, L("فشل الدمج — الملفان محفوظان منفصلَين")) }
         }
     }
@@ -222,7 +213,9 @@ object Mux {
                         ve.setDataSource(vfd.fileDescriptor); ae.setDataSource(afd.fileDescriptor)
                         val vt = track(ve, "video/"); val at = track(ae, "audio/")
                         ve.selectTrack(vt); ae.selectTrack(at)
-                        val m = MediaMuxer(ofd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                        // MediaMuxer(FileDescriptor) يحتاج أندرويد 8؛ قبله نستخدم المسار (التنزيل على أندرويد 6–9 ملف عادي دائماً)
+                        val m = if (android.os.Build.VERSION.SDK_INT >= 26) MediaMuxer(ofd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                        else MediaMuxer(Storage.pathOf(out) ?: throw java.io.IOException("no path"), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                         mx = m
                         val vi = m.addTrack(ve.getTrackFormat(vt)); val ai = m.addTrack(ae.getTrackFormat(at))
                         m.start(); started = true

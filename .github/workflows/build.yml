@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v5
-        with: { distribution: temurin, java-version: 25 }
+        with: { distribution: temurin, java-version: 17 }
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -76,7 +76,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## Nova Browser — نتيجة البناء"
+            echo "## Nova Go — نتيجة البناء"
             echo "- التوقيع: ${SIGNED:-debug (لا أسرار)}"
             for f in app/build/outputs/apk/*/*.apk; do
               [ -f "$f" ] && echo "- \`$(basename "$f")\` — $(du -h "$f" | cut -f1) — sha256 \`$(sha256sum "$f" | cut -c1-16)…\`"
@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nova-browser-apk
+          name: nova-go-apk
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14

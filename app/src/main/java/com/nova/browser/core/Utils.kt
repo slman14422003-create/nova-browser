@@ -117,7 +117,7 @@ fun toast(c: Context, m: String) = Toast.makeText(c, m, Toast.LENGTH_SHORT).show
 fun copyText(c: Context, t: String, sensitive: Boolean = false) {
     val cm = c.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = ClipData.newPlainText("url", t)
-    if (sensitive) runCatching {
+    if (sensitive && android.os.Build.VERSION.SDK_INT >= 24) runCatching {   // ClipDescription.setExtras من أندرويد 7
         clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
     }
     cm.setPrimaryClip(clip)

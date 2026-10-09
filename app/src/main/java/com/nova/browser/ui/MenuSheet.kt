@@ -122,7 +122,7 @@ private fun RowScope.QuickTile(label: String, icon: ImageVector, enabled: Boolea
 fun MenuSheet(
     tab: BrowserTab, onDismiss: () -> Unit, onNewTab: () -> Unit, onFind: () -> Unit, onDesktop: () -> Unit,
     onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit, onHome: () -> Unit, onTranslate: () -> Unit = {},
-    onPrint: () -> Unit = {}
+    onPrint: () -> Unit = {}, onCustomTab: () -> Unit = {}
 ) {
     val cs = MaterialTheme.colorScheme
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -188,9 +188,10 @@ fun MenuSheet(
                     }
                     Spacer(Modifier.height(16.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        ListRow(groupShape(0, 3), L("نسخ الرابط"), null, { act(onCopy) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Edit, null) } }
-                        ListRow(groupShape(1, 3), L("ترجمة الصفحة"), null, { act(onTranslate) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Share, null) } }
-                        ListRow(groupShape(2, 3), L("طباعة / حفظ PDF"), null, { act(onPrint) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Create, null) } }
+                        ListRow(groupShape(0, 4), L("نسخ الرابط"), null, { act(onCopy) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Edit, null) } }
+                        ListRow(groupShape(1, 4), L("ترجمة الصفحة"), null, { act(onTranslate) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Share, null) } }
+                        ListRow(groupShape(2, 4), L("طباعة / حفظ PDF"), null, { act(onPrint) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Create, null) } }
+                        ListRow(groupShape(3, 4), L("فتح في Chrome"), null, { act(onCustomTab) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.ExitToApp, null) } }
                     }
                 }
             }

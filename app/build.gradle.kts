@@ -19,17 +19,18 @@ val ksKeyPass = signingValue("KEY_PASSWORD", "keyPassword") ?: ksPass
 val hasReleaseSigning = ksPath != null && ksPass != null && ksAlias != null && rootProject.file(ksPath).exists()
 
 android {
-    namespace = "com.nova.browser"
-    compileSdk = 35
+    namespace = "com.nova.browser"   // اسم حزمة الشيفرة (R) يبقى كما هو؛ معرّف التطبيق أدناه مختلف كي يتعايش مع Nova Browser
+    compileSdk = 37
     defaultConfig {
-        applicationId = "com.nova.browser"
-        minSdk = 29
-        targetSdk = 35
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 9
-        versionName = System.getenv("VERSION_NAME") ?: "1.8.1"
+        applicationId = "com.nova.browser.go"
+        minSdk = 24   // أندرويد 7.0 فما فوق (webkit 1.16.0 بيتطلب 24 كحد أدنى)
+        targetSdk = 37
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 10
+        versionName = System.getenv("VERSION_NAME") ?: "1.8.1-go"
         // مستودع التحديثات: يُملأ تلقائياً في GitHub Actions (owner/repo)، فارغ محلياً = التحديث معطّل
         buildConfigField("String", "UPDATE_REPO", "\"" + (System.getenv("GITHUB_REPOSITORY") ?: "") + "\"")
-        ndk { abiFilters += listOf("arm64-v8a") }   // يقلّل حجم الـ APK كثيراً (مكتبات FFmpeg)
+        vectorDrawables.useSupportLibrary = true
+        // لا مكتبات native (حُذف FFmpeg) ← APK واحد يعمل على armeabi-v7a وarm64 وx86 وبحجم صغير
     }
     signingConfigs {
         if (hasReleaseSigning) create("release") {
@@ -41,7 +42,6 @@ android {
     }
     androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
     lint { abortOnError = false; checkReleaseBuilds = false }
-    packaging { jniLibs { pickFirsts += "**/libc++_shared.so" } }
     packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }
     testOptions { unitTests.isReturnDefaultValues = true }
     buildTypes {
@@ -58,15 +58,21 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-        isCoreLibraryDesugaringEnabled = true      // مطلوب لمكتبة NewPipeExtractor
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        isCoreLibraryDesugaringEnabled = true      // java.time وغيرها على أندرويد 6/7 (مطلوب أيضاً لـ NewPipeExtractor)
     }
     buildFeatures { compose = true; buildConfig = true }   // BuildConfig مطلوب لـ Updater (كان سبب الخطأ)
 }
 
-// Kotlin مدمج في AGP 9؛ نثبّت هدف JVM صراحةً كي لا يتبع JDK البناء (25)
-kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+// Kotlin مدمج في AGP 9؛ هدف JVM = 1.8 (أقل جافا ممكنة) بغض النظر عن JDK المشغِّل للبناء.
+// إزالة فحوص null الداخلية تقلّل حجم الشيفرة وتسرّع الأجهزة الضعيفة قليلاً.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_1_8)
+        freeCompilerArgs.addAll("-Xno-param-assertions", "-Xno-call-assertions", "-Xno-receiver-assertions")
+    }
+}
 
 dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.12.01")
@@ -77,14 +83,12 @@ dependencies {
     implementation("androidx.compose.animation:animation")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.core:core-ktx:1.13.1")                  // ActivityManagerCompat/ServiceCompat/NotificationManagerCompat… (توافق أندرويد 6 وGo)
     implementation("androidx.webkit:webkit:1.16.0")             // حقن سكربت الحماية قبل الصفحة (1.16: أحدث مستقر، يدعم ميزات المحرك الجديدة)
     implementation("androidx.browser:browser:1.8.0")              // Chrome Custom Tabs لصفحات تسجيل الدخول الحساسة
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")           // شبكة HTTP/2 مع كاش وإعادة استخدام الاتصالات (اقتراحات البحث)
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")            // شبكة HTTP/2 — موحّدة مع نسخة NewPipeExtractor الداخلية (okhttp-android) لتفادي تعارض النسخ
     implementation("androidx.profileinstaller:profileinstaller:1.4.1") // ملفات Baseline لتسريع بدء التشغيل وتقليل التقطيع
-    implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")   // تحويل الصوت إلى MP3 وغيره (FFmpeg)
     implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5") // استخراج روابط الفيديو/الصوت من يوتيوب (مجاني ومفتوح المصدر)
-    implementation("androidx.metrics:metrics-performance:1.0.0")   // JankStats: رصد الإطارات البطيئة (يُفعَّل في نسخة debug فقط)
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")   // كشف تسرّب الذاكرة (WebView/Activity) أثناء التطوير فقط؛ لا يدخل نسخة الإصدار
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     testImplementation("junit:junit:4.13.2")
 }

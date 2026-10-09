@@ -36,6 +36,7 @@ object Notif {
 
     /** يُنشأ كل شيء مرة واحدة؛ إعادة الإنشاء بنفس المعرّف لا تؤثر على اختيارات المستخدم في النظام. */
     fun ensureChannels(c: Context) {
+        if (Build.VERSION.SDK_INT < 26) return   // القنوات من أندرويد 8 فقط
         val nm = c.getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(NotificationChannel(CH_DL, L("التنزيلات الجارية"), NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_DONE, L("اكتمال التنزيل"), NotificationManager.IMPORTANCE_DEFAULT))
@@ -43,13 +44,19 @@ object Notif {
         nm.createNotificationChannel(NotificationChannel(CH_UPDATE, L("تحديثات التطبيق"), NotificationManager.IMPORTANCE_DEFAULT))
     }
 
+    /** منشئ إشعار يعمل من أندرويد 6: القناة من أندرويد 8، وقبلها أولوية منخفضة بدل القناة الهادئة. */
+    @Suppress("DEPRECATION")
+    fun builder(c: Context, channel: String, low: Boolean = false): Notification.Builder =
+        if (Build.VERSION.SDK_INT >= 26) Notification.Builder(c, channel)
+        else Notification.Builder(c).apply { if (low) setPriority(Notification.PRIORITY_LOW) }
+
     /** هل يحتاج الجهاز إذناً صريحاً؟ (أندرويد 13+) */
     val needsPermission get() = Build.VERSION.SDK_INT >= 33
 
     /** هل الإشعارات مسموحة للتطبيق (الإذن + عدم إيقافها من النظام)؟ */
     fun enabled(c: Context): Boolean {
         if (needsPermission && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
-        return runCatching { c.getSystemService(NotificationManager::class.java).areNotificationsEnabled() }.getOrDefault(true)
+        return runCatching { androidx.core.app.NotificationManagerCompat.from(c).areNotificationsEnabled() }.getOrDefault(true)
     }
 
     /** إعدادات إشعارات التطبيق في النظام (تشمل القنوات). */
@@ -74,7 +81,7 @@ object Notif {
             val pi = PendingIntent.getActivity(c, ID_UPDATE, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             c.getSystemService(NotificationManager::class.java).notify(
                 ID_UPDATE,
-                Notification.Builder(c, CH_UPDATE).setSmallIcon(android.R.drawable.stat_sys_download_done)
+                builder(c, CH_UPDATE).setSmallIcon(android.R.drawable.stat_sys_download_done)
                     .setContentTitle(L("تحديث جديد لـ Nova")).setContentText(L("الإصدار ") + version.removePrefix("v") + L(" جاهز للتنزيل"))
                     .setContentIntent(pi).setAutoCancel(true).build()
             )
