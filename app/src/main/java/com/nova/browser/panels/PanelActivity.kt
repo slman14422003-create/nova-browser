@@ -97,6 +97,9 @@ private fun PanelHost(kind: String, close: () -> Unit) {
                 onOpen = { u -> PanelBus.openUrl?.invoke(u); close() }
             )
         }
+        // نافذة التحديث كانت تُعرض في نافذة المتصفح فقط، فمن يضغط «التحقق من تحديث» في الإعدادات لا يراها إلا بعد الرجوع للصفحة الرئيسية.
+        // الآن تظهر هنا مباشرة (حالتها عامة في Updater فتتزامن مع نافذة المتصفح)
+        if (Updater.prompt) UpdateDialog()
     }
 }
 
