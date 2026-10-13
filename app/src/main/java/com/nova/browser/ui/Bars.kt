@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
@@ -126,6 +127,78 @@ fun FindBar(tab: BrowserTab) {
 
 class SitePrompt(val title: String, val message: String, val onAllow: () -> Unit, val onDeny: () -> Unit)
 
+/**
+ * شاشة كاملة تُعرض بدل المتصفح عند تعذّر الوصول لمحرك Android System WebView (معطّل أو غير مثبّت على الجهاز).
+ * نعرضها بدل محاولة إنشاء أي WebView لأن ذلك ينهار بلا تفسير مفهوم للمستخدم إن كان المزوّد مفقوداً فعلاً؛
+ * الفحص في WebEngine.init آمن (لا يُنشئ WebView فعلياً) فنعرف الحالة مسبقاً.
+ */
+@Composable
+fun EngineMissingScreen(ctx: Context, onRetry: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Surface(Modifier.fillMaxSize(), color = cs.background) {
+        Column(
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Default.Warning, null, Modifier.size(56.dp), tint = cs.error)
+            Spacer(Modifier.height(20.dp))
+            Text(L("تعذّر تشغيل محرك عرض الصفحات"), style = MaterialTheme.typography.titleLarge, color = cs.onBackground)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                L("يعتمد Nova على مكوّن Android System WebView، ويبدو أنه معطّل أو غير مثبّت على جهازك. فعّله أو حدّثه ثم أعد المحاولة."),
+                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(28.dp))
+            Button(onClick = {
+                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+            }, modifier = Modifier.fillMaxWidth()) { Text(L("فتح صفحة WebView في المتجر")) }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(onClick = {
+                runCatching { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", "com.google.android.webview", null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            }, modifier = Modifier.fillMaxWidth()) { Text(L("إعدادات تطبيق WebView")) }
+            Spacer(Modifier.height(10.dp))
+            TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(L("إعادة المحاولة")) }
+        }
+    }
+}
+
+/**
+ * شريط تنبيه دائم (غير توست عابر) عندما يكون محرك العرض متأخراً بشكل خطير (6+ إصدارات) أو مفقوداً تماماً.
+ * يظهر فوق الصفحة لا داخل الإعدادات فقط، لأن خطورة محرك قديم/معطّل تمسّ كل صفحة يفتحها المستخدم فوراً.
+ */
+@Composable
+fun EngineAlertBanner(ctx: Context) {
+    val cs = MaterialTheme.colorScheme
+    AnimatedVisibility(
+        visible = WebEngine.bannerVisible,
+        enter = fadeIn(tween(Adaptive.ms(160))) + slideInVertically(tween(Adaptive.ms(160))) { -it },
+        exit = fadeOut(tween(Adaptive.ms(120))) + slideOutVertically(tween(Adaptive.ms(120))) { -it }
+    ) {
+        Surface(color = cs.errorContainer, contentColor = cs.onErrorContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Warning, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (WebEngine.missing) L("تعذّر تشغيل محرك عرض الصفحات (Android System WebView) — بعض المواقع لن تعمل")
+                    else L("محرك عرض الصفحات قديم جداً ويشكّل خطراً أمنياً — حدّثه الآن"),
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = {
+                    if (WebEngine.missing) {
+                        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    } else WebEngine.openStore(ctx)
+                }) { Text(L("تحديث"), color = cs.onErrorContainer, fontWeight = FontWeight.Bold) }
+                IconButton(onClick = { WebEngine.dismissBanner() }) { Icon(Icons.Default.Close, L("إغلاق"), tint = cs.onErrorContainer) }
+            }
+        }
+    }
+}
+
 @Composable
 fun BottomPill(
     tab: BrowserTab, tabCount: Int, editing: Boolean, setEditing: (Boolean) -> Unit,
@@ -151,10 +224,6 @@ fun BottomPill(
                 onPick = { onGo(it); setEditing(false); focus.clearFocus() },
                 onFill = { fill = it }
             )
-            if (tab.loading && !editing) {
-                LinearProgressIndicator(progress = { tab.progress }, modifier = Modifier.fillMaxWidth().height(3.dp), color = cs.tertiary, trackColor = Color.Transparent)
-            } else Spacer(Modifier.height(3.dp))
-
             AnimatedContent(
                 targetState = editing,
                 transitionSpec = { fadeIn(tween(Adaptive.ms(120))) togetherWith fadeOut(tween(Adaptive.ms(80))) },
@@ -238,6 +307,21 @@ fun BottomPill(
                                 if (!hasPage) L("ابحث أو اكتب عنوان") else hostOf(tab.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodyMedium, color = if (hasPage) cs.onSurface else cs.onSurfaceVariant
                             )
+                            // دائرة تحميل بأسلوب Safari على الآيفون: حلقة رفيعة محدّدة التقدّم بجانب عنوان الصفحة مباشرة
+                            if (tab.loading) {
+                                Spacer(Modifier.width(7.dp))
+                                val animatedProgress by animateFloatAsState(
+                                    targetValue = tab.progress, animationSpec = tween(180, easing = FastOutSlowInEasing), label = "loadRing"
+                                )
+                                CircularProgressIndicator(
+                                    progress = { animatedProgress },
+                                    modifier = Modifier.size(15.dp),
+                                    color = cs.primary,
+                                    trackColor = cs.onSurfaceVariant.copy(alpha = 0.25f),
+                                    strokeWidth = 1.6.dp,
+                                    strokeCap = StrokeCap.Round
+                                )
+                            }
                         }
                         RoundBtn(onClick = onTabs) {
                             Box(Modifier.size(24.dp).border(2.dp, cs.onSurface, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {

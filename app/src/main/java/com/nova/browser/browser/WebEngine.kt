@@ -37,6 +37,14 @@ object WebEngine {
     val behind: Int get() { val i = info ?: return 0; return if (!acked && latestMajor > i.major) latestMajor - i.major else 0 }
     // التحديث التدريجي (staged rollout) يجعل المحرك يتأخر إصداراً أو اثنين طبيعياً، فلا ننبّه إلا عند تأخر 3 إصدارات فأكثر
     val outdated: Boolean get() = behind >= 3
+    // تأخر 6 إصدارات رئيسية فأكثر (~6 أشهر بلا تصحيحات أمنية) يُعدّ خطراً حقيقياً: شريط تنبيه دائم بدل توست يمر مرة كل 24 ساعة
+    val critical: Boolean get() = behind >= 6
+    // محرك العرض مفقود تماماً (مزوّد WebView معطّل أو غير مثبّت على الجهاز): حالة أخطر من مجرد تأخر إصدار
+    val missing: Boolean get() = info == null && !checking
+
+    private var bannerDismissed by mutableStateOf(0) // آخر (major) أُغلق الشريط عنده يدوياً هذه الجلسة
+    fun dismissBanner() { bannerDismissed = latestMajor }
+    val bannerVisible: Boolean get() = (critical || missing) && bannerDismissed != latestMajor
 
     fun init(c: Context) {
         try {

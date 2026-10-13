@@ -324,7 +324,11 @@ class MainActivity : ComponentActivity() {
             val lvl = Adaptive.level
             LaunchedEffect(lvl, Prefs.cap60) { applyRefreshCap(lvl) }
             LaunchedEffect(Unit) { kotlinx.coroutines.delay(4000); Updater.check(applicationContext); WebEngine.checkLatest(applicationContext) }   // بعد استقرار الواجهة
-            NovaTheme(this) { BrowserApp(start, dlTrigger, inPip, incoming) }
+            // محرك WebView مفقود فعلياً (مزوّد معطّل/غير مثبّت): شاشة توجيه بدل محاولة إنشاء WebView التي تنهار التطبيق بلا تفسير
+            NovaTheme(this) {
+                if (WebEngine.missing) EngineMissingScreen(this) { WebEngine.init(this) }
+                else BrowserApp(start, dlTrigger, inPip, incoming)
+            }
         }
         ready = true
         // تسخين محرك الـ WebView عند أول فراغ، حتى لا يتقطع أول بحث
@@ -984,6 +988,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                 }
             }
         }
+        // شريط تنبيه محرك العرض (قديم جداً/مفقود): يعلو كل شيء — القرار بالتحديث لا يجب أن يُخفى داخل الإعدادات فقط
+        if (!inPip) Box(Modifier.align(Alignment.TopCenter)) { EngineAlertBanner(activity) }
     }
 
     if (notifPrompt) NotifPermissionDialog(
