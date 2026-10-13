@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
     private val PIP_FWD = "nova.pip.fwd"
     private var pipExitAt = 0L          // لحظة الخروج من المنبثقة (لاكتشاف الإغلاق بزر ✕ حتى لو تأخر onStop)
     private var pipPlayingShown: Boolean? = null
+    private var pipSizeShown = 0L
     private var pipReceiverOn = false
 
     /** أزرار التحكم داخل النافذة المنبثقة نفسها: رجوع/تشغيل-إيقاف/تقديم (لم تكن موجودة). */
@@ -143,9 +144,23 @@ class MainActivity : ComponentActivity() {
         return android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this, icon), label, label, pi)
     }
 
+    /** نسبة النافذة من أبعاد الفيديو الفعلية (16:9 افتراضياً)، ضمن الحدود التي يقبلها أندرويد (2.39:1 إلى 1:2.39). */
+    private fun pipRatio(): android.util.Rational {
+        val w = YtMedia.vw; val h = YtMedia.vh
+        if (w <= 0 || h <= 0 || YtMedia.owner == null) return android.util.Rational(16, 9)
+        val r = w.toFloat() / h
+        return when {
+            r > 2.39f -> android.util.Rational(239, 100)
+            r < 0.42f -> android.util.Rational(42, 100)
+            else -> android.util.Rational(w, h)
+        }
+    }
+
     private fun pipParams(): android.app.PictureInPictureParams {
         val hasVideo = YtMedia.owner != null
-        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9))
+        val ratio = pipRatio()
+        pipSizeShown = YtMedia.vw * 100000L + YtMedia.vh
+        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(ratio)
         if (hasVideo) {
             val playing = YtMedia.playing
             pipPlayingShown = playing
@@ -165,7 +180,7 @@ class MainActivity : ComponentActivity() {
             val w = wvProvider()
             val r = android.graphics.Rect()
             if (w != null && w.getGlobalVisibleRect(r) && r.width() > 0) {
-                val hh = minOf(r.width() * 9 / 16, r.height())
+                val hh = minOf(r.width() * ratio.denominator / ratio.numerator, r.height())
                 if (hh > 0) b.setSourceRectHint(android.graphics.Rect(r.left, r.top, r.right, r.top + hh))
             }
         }
@@ -175,7 +190,7 @@ class MainActivity : ComponentActivity() {
     fun refreshPip() { runCatching { setPictureInPictureParams(pipParams()) } }
 
     /** تُستدعى عند كل حالة تشغيل جديدة: نحدّث أزرار المنبثقة فقط عندما يتغيّر تشغيل/إيقاف. */
-    fun onYtPlayState() { if (pipPlayingShown != YtMedia.playing) refreshPip() }
+    fun onYtPlayState() { if (pipPlayingShown != YtMedia.playing || pipSizeShown != YtMedia.vw * 100000L + YtMedia.vh) refreshPip() }
 
     override fun onStart() {
         super.onStart()
@@ -186,7 +201,12 @@ class MainActivity : ComponentActivity() {
     }
 
     fun enterPip() {
-        if (packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) runCatching { enterPictureInPictureMode(pipParams()) }
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) { toast(this, L("الجهاز لا يدعم النافذة المنبثقة")); return }
+        val ok = runCatching { enterPictureInPictureMode(pipParams()) }.getOrDefault(false)
+        if (!ok) {
+            YtLog.add("enterPip failed")
+            toast(this, L("تعذّر فتح النافذة المنبثقة — فعّلها للتطبيق من إعدادات النظام"))
+        }
     }
 
     // أثناء أي إيقاف مؤقت للـ Activity (زر الرئيسية/المنبثق) نعلم الصفحة أنها في الخلفية قبل أن يتصرف يوتيوب
@@ -234,6 +254,7 @@ class MainActivity : ComponentActivity() {
         // الخروج من المنبثقة بلا عودة للواجهة = أُغلقت بزر ✕ (بعض الأجهزة لا تستدعي onStop فوراً): نتحقق بعد لحظة
         if (!isInPictureInPictureMode) window.decorView.postDelayed({
             if (!isFinishing && !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) onPipDismissed()
+            else if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) pipExitAt = 0L   // عاد المستخدم للواجهة: لا يُعدّ أي إيقاف لاحق إغلاقاً للمنبثقة
         }, 500)
         val w = wvProvider() ?: return
         if (YtWeb.owns(w)) YtWeb.onPip(w, isInPictureInPictureMode, fullscreenActive)
@@ -263,6 +284,7 @@ class MainActivity : ComponentActivity() {
         Thread({ Vault.init(applicationContext) }, "nova-vault").start()   // فك التشفير (Keystore) خارج الخيط الرئيسي
         Security.init(this)
         Perf.init(this)
+        PageExtras.preheat(this)
         Shield.init(this)
         WebEngine.init(this)
         NetKit.init(this)
@@ -327,6 +349,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         // الخروج من التطبيق نهائياً: لا يبقى إشعار تشغيل لفيديو لم يعد له صفحة
         if (isFinishing) YtMedia.stop()
+        Popups.close()
         super.onDestroy()
     }
 
@@ -740,7 +763,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     SideEffect {
         mainAct?.wvProvider = { tabs.getOrNull(current)?.webView }
         mainAct?.fullscreenActive = customView != null
-        val want = Prefs.autoPip && ((tab.ytPlaying && isYtVideo(tab.url)) || customView != null)
+        val want = Prefs.autoPip && ((tab.yt && isYtVideo(tab.url)) || customView != null)
         if (mainAct != null && mainAct.pipAuto != want) { mainAct.pipAuto = want; mainAct.refreshPip() }
     }
 
@@ -767,7 +790,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     }
 
     Box(Modifier.fillMaxSize()) {
-        Surface(Modifier.fillMaxSize(), color = cs.background) {
+        Surface(Modifier.fillMaxSize(), color = if (inPip) Color.Black else cs.background) {
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
@@ -861,6 +884,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
+                }
+                // زر المنبثقة لا يعتمد على وضع التطبيق: يظهر فوق الشريط السفلي في صفحة فيديو يوتيوب حين يكون الشريط العلوي معطّلاً
+                if (site == null && !inPip && !pageTyping && customView == null && tab.yt && isYtVideo(tab.url)) {
+                    Surface(
+                        onClick = { mainAct?.enterPip() }, shape = CircleShape, color = cs.surfaceContainerHigh.copy(alpha = 0.92f), shadowElevation = 3.dp,
+                        modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 12.dp, bottom = UiLayout.PILL + 14.dp)
+                    ) { PipGlyph(cs.onSurface, Modifier.padding(11.dp).size(22.dp)) }
                 }
             }
         }

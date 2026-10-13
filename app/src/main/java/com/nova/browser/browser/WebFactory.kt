@@ -13,6 +13,7 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
@@ -101,9 +102,9 @@ import java.net.URLEncoder
  * تسجيل دخول Google: إن اختار المستخدم Chrome Custom Tab يُفتح هناك بالحساب الأساسي،
  * وإلا نُكمل داخل الصفحة مع إضافة login_hint مرة واحدة (غيابه شرط، فلا تتكرر الحلقة). يعيد true إن عالجنا التنقّل.
  */
-internal fun googleSignIn(v: WebView, h: Handlers, u: Uri): Boolean {
+internal fun googleSignIn(v: WebView, h: Handlers, u: Uri, allowTab: Boolean = true): Boolean {
     val hinted = GoogleAccounts.withHint(u)
-    if (GoogleAccounts.useChrome && GoogleAccounts.openInCustomTab(h.activity, hinted)) {
+    if (allowTab && GoogleAccounts.useChrome && GoogleAccounts.openInCustomTab(h.activity, hinted)) {
         toast(h.activity, L("فُتح تسجيل دخول Google في Chrome — الجلسة هناك منفصلة عن Nova"))
         return true
     }
@@ -114,11 +115,12 @@ internal fun googleSignIn(v: WebView, h: Handlers, u: Uri): Boolean {
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView(ctx).apply {
     tab.yt = false
+    PageExtras.engineInUse()
     with(settings) {
         javaScriptEnabled = Prefs.js; domStorageEnabled = true; databaseEnabled = true
         mediaPlaybackRequiresUserGesture = false
         javaScriptCanOpenWindowsAutomatically = false   // لا نوافذ منبثقة بلا لمسة من المستخدم
-        setSupportMultipleWindows(false)
+        setSupportMultipleWindows(true)
         allowFileAccess = false
         setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
@@ -173,11 +175,12 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             WebCompat.onPageDone(tab)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
-            Library.visit(u, v.title)   // سجل التصفح
+            if (!tab.popup) Library.visit(u, v.title)   // سجل التصفح
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
             Shield.intercept(tab.shieldHost, r.url, r.isForMainFrame) ?: Perf.intercept(r.url, r.isForMainFrame)
         override fun onRenderProcessGone(v: WebView, d: RenderProcessGoneDetail): Boolean {
+            if (tab.popup) { Popups.close(v); return true }
             // منع انهيار التطبيق: نُسقط الـ WebView ونعيد إنشاءه بنفس العنوان
             (v.parent as? ViewGroup)?.removeView(v)
             runCatching { v.destroy() }
@@ -185,6 +188,9 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             tab.holdLoad = !WebCompat.rendererGone(tab)   // 3 انهيارات خلال 90 ثانية: لا حلقة إعادة تحميل، صفحة بزر إعادة المحاولة
             tab.epoch++
             return true
+        }
+        override fun onReceivedHttpAuthRequest(v: WebView, handler: HttpAuthHandler, host: String?, realm: String?) {
+            PageExtras.httpAuth(ctx, handler, host, realm)
         }
         override fun onReceivedSslError(v: WebView, h: SslErrorHandler, e: SslError) {
             h.cancel()   // لا نتجاوز أخطاء الشهادات أبداً
@@ -217,7 +223,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                     else if (YtWeb.isYtUrl(u.toString())) { v.post { YtWeb.swapIfNeeded(tab, u.toString()) }; true }   // يوتيوب له WebView مخصّص منفصل
                     else if (Shield.isSpoofed(u)) { toast(ctx, L("تم حظر رابط مخادع يُخفي وجهته الحقيقية")); true }
                     else if (!Shield.navAllowed(v, r.hasGesture(), u.host)) { toast(ctx, L("تم إيقاف تحويلات تلقائية متكررة")); true }
-                    else if (GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u)) true
+                    else if (GoogleAccounts.isSignInUrl(u) && googleSignIn(v, h, u, !tab.popup)) true
                     else {
                         var t = Security.cleanUrl(u)
                         val host = t.host
@@ -247,7 +253,10 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
                     runCatching { v.context.startActivity(Intent(Intent.ACTION_VIEW, u)) }
                     true
                 }
-                else -> true
+                else -> {
+                    if (r.hasGesture() && r.isForMainFrame) PageExtras.openExternal(ctx, u)
+                    true
+                }
             }
         }
     }
@@ -262,6 +271,13 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             if (icon != null && u.startsWith("http")) Favicons.put(hostOf(u), icon)
         }
         override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
+        override fun onCreateWindow(v: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean =
+            Popups.create(h, tab, isDialog, isUserGesture, resultMsg)
+        override fun onCloseWindow(window: WebView) { Popups.close(window) }
+        override fun onJsBeforeUnload(v: WebView, url: String, message: String?, r: JsResult): Boolean {
+            PageExtras.beforeUnload(ctx, url, r)
+            return true
+        }
         override fun onShowCustomView(view: View, cb: CustomViewCallback) = h.showCustom(view, cb)
         override fun getDefaultVideoPoster(): Bitmap? = WebCompat.videoPoster()   // null يُسقط بعض إصدارات المحرك عند عرض الفيديو
         override fun onHideCustomView() = h.hideCustom()

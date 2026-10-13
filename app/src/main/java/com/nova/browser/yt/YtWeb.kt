@@ -280,7 +280,7 @@ object YtWeb {
         if (inPip) {
             w.resumeTimers(); w.onResume()
             // في ملء الشاشة المشغّل يملأ النافذة أصلاً؛ غير ذلك نُظهر الفيديو وحده
-            w.evaluateJavascript((if (fullscreen) "" else "window.__novaPip&&window.__novaPip(true);") + "window.__novaBg&&window.__novaBg(true)", null)
+            w.evaluateJavascript("window.__novaBg&&window.__novaBg(true);" + (if (fullscreen) "" else "window.__novaPip&&window.__novaPip(true)"), null)
         } else {
             background(w, false)
             recover(w, rebind = true)

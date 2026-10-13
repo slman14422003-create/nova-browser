@@ -32,6 +32,8 @@ object YtMedia {
     @Volatile var art: Bitmap? = null
     @Volatile var pos = 0L
     @Volatile var dur = 0L
+    @Volatile var vw = 0          // أبعاد الفيديو الحقيقية: نسبة النافذة المنبثقة (طولي للـ Shorts)
+    @Volatile var vh = 0
     var owner: BrowserTab? = null
     private var wvRef: WeakReference<WebView>? = null
     private var artUrl = ""
@@ -50,6 +52,7 @@ object YtMedia {
     fun update(ctx: Context, tab: BrowserTab, wv: WebView, o: JSONObject) {
         owner = tab; wvRef = WeakReference(wv)
         playing = o.optBoolean("playing"); pos = o.optLong("pos"); dur = o.optLong("dur")
+        vw = o.optInt("vw"); vh = o.optInt("vh")
         title = o.optString("title"); artist = o.optString("artist")
         val url = o.optString("art")
         if (url.isNotBlank() && url != artUrl && isTrustedArt(url)) {
@@ -81,7 +84,7 @@ object YtMedia {
     /** يُنهي الإشعار والخدمة؛ pause=true يوقف الفيديو أيضاً (إغلاق النافذة المنبثقة). */
     fun stop(pause: Boolean = false) {
         if (pause) control("pause")
-        playing = false; owner = null; MediaService.instance?.shutdown()
+        playing = false; owner = null; vw = 0; vh = 0; MediaService.instance?.shutdown()
     }
     fun pageChanged(tab: BrowserTab, url: String) { if (owner === tab && !isYtVideo(url)) stop() }
     fun tabClosed(tab: BrowserTab) { if (owner === tab) stop() }

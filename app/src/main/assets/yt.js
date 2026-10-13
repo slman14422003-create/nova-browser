@@ -321,6 +321,7 @@ try {
       t: 'state', playing: !e.paused && !e.ended,
       pos: Math.floor(e.currentTime * 1000),
       dur: isFinite(e.duration) ? Math.floor(e.duration * 1000) : 0,
+      vw: e.videoWidth || 0, vh: e.videoHeight || 0,
       title: m.title, artist: m.artist, art: m.art
     });
   }
@@ -512,34 +513,70 @@ try {
     stateSoon();
   };
 
-  // النافذة المنبثقة: يملأ الفيديو الشاشة ويُخفى كل ما عداه. التراجع (false) آمن دائماً ويُستدعى أيضاً عند كل عودة للواجهة
+  // النافذة المنبثقة: يملأ الفيديو النافذة ويُخفى كل ما عداه (الصفحة والأشرطة والتعليقات). التراجع (false) آمن دائماً ويُستدعى عند كل عودة للواجهة.
+  // الفيديو يُعلَّم بخاصية data-nova-v لا بـ class (يوتيوب يعيد كتابة className فيضيع الوسم ويبقى المشغّل أسود)،
+  // ويُعاد تطبيق النمط دورياً وعند تغيّر المقاس كي لا تُبطله الصفحة أثناء المنبثقة.
+  var pipOn = false, pipIv = 0, PIP_ID = '__nova_pip_css';
+  var PIP_CSS =
+    'html,body{background:#000!important;overflow:hidden!important;margin:0!important;padding:0!important}' +
+    'body *{visibility:hidden!important}' +
+    'video[data-nova-v]{visibility:visible!important;display:block!important;position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;' +
+    'width:100vw!important;height:100vh!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;' +
+    'margin:0!important;padding:0!important;border:0!important;opacity:1!important;z-index:2147483647!important;object-fit:contain!important;background:#000!important;transform:none!important}';
+  // خصائص الآباء التي تكسر position:fixed أو تقصّ الفيديو
+  var PIP_PROPS = [['transform', 'none'], ['filter', 'none'], ['perspective', 'none'], ['backdrop-filter', 'none'], ['clip-path', 'none'], ['mask', 'none'],
+    ['contain', 'none'], ['content-visibility', 'visible'], ['container-type', 'normal'], ['will-change', 'auto'], ['overflow', 'visible']];
+  function pipVideo() {
+    var all = document.querySelectorAll('video'), best = null, bs = -1;
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i], s = 0;
+      if (e.classList.contains('html5-main-video')) s += 1e9;
+      if (!e.paused) s += 1e8;
+      if (e.readyState >= 2) s += 1e7;
+      try { var r = e.getBoundingClientRect(); s += r.width * r.height; } catch (x) {}
+      if (s > bs) { bs = s; best = e; }
+    }
+    return best;
+  }
+  function pipApply() {
+    if (!pipOn) return;
+    var e = pipVideo(); if (!e) return;
+    try {
+      var old = document.querySelectorAll('video[data-nova-v]');
+      for (var i = 0; i < old.length; i++) if (old[i] !== e) old[i].removeAttribute('data-nova-v');
+      if (e.getAttribute('data-nova-v') !== '1') e.setAttribute('data-nova-v', '1');
+      if (!document.getElementById(PIP_ID)) {
+        var st = document.createElement('style'); st.id = PIP_ID; st.textContent = PIP_CSS;
+        (document.head || document.documentElement).appendChild(st);
+      }
+      var els = window.__novaPipEls = window.__novaPipEls || [];
+      for (var p = e.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+        var known = false;
+        for (var k = 0; k < els.length; k++) if (els[k][0] === p) { known = true; break; }
+        if (!known) els.push([p, p.style.cssText]);
+        for (var j = 0; j < PIP_PROPS.length; j++) {
+          var n = PIP_PROPS[j][0];
+          if (p.style.getPropertyValue(n) !== PIP_PROPS[j][1] || p.style.getPropertyPriority(n) !== 'important') p.style.setProperty(n, PIP_PROPS[j][1], 'important');
+        }
+      }
+    } catch (x) { log('pip apply err ' + x); }
+  }
+  window.addEventListener('resize', function () { if (pipOn) { setTimeout(pipApply, 60); setTimeout(pipApply, 400); } });
   window.__novaPip = function (on) {
-    var id = '__nova_pip_css', old = document.getElementById(id), e = v();
+    on = !!on;
     log('pip css ' + on);
     if (!on) {
-      if (old) old.remove();
+      pipOn = false; clearInterval(pipIv); pipIv = 0;
+      var old = document.getElementById(PIP_ID); if (old) old.remove();
+      document.querySelectorAll('video[data-nova-v]').forEach(function (x) { x.removeAttribute('data-nova-v'); });
       document.querySelectorAll('.__nova_v').forEach(function (x) { x.classList.remove('__nova_v'); });
-      (window.__novaPipEls || []).forEach(function (p) { p[0].style.cssText = p[1]; });
+      (window.__novaPipEls || []).forEach(function (p) { try { p[0].style.cssText = p[1]; } catch (x) {} });
       window.__novaPipEls = [];
       return;
     }
-    if (!e || old) return;
-    var st = document.createElement('style'); st.id = id;
-    st.textContent = 'html,body{background:#000!important;overflow:hidden!important}' +
-      'body *{visibility:hidden!important}' +
-      'video.__nova_v{visibility:visible!important;position:fixed!important;left:0!important;top:0!important;' +
-      'width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;' +
-      'z-index:2147483647!important;object-fit:contain!important;background:#000!important;transform:none!important}';
-    document.head.appendChild(st);
-    e.classList.add('__nova_v');
-    window.__novaPipEls = [];
-    for (var p = e.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-      window.__novaPipEls.push([p, p.style.cssText]);
-      ['transform', 'filter', 'contain', 'perspective', 'will-change'].forEach(function (k) {
-        p.style.setProperty(k, k === 'will-change' ? 'auto' : 'none', 'important');
-      });
-      p.style.setProperty('overflow', 'visible', 'important');
-    }
+    pipOn = true; pipApply();
+    clearInterval(pipIv); pipIv = setInterval(pipApply, 800);
+    [150, 500, 1200].forEach(function (d) { setTimeout(pipApply, d); });
   };
 })();
 } catch (e) {}

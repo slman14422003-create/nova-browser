@@ -211,6 +211,8 @@ object I18n {
         "مدمج في المتصفح" to "Built into the browser",
         "مع أزرار التحكم في الإشعار وشاشة القفل" to "With controls in the notification and lock screen",
         "منبثق" to "Pop-up",
+        "الجهاز لا يدعم النافذة المنبثقة" to "This device does not support picture-in-picture",
+        "تعذّر فتح النافذة المنبثقة — فعّلها للتطبيق من إعدادات النظام" to "Couldn't open picture-in-picture — enable it for the app in system settings",
         "نافذة منبثقة تلقائية" to "Automatic pop-up window",
         "نسخ المستخدم" to "Copy username",
         "نسخ كلمة المرور" to "Copy password",

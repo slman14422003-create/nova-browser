@@ -209,6 +209,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
     var cacheTick by remember { mutableIntStateOf(0) }
     var gEmail by remember { mutableStateOf("") }
     var gErr by remember { mutableStateOf(false) }
+    val gPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        if (GoogleAccounts.addFromResult(r.data)) gErr = false
+    }
     val warnings = remember { Security.deviceWarnings(ctx) }
     LaunchedEffect(cacheTick) {
         cacheSize = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { CacheCleaner.format(CacheCleaner.size(ctx)) }
@@ -425,6 +428,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
                             Text(a, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             IconButton(onClick = { GoogleAccounts.remove(a) }) { Icon(Icons.Default.Delete, L("حذف")) }
                         }
+                    }
+                    TextButton(onClick = { runCatching { gPicker.launch(GoogleAccounts.deviceAccountIntent()) } }) {
+                        Text("Choose from accounts on this device")
                     }
                     OutlinedTextField(
                         value = gEmail, onValueChange = { gEmail = it; gErr = false }, singleLine = true,

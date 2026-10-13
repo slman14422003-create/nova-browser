@@ -1,7 +1,9 @@
 package com.nova.browser
 
+import android.accounts.AccountManager
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -37,6 +39,14 @@ object GoogleAccounts {
         primary = p.getString("gprimary", "").lowercase().takeIf { it in accounts } ?: accounts.firstOrNull().orEmpty()
         suggest = p.getBoolean("gsuggest", true)
         useChrome = p.getBoolean("gchrome", false)
+    }
+
+    fun deviceAccountIntent(): Intent =
+        AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)
+
+    fun addFromResult(data: Intent?): Boolean {
+        val name = data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME) ?: return false
+        return add(name)
     }
 
     fun isValid(email: String) = email.length <= 120 && emailRe.matches(email.trim())

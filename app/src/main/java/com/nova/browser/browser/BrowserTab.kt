@@ -123,6 +123,7 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     var lastCrash = 0L
     var holdLoad = false                 // أعد الإنشاء بصفحة خطأ بدل تحميل الرابط (بعد انهيارات متكررة)
     @Volatile var shieldHost: String = ""   // نطاق الصفحة الحالية (يقرؤه فحص الطلبات من خيط الشبكة)
+    var popup = false
     var yt = false                       // هذا التبويب يعرض يوتيوب في الـ WebView المخصّص (YtWeb) لا العام
 }
 

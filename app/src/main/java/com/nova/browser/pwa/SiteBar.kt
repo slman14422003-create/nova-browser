@@ -174,7 +174,7 @@ private fun PlayGlyph(color: Color, cut: Color, modifier: Modifier) = Canvas(mod
 }
 
 @Composable
-private fun PipGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
+internal fun PipGlyph(color: Color, modifier: Modifier) = Canvas(modifier) {
     val w = size.width; val h = size.height
     drawRoundRect(color, Offset(w * 0.08f, h * 0.17f), Size(w * 0.84f, h * 0.66f), CornerRadius(w * 0.14f),
         style = Stroke(width = w * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round))
