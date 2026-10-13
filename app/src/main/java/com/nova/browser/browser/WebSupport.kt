@@ -138,6 +138,16 @@ object WebSupport {
         }
     }
 
+    // ---------- كاش الصفحات ----------
+    /** تحميل واحد يفضّل الكاش (حتى القديم) ثم يعود للوضع الافتراضي عند انتهاء الصفحة (onPageDone). */
+    fun cacheFirst(wv: WebView) {
+        runCatching { wv.settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK }
+        hard.add(wv)
+    }
+
+    /** يُستدعى قبل كل تحميل يبدؤه التطبيق: بلا اتصال تُفتح الصفحة من الكاش بدل صفحة خطأ فورية. */
+    fun prepareLoad(wv: WebView) { if (!online) cacheFirst(wv) }
+
     // ---------- تسريع التنقل ----------
     // الجلب المسبق وإيقاف الفيديو الصامت صارا في smooth.js (Perf.installSmooth)؛ هنا تسخين DNS والتحديث الكامل فقط
     fun onPageDone(wv: WebView) {

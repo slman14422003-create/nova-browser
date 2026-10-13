@@ -16,6 +16,7 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.system.Os
 import android.webkit.CookieManager
+import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
@@ -110,12 +111,48 @@ object Downloader {
         runCatching { ContextCompat.startForegroundService(app, Intent(app, DownloadService::class.java)) }
     }
 
+    // ───────────── أسماء الملفات وأنواعها ─────────────
+    // السبب القديم: URLUtil.guessFileName يستبدل امتداد الملف بامتداد النوع إن اختلفا، والخوادم (GitHub وغيرها) تعيد apk
+    // بنوع application/octet-stream فيصير الاسم x.bin. الآن نثق باسم الملف الحقيقي ولا نلجأ للنوع إلا حين لا امتداد حقيقي.
+    private val genericMimes = setOf("", "application/octet-stream", "binary/octet-stream", "application/force-download",
+        "application/x-download", "application/download", "application/unknown", "application/x-msdownload")
+    private val dynamicExt = setOf("php", "asp", "aspx", "jsp", "cgi", "do", "action", "ashx")   // سكربتات تُعيد ملفاً بنوع آخر
+    private val apkInUrl = Regex("""([^/\\?&=;"'\s]+\.(?:apk|xapk|apks|apkm))(?=$|[?&#;"'\s])""", RegexOption.IGNORE_CASE)
+
+    private fun normMime(m: String?): String = m?.substringBefore(';')?.trim()?.lowercase().orEmpty()
+
+    fun smartName(url: String, cd: String?, mime: String?): String {
+        val raw = URLUtil.guessFileName(url, cd, null)
+        val ext = raw.substringAfterLast('.', "").lowercase()
+        if (ext != "bin" && ext !in dynamicExt) return raw        // له امتداد حقيقي: الاسم أصدق من نوع المحتوى
+        val m = normMime(mime)
+        if (m !in genericMimes && !m.startsWith("text/")) {
+            val byMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(m)
+            if (byMime != null) return raw.substringBeforeLast('.') + "." + byMime
+        }
+        // نوع عام (octet-stream) أو سكربت: ابحث في الرابط (مثل ?file=app.apk أو response-content-disposition) عن اسم تطبيق
+        apkInUrl.findAll(Uri.decode(url)).lastOrNull()?.value?.let { return it.take(120) }
+        return raw
+    }
+
+    /** نوع الملف الصحيح للاسم النهائي: يُستعمل لتسجيل الملف في MediaStore ولفتحه (apk يفتح المثبّت). */
+    fun smartMime(name: String, mime: String?): String {
+        val m = normMime(mime)
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val byExt = if (ext.isNotEmpty()) MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) else null
+        return when {
+            ext == "apk" -> "application/vnd.android.package-archive"
+            m in genericMimes -> byExt ?: mime.orEmpty()
+            else -> m
+        }
+    }
+
     // ───────────── واجهة الاستخدام ─────────────
     fun start(c: Context, url: String, ua: String?, cd: String?, mime: String?, referer: String?) {
         init(c)
         val t = DlTask(UUID.randomUUID().toString(), url, url, ua ?: "", referer ?: "")
-        t.name = URLUtil.guessFileName(url, cd, mime)
-        t.mime = mime ?: ""
+        t.name = smartName(url, cd, mime)
+        t.mime = smartMime(t.name, mime)
         tasks.add(0, t)
         startService()
         pool.execute { prepare(t, cd) }
@@ -187,7 +224,8 @@ object Downloader {
             val p = probe(t)
             t.url = p.url; t.total = p.total; t.resumable = p.resumable
             if (p.mime.isNotBlank()) t.mime = p.mime
-            t.name = t.forcedName ?: URLUtil.guessFileName(p.url, p.cd ?: cd, t.mime.ifBlank { null })
+            t.name = t.forcedName ?: smartName(p.url, p.cd ?: cd, t.mime.ifBlank { null })
+            if (t.forcedName == null) t.mime = smartMime(t.name, t.mime)
             createSink(t)
             openSink(t)
             if (t.total > 0) runCatching { Os.ftruncate(sinkFd[t.id]!!.fileDescriptor, t.total) }
@@ -253,10 +291,17 @@ object Downloader {
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Nova")
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
+        val want = t.name
         val uri = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v) ?: throw IOException(L("تعذّر إنشاء الملف"))
         t.uri = uri
         app.contentResolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use {
-            if (it.moveToFirst()) t.name = it.getString(0)
+            if (it.moveToFirst()) {
+                val got = it.getString(0)
+                // إن أضاف النظام .bin للاسم نعيد الاسم الذي طلبناه
+                val fixed = got != want && got.endsWith(".bin", true) && !want.endsWith(".bin", true) &&
+                    runCatching { app.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, want) }, null, null) }.getOrDefault(0) > 0
+                t.name = if (fixed) want else got
+            }
         }
     }
 

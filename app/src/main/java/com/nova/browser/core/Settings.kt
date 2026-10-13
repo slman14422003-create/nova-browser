@@ -40,7 +40,7 @@ object Prefs {
     var js by mutableStateOf(true); private set
     var restore by mutableStateOf(true); private set
     var maxConns by mutableIntStateOf(0); private set       // 0 = تلقائي
-    var autoClean by mutableStateOf(true); private set      // تنظيف المؤقت عند كل تشغيل
+    var autoClean by mutableStateOf(false); private set     // مسح الكاش كلياً عند كل تشغيل (معطّل افتراضياً: الكاش يُنظَّف فقط عند تجاوز الحد)
     var blockAds by mutableStateOf(true); private set       // حجب الإعلانات والمتتبعات
     var dataSaver by mutableStateOf(false); private set     // عدم تحميل الصور
     var popups by mutableStateOf(true); private set         // إخفاء لافتات الموافقة على الكوكيز وفتح قفل التمرير
@@ -96,7 +96,7 @@ object Prefs {
         engine = p.getInt("engine", 0).coerceIn(0, engines.lastIndex)
         theme = p.getInt("theme", 0); desktop = p.getBoolean("desktop", false)
         js = p.getBoolean("js", true); restore = p.getBoolean("restore", true); maxConns = p.getInt("maxc", 0)
-        autoClean = p.getBoolean("autoclean", true); blockAds = p.getBoolean("blockads", true)
+        autoClean = p.getBoolean("autoclean", false); blockAds = p.getBoolean("blockads", true)
         dataSaver = p.getBoolean("saver", false); lazyMedia = p.getBoolean("lazy", true); popups = p.getBoolean("popups", true)
         httpsFirst = p.getBoolean("https1", true); cleanUrls = p.getBoolean("cleanurl", true)
         blockThirdCookies = p.getBoolean("c3p", true); secureScreen = p.getBoolean("secscr", false)
@@ -166,7 +166,7 @@ object Prefs {
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
 
     /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
-    fun autoCleanEnabled(c: Context) = ConfStore.open(c).getBoolean("autoclean", true)
+    fun autoCleanEnabled(c: Context) = ConfStore.open(c).getBoolean("autoclean", false)
 }
 
 private class RowSpec(

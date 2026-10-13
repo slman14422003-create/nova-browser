@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private var cleanedThisProcess = false
+        private var lastCacheCheck = 0L
         /** صحيح بعد تهيئة الإعدادات والمخازن في هذه العملية (نافذة اللوحات تعتمد عليها). */
         @Volatile var initialized = false
     }
@@ -300,11 +301,12 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra("dl", false) == true) dlTrigger++
         // نُبقي الـ Splash ظاهرة حتى ينتهي تنظيف المؤقت وتُعرض الواجهة
         splash.setKeepOnScreenCondition { !ready }
-        if (Prefs.autoClean && !cleanedThisProcess) {
+        // الكاش يُمسح كلياً عند التشغيل فقط إن فعّل المستخدم «مسح الكاش عند كل تشغيل»؛ وإلا يُنظَّف فقط إن تجاوز الحد (علم يضعه onStop)
+        if (!cleanedThisProcess && (Prefs.autoClean || CacheCleaner.pending(this))) {
             cleanedThisProcess = true
             // التنظيف يجري قبل إنشاء أي WebView كي لا تكون ملفات الكاش مفتوحة
             Thread({
-                runCatching { CacheCleaner.cleanAll(applicationContext) }
+                runCatching { if (Prefs.autoClean) CacheCleaner.cleanAll(applicationContext) else CacheCleaner.cleanLarge(applicationContext) }
                 runOnUiThread { if (!isFinishing && !isDestroyed) showUi(start) else ready = true }
             }, "nova-clean").start()
         } else showUi(start)
@@ -339,6 +341,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         Perf.flushCookies(true)
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (nowMs - lastCacheCheck > 10 * 60_000L) {   // قياس حجم الكاش في خيط خلفي وبحدّ أقصى مرة كل 10 دقائق
+            lastCacheCheck = nowMs
+            Thread({ runCatching { CacheCleaner.markIfLarge(applicationContext) } }, "nova-cache").start()
+        }
         if (pipReceiverOn) { runCatching { unregisterReceiver(pipReceiver) }; pipReceiverOn = false }
         // onPictureInPictureModeChanged(false) يسبق onStop دائماً، فـ inPip تكون false هنا؛ نعتمد على لحظة الخروج: إن أعقبه إيقاف بلا عودة = إغلاق ✕
         val exited = pipExitAt != 0L && android.os.SystemClock.elapsedRealtime() - pipExitAt < 4000
@@ -445,7 +452,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     }
     fun go(t: BrowserTab, input: String) {
         val u = normalize(input); t.url = u
-        if (!YtWeb.swapIfNeeded(t, u)) t.webView?.loadUrl(u, Perf.privacyHeaders)   // تبديل بين WebView يوتيوب المخصّص والعام يعيد الإنشاء ويحمّل الرابط
+        if (!YtWeb.swapIfNeeded(t, u)) t.webView?.let { WebSupport.prepareLoad(it); it.loadUrl(u, Perf.privacyHeaders) }   // تبديل بين WebView يوتيوب المخصّص والعام يعيد الإنشاء ويحمّل الرابط
     }
     fun snapSoftware(t: BrowserTab, w: WebView, tw: Int, th: Int) {
         runCatching {
@@ -841,12 +848,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                         val wv = tb.webView ?: (if (YtWeb.isYtUrl(tb.url)) YtWeb.create(ctx, tb, handlers) else createWebView(ctx, tb, handlers)).also { w ->
                                             tb.webView = w
                                             val sv = tb.saved; tb.saved = null
+                                            if (sv != null && !tb.yt) WebSupport.cacheFirst(w)   // تبويب حُرّر لتوفير الذاكرة: يعود من الكاش فوراً
                                             val restored = sv != null && w.restoreState(sv) != null
                                             if (!restored) {
                                                 if (tb.holdLoad) {   // انهارت العملية مراراً: صفحة بزر إعادة المحاولة بدل حلقة تحميل لا تنتهي
                                                     tb.holdLoad = false
                                                     w.loadDataWithBaseURL(tb.url, errorHtml(tb.url, L("تعطّلت عملية عرض الصفحة عدة مرات. أغلق تبويبات أخرى لتحرير الذاكرة ثم أعد المحاولة.")), "text/html", "UTF-8", tb.url)
-                                                } else w.loadUrl(tb.url, Perf.privacyHeaders)
+                                                } else { WebSupport.prepareLoad(w); w.loadUrl(tb.url, Perf.privacyHeaders) }
                                             }
                                         }
                                         (wv.parent as? ViewGroup)?.removeView(wv)
