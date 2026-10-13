@@ -135,7 +135,7 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
                     Text(t.name.ifBlank { hostOf(t.origUrl) }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                     Text(statusLine(t), style = MaterialTheme.typography.bodySmall, color = if (failed) cs.error else cs.onSurfaceVariant)
                     if (done) Text(
-                        kindLabel(kind) + " • " + hostOf(t.origUrl) + " • " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(t.createdAt)),
+                        java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(t.createdAt)) + " • " + kindLabel(kind) + " • " + hostOf(t.origUrl),
                         style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }

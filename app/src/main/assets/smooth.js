@@ -161,3 +161,37 @@
     }
   } catch (e) { }
 })();
+
+// ───────── وضع الصفحات الثقيلة: صفحات الأكواد الضخمة والـ DOM الكبير ─────────
+// عند اكتشاف صفحة ثقيلة: تصيير نص أسرع (بلا ligatures/kerning)، وتأجيل تخطيط كتل الأكواد البعيدة عن الشاشة (content-visibility).
+// الصفحة نفسها لا تتغير في الشكل، وتبقى كل الكتل قابلة للبحث والنسخ.
+(function () {
+  try {
+    if (window.__novaHeavy || window.top !== window) return;
+    var host = String(location.hostname);
+    if (/(^|\.)(youtube\.com|youtu\.be|google\.[a-z.]+)$/.test(host)) return;
+    window.__novaHeavy = 1;
+    var applied = false;
+    function check() {
+      if (applied || !document.body) return;
+      var pre = document.getElementsByTagName('pre');
+      var heavy = document.getElementsByTagName('*').length > 5000 || pre.length > 20;
+      for (var i = 0; !heavy && i < pre.length && i < 20; i++) { var t = pre[i].textContent; if (t && t.length > 60000) heavy = true; }
+      if (!heavy) return;
+      applied = true;
+      var st = document.createElement('style');
+      st.textContent = 'pre,code,kbd,samp,.highlight,.blob-code,.blob-code-inner,.CodeMirror,.cm-content,.monaco-editor{text-rendering:optimizeSpeed!important;font-variant-ligatures:none!important;font-kerning:none!important}html{scroll-behavior:auto!important}';
+      (document.head || document.documentElement).appendChild(st);
+      if (pre.length > 20) {
+        for (var j = 3; j < pre.length; j++) {
+          var p = pre[j];
+          if (p.closest && p.closest('table')) continue;
+          p.style.setProperty('content-visibility', 'auto');
+          p.style.setProperty('contain-intrinsic-size', 'auto 300px');
+        }
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(check, 800); });
+    window.addEventListener('load', function () { setTimeout(check, 1500); setTimeout(check, 5000); });
+  } catch (e) { }
+})();

@@ -137,6 +137,7 @@ fun BottomPill(
     val cs = MaterialTheme.colorScheme
     val focus = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val hasPage = tab.url.isNotBlank()
     var query by remember { mutableStateOf("") }          // نص الحقل أثناء الكتابة (لاقتراحات البحث)
@@ -166,25 +167,43 @@ fun BottomPill(
                         var got by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) { fr.requestFocus() }
                         LaunchedEffect(fill) { fill?.let { f -> field = TextFieldValue(f, TextRange(f.length)); query = f; fill = null } }
-                        Icon(Icons.Default.Search, null, Modifier.padding(start = 10.dp), tint = cs.onSurfaceVariant)
-                        Spacer(Modifier.width(10.dp))
-                        BasicTextField(
-                            value = field, onValueChange = { field = it; query = it.text }, singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface), cursorBrush = SolidColor(cs.primary),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = {
-                                if (field.text.isNotBlank()) onGo(field.text)
-                                setEditing(false); focus.clearFocus()
-                            }),
-                            modifier = Modifier.weight(1f).focusRequester(fr).onFocusChanged { if (it.isFocused) got = true else if (got) setEditing(false) },
-                            decorationBox = { inner ->
-                                Box(contentAlignment = Alignment.CenterStart) {
-                                    if (field.text.isEmpty()) Text(L("ابحث أو اكتب عنوان"), color = cs.onSurfaceVariant)
-                                    inner()
+                        // الحقل داخل كبسولة بنفس شكل شريط العنوان العادي (بدل حقل مسطّح بلا حدود)
+                        Row(
+                            Modifier.weight(1f).height(48.dp).clip(CircleShape).background(cs.surfaceContainerHigh).padding(start = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Search, null, Modifier.size(20.dp), tint = cs.onSurfaceVariant)
+                            Spacer(Modifier.width(10.dp))
+                            BasicTextField(
+                                value = field, onValueChange = { field = it; query = it.text }, singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface), cursorBrush = SolidColor(cs.primary),
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
+                                    keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go
+                                ),
+                                keyboardActions = KeyboardActions(onGo = {
+                                    if (field.text.isNotBlank()) onGo(field.text.trim())
+                                    setEditing(false); focus.clearFocus()
+                                }),
+                                modifier = Modifier.weight(1f).focusRequester(fr).onFocusChanged { if (it.isFocused) got = true else if (got) setEditing(false) },
+                                decorationBox = { inner ->
+                                    Box(contentAlignment = Alignment.CenterStart) {
+                                        if (field.text.isEmpty()) Text(L("ابحث أو اكتب عنوان"), color = cs.onSurfaceVariant, maxLines = 1)
+                                        inner()
+                                    }
                                 }
-                            }
-                        )
-                        IconButton(onClick = { field = TextFieldValue(""); query = "" }) { Icon(Icons.Default.Close, L("مسح")) }
+                            )
+                            // الحقل فارغ: زر لصق (يقرأ الحافظة عند الضغط فقط، فلا يظهر تنبيه وصول للحافظة عند فتح الشريط)
+                            if (field.text.isNotEmpty()) IconButton(onClick = { field = TextFieldValue(""); query = "" }) { Icon(Icons.Default.Close, L("مسح")) }
+                            else TextButton(onClick = {
+                                val t = runCatching {
+                                    (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                                        .primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty().trim()
+                                }.getOrDefault("")
+                                if (t.isNotEmpty()) { field = TextFieldValue(t, TextRange(t.length)); query = t }
+                            }) { Text(L("لصق")) }
+                        }
+                        Spacer(Modifier.width(4.dp))
                     } else {
                         RoundBtn(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
                             Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, if (tab.canBack) L("رجوع") else L("الرئيسية"))

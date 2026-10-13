@@ -1,6 +1,7 @@
 package com.nova.browser
 
 import android.content.Context
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -112,6 +113,17 @@ object Suggest {
         return out
     }
 
+    /** عند فتح الشريط قبل الكتابة: آخر الصفحات المزارة (بدل قائمة فارغة). */
+    fun recent(): List<Sug> {
+        val out = ArrayList<Sug>(6)
+        val seen = HashSet<String>()
+        for (h in Library.history) {
+            if (out.size >= 6) break
+            if (seen.add(h.url)) out.add(Sug(h.title.ifBlank { h.url }, h.url, 1))
+        }
+        return out
+    }
+
     /** اقتراحات محرك البحث المختار (تُرسل النص المكتوب إلى المحرك نفسه فقط؛ تُعطَّل من الإعدادات). */
     suspend fun remote(q: String): List<String> {
         val text = NetKit.getText(endpoint() + URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
@@ -127,14 +139,13 @@ object Suggest {
 fun SuggestionsPanel(query: String, onPick: (String) -> Unit, onFill: (String) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val q = query.trim()
-    if (q.isEmpty()) return
-    val local = remember(q, Library.history.size, Library.bookmarks.size) { Suggest.local(q) }
+    val local = remember(q, Library.history.size, Library.bookmarks.size) { if (q.isEmpty()) Suggest.recent() else Suggest.local(q) }
     var remote by remember { mutableStateOf<List<String>>(emptyList()) }
     val looksUrl = q.contains('.') && !q.contains(' ')
 
     LaunchedEffect(Unit) { Suggest.warm() }
     LaunchedEffect(q, Prefs.engine, Prefs.suggest) {
-        if (!Prefs.suggest || looksUrl) { remote = emptyList(); return@LaunchedEffect }
+        if (!Prefs.suggest || looksUrl || q.isEmpty()) { remote = emptyList(); return@LaunchedEffect }
         delay(140)   // تأخير بسيط: لا طلب لكل حرف
         remote = Suggest.remote(q)
     }
@@ -154,9 +165,9 @@ fun SuggestionsPanel(query: String, onPick: (String) -> Unit, onFill: (String) -
 
     Surface(
         color = cs.surfaceContainer, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp).animateContentSize()
     ) {
-        LazyColumn(Modifier.heightIn(max = 300.dp), reverseLayout = true) {
+        LazyColumn(Modifier.heightIn(max = 320.dp), reverseLayout = true) {
             items(rows, key = { it.kind.toString() + (it.url ?: it.text) }) { s ->
                 Row(
                     Modifier.fillMaxWidth().clickable { onPick(s.url ?: s.text) }.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),

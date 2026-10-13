@@ -33,6 +33,9 @@ import java.util.concurrent.ThreadFactory
 object WebSupport {
     private val main = Handler(Looper.getMainLooper())
     private val attached: MutableSet<WebView> = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
+    private val patient: MutableSet<WebView> = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
+    /** صفحات التحقق والعمليات الحسابية الطويلة: إمهال أكبر قبل اعتبار الصفحة معلّقة. */
+    fun patient(v: WebView, on: Boolean) { if (on) patient.add(v) else patient.remove(v) }
     private val hard: MutableSet<WebView> = Collections.newSetFromMap(WeakHashMap<WebView, Boolean>())
     private val stuck = WeakHashMap<WebView, Runnable>()
     @Volatile var online = true; private set
@@ -129,7 +132,9 @@ object WebSupport {
                         }
                     }
                     stuck[view] = kill
-                    main.postDelayed(kill, 10_000)
+                    // صفحات الأكواد الضخمة وتحدّي التحقق قد تشغل الخيط عشرات الثواني: لا نقتلها بعد 10ث كما كان
+                    main.postDelayed({ if (stuck.containsKey(view)) toast(view.context, L("الصفحة ثقيلة… يرجى الانتظار")) }, 8_000)
+                    main.postDelayed(kill, if (patient.contains(view)) 60_000L else 30_000L)
                 }
                 override fun onRenderProcessResponsive(view: WebView, renderer: WebViewRenderProcess?) {
                     stuck.remove(view)?.let { main.removeCallbacks(it) }

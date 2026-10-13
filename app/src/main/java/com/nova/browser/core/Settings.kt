@@ -461,7 +461,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             extraAction = { TextButton(onClick = { CrashLog.clear(); dialog = null }) { Text(L("مسح السجل")) } }
         ) {
             Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
-                Text(CrashLog.text().ifBlank { L("لا توجد أعطال مسجلة") }, style = MaterialTheme.typography.bodySmall)
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(CrashLog.text().ifBlank { L("لا توجد أعطال مسجلة") }, style = MaterialTheme.typography.bodySmall, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
             }
         }
         "seclog" -> NovaDialog(
@@ -469,7 +471,9 @@ fun SettingsScreen(onBack: () -> Unit, onClearData: () -> Unit, onClearCache: ()
             confirmText = L("إغلاق"), onConfirm = { dialog = null },
             dismissText = L("مسح السجل"), onDismissClick = { Security.clearLog(); dialog = null }
         ) {
-            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) }
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                androidx.compose.foundation.text.selection.SelectionContainer { Text(Security.summary(), style = MaterialTheme.typography.bodySmall) }
+            }
         }
         "cache" -> NovaDialog(
             title = L("مسح الذاكرة المؤقتة؟"), icon = Icons.Default.Delete, danger = true, onDismiss = { dialog = null },

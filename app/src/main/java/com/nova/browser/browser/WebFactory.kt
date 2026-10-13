@@ -270,7 +270,10 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             val u = v.url ?: return
             if (icon != null && u.startsWith("http")) Favicons.put(hostOf(u), icon)
         }
-        override fun onReceivedTitle(v: WebView, t: String?) { if (!t.isNullOrBlank()) tab.title = t }
+        override fun onReceivedTitle(v: WebView, t: String?) {
+            if (!t.isNullOrBlank()) tab.title = t
+            WebCompat.challengeTitle(v, tab, t)
+        }
         override fun onCreateWindow(v: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean =
             Popups.create(h, tab, isDialog, isUserGesture, resultMsg)
         override fun onCloseWindow(window: WebView) { Popups.close(window) }

@@ -172,6 +172,10 @@ object Shield {
         "jsecoin.com", "coinimp.com", "minero.cc", "ppoi.org", "2giga.link", "webmine.pro", "papoto.com"
     )
 
+    private val challengeHosts = listOf("challenges.cloudflare.com", "hcaptcha.com", "recaptcha.net", "captcha-delivery.com", "datadome.co",
+        "arkoselabs.com", "funcaptcha.com", "geetest.com", "perimeterx.net", "px-cdn.net", "px-client.net", "friendlycaptcha.com", "mtcaptcha.com")
+    fun isChallengeHost(h: String): Boolean = challengeHosts.any { h == it || h.endsWith(".$it") }
+
     /** مسارات تتبع قوية فقط (بكسل/منارة/نقطة تجميع تحليلية) كي لا نكسر وظائف المواقع. تُطبَّق على طلبات الطرف الثالث فقط. */
     private val trackerPath = Regex(
         "(?i)(/(pixel|beacon|1x1)(\\.(gif|png|jpg|php|js))?([/?#]|$)|/__utm\\.gif|/(ga|analytics|fbevents|gtm)\\.js([?#]|$)|/gtag/js([?#]|$)|" +
@@ -210,6 +214,7 @@ object Shield {
         if (!Prefs.shield || isMainFrame) return null
         return try {
             val host = url.host?.lowercase() ?: return null
+            if (isChallengeHost(host) || (url.encodedPath ?: "").contains("/cdn-cgi/")) return null   // التحقق (Cloudflare وغيره) لا يُحجب
             when (hostVerdict(pageHost, host)) {
                 1 -> { hit(Kind.LOCAL_NET, pageHost + " → " + host); return blockedResponse(403) }
                 2 -> { hit(Kind.MINER, host); return blockedResponse(403) }

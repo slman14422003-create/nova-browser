@@ -64,7 +64,7 @@ object WebCompat {
         val h = loops.getOrPut(tab) { Hits() }
         if (h.key != key || now - h.t0 > 12_000) { h.key = key; h.n = 0; h.t0 = now }
         h.n++
-        if (h.n < 8) return false
+        if (h.n < (if (tab.challenge) 24 else 8)) return false   // تحدّي Cloudflare يعيد تحميل الصفحة عدة مرات بطبيعته
         h.n = 0; h.t0 = now
         v.post {
             runCatching { v.stopLoading() }
@@ -72,6 +72,17 @@ object WebCompat {
             runCatching { v.loadDataWithBaseURL(url, errorHtml(url, L("توقّفت إعادة تحميل متكررة لهذه الصفحة")), "text/html", "UTF-8", url) }
         }
         return true
+    }
+
+    private val challengeRe = Regex("(?i)^(just a moment|checking your browser|attention required|verifying|verify you are human|one more step|security check|please wait|ddos-guard|checking if the site connection is secure|لحظة|جارٍ التحقق)|\\| cloudflare$")
+
+    /** عنوان صفحة التحقق (Cloudflare…): نسمح بكوكيز الطرف الثالث ونمهل الصفحة وقتاً أطول طالما التحقق جارٍ، ثم نعيد الإعدادات. */
+    fun challengeTitle(v: WebView, tab: BrowserTab, t: String?) {
+        val on = !t.isNullOrBlank() && challengeRe.containsMatchIn(t)
+        if (on == tab.challenge) return
+        tab.challenge = on
+        runCatching { CookieManager.getInstance().setAcceptThirdPartyCookies(v, on || isMaps(v.url) || !Prefs.blockThirdCookies) }
+        WebSupport.patient(v, on)
     }
 
     /** يُستدعى مع بدء كل صفحة: يضبط الإعدادات حسب الموقع ويعيدها عند مغادرته (فقط عند تغيّر الحالة). */
