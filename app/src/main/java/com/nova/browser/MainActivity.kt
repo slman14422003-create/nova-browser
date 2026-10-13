@@ -267,6 +267,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
+        // نتولى حركة الخروج بأنفسنا بدل الاعتماد على سلوك المكتبة الافتراضي (كان يُسقط التطبيق أحياناً على بعض الأجهزة
+        // بخطأ NullPointerException داخلي عند مزامنة حركة الأيقونة). provider.view مضمونة غير فارغة دوماً هنا.
+        splash.setOnExitAnimationListener { provider ->
+            runCatching {
+                provider.view.animate().alpha(0f).setDuration(180L)
+                    .withEndAction { runCatching { provider.remove() } }
+                    .start()
+            }.onFailure { runCatching { provider.remove() } }
+        }
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
         if (BuildConfig.DEBUG) runCatching {
