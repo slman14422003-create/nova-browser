@@ -195,17 +195,26 @@ object Adaptive {
     var level by mutableIntStateOf(0); private set
     private var thermal = PowerManager.THERMAL_STATUS_NONE
     private var saver = false
+    private var lowBat = false      // بطارية ≤15% وغير موصولة بالشاحن
     private var started = false
 
     private fun recompute() {
         level = if (!Prefs.adaptive) 0 else when {
             thermal >= PowerManager.THERMAL_STATUS_SEVERE -> 2
-            thermal >= PowerManager.THERMAL_STATUS_MODERATE || saver -> 1
+            thermal >= PowerManager.THERMAL_STATUS_MODERATE || saver || lowBat -> 1
             else -> 0
         }
     }
 
     fun refresh() = recompute()
+
+    private fun readBattery(app: Context) {
+        val i = app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return   // بث لاصق: لا مستمع دائم
+        val lv = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+        val sc = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100)
+        val plugged = i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0
+        lowBat = lv >= 0 && sc > 0 && lv * 100 / sc <= 15 && !plugged
+    }
 
     fun init(c: Context) {
         if (started) return
@@ -213,11 +222,15 @@ object Adaptive {
         val app = c.applicationContext
         val pm = app.getSystemService(PowerManager::class.java) ?: return
         saver = pm.isPowerSaveMode
+        readBattery(app)
         thermal = pm.currentThermalStatus
         runCatching { pm.addThermalStatusListener(ContextCompat.getMainExecutor(app)) { s -> thermal = s; recompute() } }
         ContextCompat.registerReceiver(app, object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, i: Intent?) { saver = pm.isPowerSaveMode; recompute() }
-        }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            override fun onReceive(ctx: Context?, i: Intent?) { saver = pm.isPowerSaveMode; readBattery(app); recompute() }
+        }, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED).apply {
+            addAction(Intent.ACTION_BATTERY_LOW); addAction(Intent.ACTION_BATTERY_OKAY)
+            addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED)
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
         recompute()
     }
 

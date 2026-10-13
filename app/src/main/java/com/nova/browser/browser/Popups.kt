@@ -37,7 +37,7 @@ object Popups {
             if (!u.isNullOrBlank() && u.startsWith("http")) {
                 label?.text = (if (u.startsWith("https")) "\uD83D\uDD12 " else "") + hostOf(u)
             }
-            main.postDelayed(this, 400)
+            main.postDelayed(this, 1000)
         }
     }
 

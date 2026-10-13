@@ -608,6 +608,24 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         if (live.size > cap)
             live.filter { it !== cur && !YtWeb.isLive(it) }.sortedWith(compareBy({ it.pinned }, { it.lastUsed })).take(live.size - cap).forEach { discard(it) }
     }
+    // تبويب خلفي لم يُستخدم منذ مدة: يُحرَّر الـ WebView (مع حفظ السجل والتمرير) فلا تبقى صفحات خاملة تستهلك الذاكرة والمعالج والبطارية.
+    // وقت «آخر استخدام» يُسجَّل لحظة مغادرة التبويب (لا لحظة فتحه) فلا يُحرَّر تبويب تركه المستخدم للتو.
+    DisposableEffect(current) {
+        val t = tabs.getOrNull(current)
+        onDispose { t?.lastUsed = android.os.SystemClock.elapsedRealtime() }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            if (!activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) continue
+            val idle = if (Adaptive.level >= 1) 5 * 60_000L else 15 * 60_000L
+            val now = android.os.SystemClock.elapsedRealtime()
+            val cur = tabs.getOrNull(current)
+            tabs.toList().forEach { t ->
+                if (t !== cur && t.webView != null && !t.pinned && !t.loading && !YtWeb.isLive(t) && t.lastUsed > 0 && now - t.lastUsed > idle) discard(t)
+            }
+        }
+    }
     // عند الخروج من التطبيق: إيقاف مؤقتات الصفحات لتوفير المعالج والبطارية
     DisposableEffect(Unit) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
@@ -839,7 +857,16 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                         } else SwipeRefreshLayout(ctx).apply {
                                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                                             setOnRefreshListener { wv.reload() }
-                                            setOnChildScrollUpCallback { _, _ -> wv.scrollY > 0 || wv.canScrollVertically(-1) || WebSupport.innerScrolled(wv) || Pwa.kind(wv.url) != SiteKind.NONE || WebCompat.noPullRefresh(wv.url) }
+                                            // يُستدعى مع كل حركة لمس أثناء التمرير: حكم الرابط (تحليل Uri) يُحفظ لكل رابط بدل إعادة حسابه في كل مرة
+                                            var judgedUrl: String? = null; var judged = false
+                                            setOnChildScrollUpCallback { _, _ ->
+                                                if (wv.scrollY > 0 || wv.canScrollVertically(-1) || WebSupport.innerScrolled(wv)) true
+                                                else {
+                                                    val u = wv.url
+                                                    if (u != judgedUrl) { judgedUrl = u; judged = Pwa.kind(u) != SiteKind.NONE || WebCompat.noPullRefresh(u) }
+                                                    judged
+                                                }
+                                            }
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
                                             useIosSpinner(spinnerInt)

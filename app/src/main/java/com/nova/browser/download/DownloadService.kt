@@ -41,13 +41,24 @@ class DownloadService : Service() {
     private fun active() = Downloader.tasks.filter { it.status == Downloader.DOWNLOADING || it.status == Downloader.PREPARING }
     private fun busy() = Downloader.work.get() > 0
 
+    private var wlAt = 0L
+    /** القفل يُمسك بمهلة قصيرة ويُجدَّد ما دام هناك تنزيل، ويُحرَّر فوراً عند الإيقاف المؤقت أو الانتهاء. */
+    private fun syncWake(on: Boolean) {
+        val l = wl ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (on) { if (!l.isHeld || now - wlAt > 5 * 60_000L) { wlAt = now; runCatching { l.acquire(15 * 60_000L) } } }
+        else if (l.isHeld) runCatching { l.release() }
+    }
+
     private val loop = object : Runnable {
         override fun run() {
             if (stopped) return
             val act = active()
             if (act.isEmpty() && !busy()) { finishService(); return }
+            syncWake(act.isNotEmpty() || busy())
             runCatching { nm().notify(ID_PROGRESS, build(act)) }
-            h.postDelayed(this, 1000)
+            val screenOn = (getSystemService(POWER_SERVICE) as PowerManager).isInteractive
+            h.postDelayed(this, if (screenOn) 1000L else 5000L)   // الشاشة مطفأة: لا أحد يرى الإشعار كل ثانية
         }
     }
 
@@ -57,7 +68,7 @@ class DownloadService : Service() {
         Downloader.ensureEngine()
         Notif.ensureChannels(this)
         wl = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nova:dl")
-            .apply { acquire(6 * 60 * 60 * 1000L) }
+            .apply { setReferenceCounted(false) }   // يُمسك فقط أثناء تنزيل فعلي (syncWake)، لا ست ساعات متواصلة
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -82,6 +93,7 @@ class DownloadService : Service() {
             startForeground(ID_PROGRESS, build(active()), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         }.isSuccess
         if (!ok) { stopped = true; stopSelf(startId); return START_NOT_STICKY }
+        syncWake(true)
         h.removeCallbacks(loop); h.postDelayed(loop, 1000)
         return START_NOT_STICKY
     }
@@ -94,6 +106,7 @@ class DownloadService : Service() {
         if (stopped) return
         stopped = true
         h.removeCallbacks(loop)
+        syncWake(false)
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         runCatching { nm().cancel(ID_PROGRESS) }
         if (userPaused) postPaused()

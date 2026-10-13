@@ -139,12 +139,15 @@ try {
       }
       p.style.setProperty('--nova-cc-base', b);
     }
-    function arm() { if (!tickT) tickT = setInterval(tick, 700); }
+    function arm() { if (!tickT) tickT = setInterval(tick, 1000); }
     function disarm() { if (tickT) { clearInterval(tickT); tickT = 0; } }
     document.addEventListener('visibilitychange', function () { if (document.hidden) disarm(); else arm(); });
     ['touchend', 'click'].forEach(function (e) { document.addEventListener(e, function () { setTimeout(tick, 80); }, true); });
     window.addEventListener('yt-navigate-finish', function () { lastShown = null; });
     arm();
+    // الفيديو متوقف: لا قياس دوري (اللمس يستدعي tick عند ظهور أزرار التحكم) — يوفّر المعالج والبطارية
+    document.addEventListener('pause', function (e) { if (e.target && e.target.tagName === 'VIDEO') { disarm(); setTimeout(tick, 200); } }, true);
+    document.addEventListener('play', function (e) { if (e.target && e.target.tagName === 'VIDEO') arm(); }, true);
 
     // ───────── بعد الخروج من ملء الشاشة/الدوران: إعادة قياس المشغّل وإيقاظ طبقة الفيديو (يمنع الشاشة السوداء) ─────────
     function nudge() {
