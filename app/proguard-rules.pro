@@ -30,3 +30,9 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# أداء: حذف سجلات التصحيح من نسخة الإصدار وتحسين أعمق
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+}

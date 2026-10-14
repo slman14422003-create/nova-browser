@@ -601,14 +601,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     // عند ضغط الذاكرة: نحرر الـ WebView للتبويبات الخلفية (تُعاد عند الرجوع لها)
     DisposableEffect(Unit) {
         val cb = object : ComponentCallbacks2 {
+            fun release() {
+                val cur = tabs.getOrNull(current)
+                tabs.toList().forEach { t -> if (t !== cur && !YtWeb.isLive(t)) { if (t.webView != null) discard(t); t.thumb = null } }
+            }
             override fun onTrimMemory(level: Int) {
-                if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-                    val cur = tabs.getOrNull(current)
-                    tabs.toList().forEach { t -> if (t !== cur && !YtWeb.isLive(t)) { if (t.webView != null) discard(t); t.thumb = null } }
-                }
+                if (level != ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) release()
             }
             override fun onConfigurationChanged(c: android.content.res.Configuration) {}
-            @Deprecated("Deprecated in Java") override fun onLowMemory() {}
+            @Deprecated("Deprecated in Java") override fun onLowMemory() { release() }
         }
         activity.registerComponentCallbacks(cb)
         onDispose { activity.unregisterComponentCallbacks(cb) }

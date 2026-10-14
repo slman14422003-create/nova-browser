@@ -39,7 +39,7 @@ android {
             keyPassword = ksKeyPass
         }
     }
-    androidResources { localeFilters += listOf("ar", "en") }   // يقلّل حجم الـ APK (نصوص المكتبات بلغتين فقط)
+    androidResources { localeFilters += listOf("ar", "en", "fr", "es", "de", "tr", "ru", "fa", "ur", "id", "zh", "ja", "ko", "hi", "pt", "it", "bn", "he", "th", "vi", "nl", "pl", "uk") }   // نصوص المكتبات (مربعات التاريخ/الحوارات…) باللغات الشائعة فقط لتبقى الحزمة صغيرة
     lint { abortOnError = false; checkReleaseBuilds = false }
     packaging { jniLibs { pickFirsts += "**/libc++_shared.so" } }
     packaging { resources { excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST") } }

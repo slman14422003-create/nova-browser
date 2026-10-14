@@ -156,9 +156,15 @@ object WebCompat {
 
     private val js: String? by lazy { runCatching { Perf.asset("webcompat.js") }.getOrNull() }
 
+    // مكتبات دعم الصفحات: polyfills لميزات الويب الحديثة على المحركات القديمة، وlangfix لضبط لغة الصفحة (نموذج الحروف الصحيح للصينية/اليابانية/الكورية وغيرها)
+    private val polyfills: String? by lazy { runCatching { Perf.asset("polyfills.js") }.getOrNull() }
+    private val langfix: String? by lazy { runCatching { Perf.asset("langfix.js") }.getOrNull() }
+
     fun install(wv: WebView) {
-        val s = js ?: return
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT))
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        // polyfills أولاً كي تجدها بقية السكربتات جاهزة
+        listOfNotNull(polyfills, js, langfix).forEach { s ->
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, s, setOf("*")) }
+        }
     }
 }

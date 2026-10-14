@@ -1,5 +1,12 @@
 # سجل المهام والتعديلات
 
+## 2026-10-14 — البصمة (EFF) + مكتبات دعم الصفحات واللغات + استقرار
+- `assets/privacy.js` (إعادة كتابة): توحيد `platform`/`maxTouchPoints`/`hardwareConcurrency`، أبعاد الشاشة وdevicePixelRatio إلى قيم شائعة، إخفاء الخطوط غير الشائعة (measureText وقياس عناصر الاختبار)، وWebGL: حدود المعاملات والامتدادات وprecision وvendor/renderer بقيم شائعة، وزمن الصوت. `toString()` للدوال المعدّلة يُظهر الأصلية. فحص صفحة التحقق يخفّ بعد 5 ثوانٍ.
+- `assets/polyfills.js` (جديد): Array.at/findLast/toSorted…، Object.groupBy/hasOwn، Set.union…، Promise.withResolvers/any، structuredClone، AbortSignal.timeout/any، crypto.randomUUID، URL.canParse… (تعمل فقط عند غياب الميزة).
+- `assets/langfix.js` (جديد): يضبط `lang` للصفحات التي بلا lang من نص الصفحة (الصينية المبسّطة/التقليدية، اليابانية، الكورية، الهندية، التايلندية، العبرية، الفارسية، الأردية، الروسية…) فيختار المحرك نموذج الحروف الصحيح.
+- `browser/WebCompat.kt`: حقن polyfills ثم webcompat ثم langfix. `core/Settings.kt`: 13 لغة جديدة لـ«لغة المواقع» في نهاية القائمة. `res/xml/locales_config.xml` وlocaleFilters: 23 لغة.
+- `MainActivity.kt`: `onLowMemory` يحرّر تبويبات الخلفية كـ onTrimMemory. `proguard-rules.pro`: حذف Log.v/d من الإصدار.
+
 ## 2026-10-13 — إصلاح النافذة المنبثقة (PiP) لمشغّل يوتيوب فقط
 - `assets/yt.js`: إعادة كتابة `__novaPip` (وسم بخاصية بدل class، إعادة تطبيق دورية، إلغاء خصائص الآباء، اختيار أفضل عنصر فيديو)، وإرسال `vw/vh` مع حالة التشغيل.
 - `yt/YtMedia.kt`: حفظ أبعاد الفيديو (`vw/vh`) وتصفيرها عند الإيقاف.

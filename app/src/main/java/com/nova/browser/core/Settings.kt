@@ -56,7 +56,10 @@ object Prefs {
     var textZoom by mutableIntStateOf(1); private set       // فهرس في zoomValues
     var siteDark by mutableStateOf(false); private set      // الوضع الداكن للمواقع
     val siteLangs = listOf("" to "تلقائي", "ar" to "العربية", "en" to "English", "fr" to "Français", "es" to "Español",
-        "de" to "Deutsch", "tr" to "Türkçe", "ru" to "Русский", "fa" to "فارسی", "ur" to "اردو", "id" to "Indonesia")
+        "de" to "Deutsch", "tr" to "Türkçe", "ru" to "Русский", "fa" to "فارسی", "ur" to "اردو", "id" to "Indonesia",
+        // أُضيفت في النهاية عمداً: الفهرس محفوظ في الإعدادات فلا يتغيّر اختيار المستخدمين الحاليين
+        "zh" to "中文", "ja" to "日本語", "ko" to "한국어", "hi" to "हिन्दी", "pt" to "Português", "it" to "Italiano",
+        "bn" to "বাংলা", "he" to "עברית", "th" to "ไทย", "vi" to "Tiếng Việt", "nl" to "Nederlands", "pl" to "Polski", "uk" to "Українська")
     val zoomValues = listOf(85, 100, 115, 130)
     fun siteLangCode() = siteLangs.getOrNull(siteLang)?.first ?: ""
     var pauseBg by mutableStateOf(true); private set        // إيقاف الصفحات عند الخروج من التطبيق
