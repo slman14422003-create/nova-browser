@@ -97,36 +97,56 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import org.json.JSONObject
 import java.net.URLEncoder
 
+// لوحة ألوان مستوحاة من iOS Safari الحديث (iOS 18/26): أزرق النظام كلون أساسي للروابط
+// ومؤشّر التحميل، خلفيات بيضاء/رمادية فاتحة شبه شفافة بدل البني الدافئ السابق.
+private val IosBlueLight = Color(0xFF007AFF)
+private val IosBlueDark = Color(0xFF0A84FF)
+
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF141413), onPrimary = Color(0xFFFAF9F5),
-    primaryContainer = Color(0xFFF6DDD2), onPrimaryContainer = Color(0xFF5A2A1B),
-    secondary = Color(0xFF3D3D3A), onSecondary = Color(0xFFFAF9F5),
-    secondaryContainer = Color(0xFFE0DDD2), onSecondaryContainer = Color(0xFF141413),
-    tertiary = Color(0xFFC6613F), onTertiary = Color.White,
-    background = Color(0xFFFAF9F5), onBackground = Color(0xFF141413),
-    surface = Color(0xFFFAF9F5), onSurface = Color(0xFF141413), onSurfaceVariant = Color(0xFF6B6A68),
-    outline = Color(0xFFB0AEA5), outlineVariant = Color(0xFFE0DDD2),
-    surfaceContainer = Color(0xFFF0EEE6), surfaceContainerHigh = Color(0xFFE9E6DC), surfaceContainerHighest = Color(0xFFDEDBD0)
+    primary = IosBlueLight, onPrimary = Color.White,
+    primaryContainer = Color(0xFFD6E8FF), onPrimaryContainer = Color(0xFF00357F),
+    secondary = Color(0xFF3C3C43), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE9E9EB), onSecondaryContainer = Color(0xFF1C1C1E),
+    tertiary = Color(0xFFFF9500), onTertiary = Color.White,
+    background = Color(0xFFF2F2F7), onBackground = Color(0xFF1C1C1E),
+    surface = Color(0xFFFFFFFF), onSurface = Color(0xFF1C1C1E), onSurfaceVariant = Color(0xFF6C6C70),
+    outline = Color(0xFFC6C6C8), outlineVariant = Color(0xFFE5E5EA),
+    surfaceContainer = Color(0xFFF2F2F7), surfaceContainerHigh = Color(0xFFE9E9EC), surfaceContainerHighest = Color(0xFFDEDEE3)
 )
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFFAF9F5), onPrimary = Color(0xFF141413),
-    primaryContainer = Color(0xFF3B2A23), onPrimaryContainer = Color(0xFFF3B49C),
-    secondary = Color(0xFFB0AEA5), onSecondary = Color(0xFF141413),
-    secondaryContainer = Color(0xFF353330), onSecondaryContainer = Color(0xFFFAF9F5),
-    tertiary = Color(0xFFD97757), onTertiary = Color.White,
-    background = Color(0xFF141413), onBackground = Color(0xFFFAF9F5),
-    surface = Color(0xFF141413), onSurface = Color(0xFFFAF9F5), onSurfaceVariant = Color(0xFFB0AEA5),
-    outline = Color(0xFF6B6A68), outlineVariant = Color(0xFF3A3835),
-    surfaceContainer = Color(0xFF1F1E1D), surfaceContainerHigh = Color(0xFF2A2927), surfaceContainerHighest = Color(0xFF353330)
+    primary = IosBlueDark, onPrimary = Color.White,
+    primaryContainer = Color(0xFF123A66), onPrimaryContainer = Color(0xFFBFDCFF),
+    secondary = Color(0xFFEBEBF0), onSecondary = Color(0xFF1C1C1E),
+    secondaryContainer = Color(0xFF2C2C2E), onSecondaryContainer = Color(0xFFF2F2F7),
+    tertiary = Color(0xFFFF9F0A), onTertiary = Color.Black,
+    background = Color(0xFF000000), onBackground = Color(0xFFF2F2F7),
+    surface = Color(0xFF1C1C1E), onSurface = Color(0xFFF2F2F7), onSurfaceVariant = Color(0xFF9B9BA1),
+    outline = Color(0xFF48484A), outlineVariant = Color(0xFF2C2C2E),
+    surfaceContainer = Color(0xFF151517), surfaceContainerHigh = Color(0xFF2C2C2E), surfaceContainerHighest = Color(0xFF3A3A3C)
 )
+// خط افتراضي يحاكي SF Pro: sans-serif عريض/هندسي بدل Serif السابق، وهو ما يعطي الطابع الأقرب لواجهات آبل.
 private val NovaTypography = Typography().let { t ->
-    val serif = androidx.compose.ui.text.font.FontFamily.Serif
+    val sf = androidx.compose.ui.text.font.FontFamily.SansSerif
     t.copy(
-        displayLarge = t.displayLarge.copy(fontFamily = serif), displayMedium = t.displayMedium.copy(fontFamily = serif),
-        displaySmall = t.displaySmall.copy(fontFamily = serif), headlineLarge = t.headlineLarge.copy(fontFamily = serif),
-        headlineMedium = t.headlineMedium.copy(fontFamily = serif), headlineSmall = t.headlineSmall.copy(fontFamily = serif),
-        titleLarge = t.titleLarge.copy(fontFamily = serif)
+        displayLarge = t.displayLarge.copy(fontFamily = sf, fontWeight = FontWeight.Bold),
+        displayMedium = t.displayMedium.copy(fontFamily = sf, fontWeight = FontWeight.Bold),
+        displaySmall = t.displaySmall.copy(fontFamily = sf, fontWeight = FontWeight.Bold),
+        headlineLarge = t.headlineLarge.copy(fontFamily = sf, fontWeight = FontWeight.Bold),
+        headlineMedium = t.headlineMedium.copy(fontFamily = sf, fontWeight = FontWeight.Bold),
+        headlineSmall = t.headlineSmall.copy(fontFamily = sf, fontWeight = FontWeight.SemiBold),
+        titleLarge = t.titleLarge.copy(fontFamily = sf, fontWeight = FontWeight.SemiBold),
+        titleMedium = t.titleMedium.copy(fontFamily = sf, fontWeight = FontWeight.Medium),
+        bodyLarge = t.bodyLarge.copy(fontFamily = sf),
+        bodyMedium = t.bodyMedium.copy(fontFamily = sf),
+        labelLarge = t.labelLarge.copy(fontFamily = sf, fontWeight = FontWeight.SemiBold)
     )
+}
+
+/** نصف قطر الزوايا القياسي لكبسولات وبطاقات أسلوب iOS (أشرطة، أزرار، أوراق). */
+object IosShape {
+    val pill = RoundedCornerShape(50)
+    val card = RoundedCornerShape(16.dp)
+    val sheet = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
 }
 
 /** سمة التطبيق المشتركة بين نافذة المتصفح ونافذة اللوحات (ألوان، خط، اتجاه RTL/LTR، ألوان أشرطة النظام). */

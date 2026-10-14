@@ -217,7 +217,13 @@ fun BottomPill(
     var fill by remember { mutableStateOf<String?>(null) } // اقتراح طُلب إدراجه في الحقل
     LaunchedEffect(editing) { if (!editing) { query = ""; fill = null } }
 
-    Surface(Modifier.imePadding().fillMaxWidth(), shape = RectangleShape, color = cs.background) {
+    // خلفية شبه شفافة بحافة علوية رفيعة (hairline) بدل سطح معتم كامل — تقريب لأسلوب الزجاج
+    // المصقول (Liquid Glass) في شريط أدوات Safari الحديث على iOS، دون الحاجة لمكتبة ضبابية خارجية.
+    Surface(
+        Modifier.imePadding().fillMaxWidth()
+            .drawBehind { drawLine(cs.outlineVariant, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.2f * density) },
+        shape = RectangleShape, color = cs.surface.copy(alpha = 0.92f)
+    ) {
         Column(Modifier.navigationBarsPadding()) {
             if (editing) SuggestionsPanel(
                 query = query,
@@ -324,7 +330,8 @@ fun BottomPill(
                             }
                         }
                         RoundBtn(onClick = onTabs) {
-                            Box(Modifier.size(24.dp).border(2.dp, cs.onSurface, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
+                            // مربع بزوايا دائرية بنفس تناسب أيقونة التبويبات في Safari (بدل مربع حاد الزوايا)
+                            Box(Modifier.size(25.dp).border(1.8.dp, cs.onSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                                 Text(if (tabCount > 99) "99+" else "$tabCount", maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                             }
                         }
