@@ -102,7 +102,7 @@ import java.net.URLEncoder
 private fun RowScope.QuickTile(label: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     Surface(
-        onClick = onClick, enabled = enabled, shape = RoundedCornerShape(24.dp), color = cs.surfaceContainerHigh,
+        onClick = onClick, enabled = enabled, shape = RoundedCornerShape(20.dp), color = cs.surfaceContainerHigh,
         modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.4f)
     ) {
         Column(Modifier.padding(vertical = 16.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -132,7 +132,9 @@ fun MenuSheet(
     var tools by remember { mutableStateOf(false) }
     fun act(a: () -> Unit) { scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); a() } }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.background) {
+    // ورقة سفلية بزوايا علوية 20dp (نفس انحناء Action Sheet في iOS) وخلفية "Grouped" رمادية فاتحة
+    // تُبرز صفوف القوائم البيضاء فوقها — بدل سطح مسطّح واحد اللون.
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.background, shape = IosShape.sheet) {
         BackHandler(enabled = tools) { tools = false }
         AnimatedContent(
             targetState = tools, label = "menu",

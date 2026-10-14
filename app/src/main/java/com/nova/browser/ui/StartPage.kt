@@ -105,11 +105,16 @@ const val AI_MODE_URL = "https://www.google.com/search?udm=50"
 @Composable
 private fun SiteTile(st: Site, modifier: Modifier, onClick: () -> Unit) {
     val cs = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), color = cs.surfaceContainerHigh, modifier = modifier) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = cs.surface, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            IconCircle {
-                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = cs.onSurface)
-                else Text(st.glyph, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cs.onSurface)
+            // شارة مربعة بزوايا دائرية (squircle) بدل الدائرة — تماماً كأيقونات المواقع المفضّلة
+            // في صفحة بداية Safari على iOS، وبلون الموقع الحقيقي بدل رمادي محايد.
+            Box(
+                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(st.color).copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = Color(st.color))
+                else Text(st.glyph, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(st.color))
             }
             Spacer(Modifier.height(8.dp))
             Text(st.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -153,7 +158,7 @@ fun StartPage(
     ) {
         // أعلى الصفحة: شريط البحث + زر التبويبات
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surfaceContainerHigh, modifier = Modifier.weight(1f).height(52.dp)) {
+            Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surface, modifier = Modifier.weight(1f).height(52.dp)) {
                 Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
                     Spacer(Modifier.width(12.dp))
@@ -162,7 +167,7 @@ fun StartPage(
             }
             Spacer(Modifier.width(8.dp))
             RoundBtn(onClick = onTabs) {
-                Box(Modifier.size(22.dp).border(2.dp, cs.onSurface, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(22.dp).border(1.8.dp, cs.onSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                     Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }
@@ -175,9 +180,9 @@ fun StartPage(
         Spacer(Modifier.height(18.dp))
 
         // وضع الذكاء الاصطناعي: بطاقة هادئة بألوان التطبيق فقط (لمسة التمييز tertiary)
-        Surface(onClick = onAi, shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Surface(onClick = onAi, shape = IosShape.card, color = cs.surface, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
                     Text("✦", color = cs.tertiary, fontSize = 20.sp)
                 }
                 Spacer(Modifier.width(14.dp))

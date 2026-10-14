@@ -20,8 +20,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
 /**
- * مربع الحوار الموحّد لكل التطبيق: نفس الشكل (حواف 28dp، سطح surfaceContainerHigh، شارة أيقونة، أزرار بنفس الأسلوب)
- * بحيث لا يظهر أي حوار بشكل مختلف عن بقية الواجهة. الحذف/التحذير يأخذ لون الخطر.
+ * مربع الحوار الموحّد لكل التطبيق — بأسلوب تنبيهات iOS (UIAlertController): عنوان ورسالة في المنتصف،
+ * زوايا 14dp بدل 28dp الدائرية السابقة، وأزرار نصيّة بلون أزرق النظام بدل الزر المملوء دائري الشكل
+ * (الخطر/الحذف يصير نص أحمر، تماماً كتصرّف زر "Delete" في تنبيهات Safari/iOS).
  */
 @Composable
 fun NovaDialog(
@@ -39,28 +40,41 @@ fun NovaDialog(
     val cs = MaterialTheme.colorScheme
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = cs.surfaceContainerHigh,
+        shape = RoundedCornerShape(14.dp),
+        containerColor = cs.surface,
+        titleContentColor = cs.onSurface,
+        textContentColor = cs.onSurfaceVariant,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                if (icon != null) Box(
-                    Modifier.size(44.dp).clip(RoundedCornerShape(15.dp)).background(if (danger) cs.errorContainer else cs.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) { Icon(icon, null, Modifier.size(24.dp), tint = if (danger) cs.onErrorContainer else cs.onPrimaryContainer) }
-                Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (icon != null) {
+                    Box(
+                        Modifier.padding(bottom = 10.dp).size(40.dp).clip(CircleShape)
+                            .background(if (danger) cs.error.copy(alpha = 0.12f) else cs.primary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(icon, null, Modifier.size(21.dp), tint = if (danger) cs.error else cs.primary) }
+                }
+                Text(
+                    title, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
         },
-        text = { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp), content = content) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp), content = content
+            )
+        },
         confirmButton = {
-            if (confirmText != null && onConfirm != null) Button(
-                onClick = onConfirm, shape = CircleShape,
-                colors = if (danger) ButtonDefaults.buttonColors(containerColor = cs.error, contentColor = cs.onError) else ButtonDefaults.buttonColors()
-            ) { Text(confirmText) }
+            if (confirmText != null && onConfirm != null) TextButton(onClick = onConfirm) {
+                Text(confirmText, color = if (danger) cs.error else cs.primary, fontWeight = FontWeight.SemiBold)
+            }
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 extraAction?.invoke()
-                if (dismissText != null) TextButton(onClick = onDismissClick ?: onDismiss) { Text(dismissText) }
+                if (dismissText != null) TextButton(onClick = onDismissClick ?: onDismiss) { Text(dismissText, color = cs.primary) }
             }
         }
     )
@@ -77,19 +91,19 @@ fun NovaChoiceDialog(
         Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             options.forEachIndexed { i, o ->
                 val on = i == selected
+                // صفّ بأسلوب قوائم إعدادات iOS: علامة ✓ زرقاء يمين العنصر المختار، بلا تظليل خلفية كامل
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(if (on) cs.primaryContainer else cs.surfaceContainerHighest.copy(alpha = 0.55f))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                         .clickable { onSelect(i); onDismiss() }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(horizontal = 14.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         o, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                        color = if (on) cs.onPrimaryContainer else cs.onSurface
+                        style = MaterialTheme.typography.bodyLarge, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                        color = cs.onSurface
                     )
-                    if (on) Icon(Icons.Default.Check, null, Modifier.size(20.dp), tint = cs.onPrimaryContainer)
+                    if (on) Icon(Icons.Default.Check, null, Modifier.size(19.dp), tint = cs.primary)
                 }
             }
         }
