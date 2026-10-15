@@ -783,6 +783,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     val imeVisible by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
     val imeSettled = rememberSettledIme(imeInsets)   // ارتفاع الكيبورد بعد استقراره (تغيير واحد للـ WebView بدل ~20)
     var pageTyping by remember { mutableStateOf(false) }
+    var siteSheet by remember { mutableStateOf(false) }
     var wasBlocked by remember { mutableStateOf(false) }
     LaunchedEffect(imeVisible, editing, tab.finding) {
         val blocked = editing || tab.finding
@@ -791,6 +792,13 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             pageTyping = true
         } else pageTyping = false
         wasBlocked = blocked
+    }
+    // بعد استقرار الكيبورد: أظهر خانة الإدخال المحدَّدة فوقه (المواقع ذات شريط الإدخال كانت تبقى مغطّاة)
+    LaunchedEffect(imeSettled.value, pageTyping) {
+        if (pageTyping && imeSettled.value > 0) {
+            kotlinx.coroutines.delay(140)
+            tab.webView?.let { WebSupport.revealFocused(it) }
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -814,8 +822,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
-                            if (targetState.second) fadeIn(tween(Adaptive.ms(140))) togetherWith fadeOut(tween(Adaptive.ms(90)))
-                            else EnterTransition.None togetherWith ExitTransition.None
+                            if (targetState.second) fadeIn(tween(Adaptive.ms(180), easing = NovaMotion.emphasized)) togetherWith fadeOut(tween(Adaptive.ms(110)))
+                            else fadeIn(tween(Adaptive.ms(200), easing = NovaMotion.emphasized)) togetherWith fadeOut(tween(Adaptive.ms(120)))
                         },
                         label = "page"
                     ) { (id, blank) ->
@@ -889,7 +897,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     shown.value?.let { si ->
                         SiteBar(
                             info = si, progress = tab.progress, loading = tab.loading,
-                            onReload = { tab.webView?.reload() }, onShare = { shareText(activity, tab.url) }, onTitleTap = { Pwa.scrollTop(tab.webView) },
+                            onReload = { tab.webView?.reload() }, onShare = { siteSheet = true }, onTitleTap = { Pwa.scrollTop(tab.webView) },
                             onPip = if (si.kind == SiteKind.YT_VIDEO) ({ mainAct?.enterPip() }) else null,
                             onDownload = if (si.kind == SiteKind.YT_VIDEO) ({ ytUrl = tab.url }) else null
                         )
@@ -919,10 +927,14 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             }
         }
         if (Updater.prompt) UpdateDialog()
+        if (siteSheet) MenuSheet(
+            tab, { siteSheet = false }, { newTab() }, { tab.findInfo = ""; tab.finding = true },
+            { shareText(activity, tab.url) }, { copyText(activity, tab.url) }, { printPage(tab) }
+        )
         AnimatedVisibility(
             visible = showTabs,
-            enter = fadeIn(tween(Adaptive.ms(200))) + scaleIn(tween(Adaptive.ms(260), easing = FastOutSlowInEasing), initialScale = 0.92f),
-            exit = fadeOut(tween(Adaptive.ms(150))) + scaleOut(tween(Adaptive.ms(200), easing = FastOutSlowInEasing), targetScale = 0.92f)
+            enter = fadeIn(tween(Adaptive.ms(220))) + scaleIn(tween(Adaptive.ms(340), easing = NovaMotion.emphasized), initialScale = 1.1f),
+            exit = fadeOut(tween(Adaptive.ms(200))) + scaleOut(tween(Adaptive.ms(280), easing = NovaMotion.emphasized), targetScale = 1.1f)
         ) {
             TabSwitcher(
                 tabs = tabs, current = current.coerceIn(0, tabs.lastIndex),

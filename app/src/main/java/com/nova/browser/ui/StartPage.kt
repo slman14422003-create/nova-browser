@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -30,24 +31,32 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.text.style.TextAlign
 
-private class Site(val name: String, val host: String, val url: String, val glyph: String, val color: Long, val icon: ImageVector?)
+private class Site(val name: String, val host: String, val url: String, val glyph: String, val color: Long, val icon: ImageVector?, val tint: Color? = null)
 
 const val AI_MODE_URL = "https://www.google.com/search?udm=50"
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FavoriteItem(st: Site, modifier: Modifier, onClick: () -> Unit) {
+private fun FavoriteItem(st: Site, modifier: Modifier, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
     val ios = LocalIos.current
     val src = remember { MutableInteractionSource() }
+    var menu by remember { mutableStateOf(false) }
+    val ver = Favicons.version
+    val fav = if (st.tint != null) remember(ver, st.host) { Favicons.get(st.host) } else null
     Column(
-        modifier.pressScale(src, 0.92f).clickable(interactionSource = src, indication = null, onClick = onClick).padding(vertical = 6.dp),
+        modifier.pressScale(src, 0.92f).combinedClickable(interactionSource = src, indication = null, onLongClick = if (onRemove != null) ({ menu = true }) else null, onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(60.dp).clip(RoundedCornerShape(13.5.dp)).background(Color(st.color)), contentAlignment = Alignment.Center) {
-            if (st.icon != null) Icon(st.icon, null, Modifier.size(28.dp), tint = Color.White)
+        Box(Modifier.size(60.dp).clip(RoundedCornerShape(13.5.dp)).background(if (fav != null) Color.White else (st.tint ?: Color(st.color))), contentAlignment = Alignment.Center) {
+            if (fav != null) Image(fav.asImageBitmap(), null, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)))
+            else if (st.icon != null) Icon(st.icon, null, Modifier.size(28.dp), tint = Color.White)
             else Text(st.glyph, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
         Spacer(Modifier.height(6.dp))
         Text(st.name, style = MaterialTheme.typography.labelMedium, color = ios.label, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        if (onRemove != null) DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp), containerColor = ios.menu, tonalElevation = 0.dp) {
+            DropdownMenuItem(text = { Text(L("حذف")) }, onClick = { menu = false; onRemove() })
+        }
     }
 }
 
@@ -75,6 +84,10 @@ fun StartPage(
             Site("GitHub", "github.com", "https://github.com", "</>", 0xFF3A3A3C, null)
         )
     }
+    val userFavs = Library.favorites.map { b ->
+        val h = hostOf(b.url)
+        Site(b.title, h, b.url, h.take(1).uppercase(), 0L, null, Color.hsv((h.hashCode().toLong().let { if (it < 0) -it else it } % 360).toFloat(), 0.55f, 0.72f))
+    }
     val latest = Downloader.tasks.firstOrNull()
     val dlSub = when {
         activeDl > 0 -> ("" + activeDl + L(" قيد التنزيل"))
@@ -88,9 +101,9 @@ fun StartPage(
     ) {
         StartHeader(L("المفضلة"))
         Column(Modifier.padding(horizontal = 12.dp)) {
-            sites.chunked(4).forEach { row ->
+            (sites + userFavs).chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {
-                    row.forEach { st -> FavoriteItem(st, Modifier.weight(1f)) { onOpen(st.url) } }
+                    row.forEach { st -> FavoriteItem(st, Modifier.weight(1f), if (st.tint != null) ({ Library.favorites.firstOrNull { it.url == st.url }?.let { Library.toggleFavorite(it.url, it.title) }; Unit }) else null) { onOpen(st.url) } }
                     repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -116,10 +129,11 @@ fun StartPage(
         }
         Spacer(Modifier.height(24.dp))
         Column {
-            ListRow(groupShape(0, 4), L("التنزيلات"), dlSub, onDownloads, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.blue) { Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp)) } }
-            ListRow(groupShape(1, 4), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Menu, null, Modifier.size(18.dp)) } }
-            ListRow(groupShape(2, 4), L("المكتبة"), null, onLibrary, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.orange) { Icon(Icons.Default.Star, null, Modifier.size(18.dp)) } }
-            ListRow(groupShape(3, 4), L("الإعدادات"), null, onSettings, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Settings, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(0, 5), L("التنزيلات"), dlSub, onDownloads, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.blue) { Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp)) } }
+            ListRow(groupShape(1, 5), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Menu, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(2, 5), L("قائمة القراءة"), (Library.readingList.size.toString() + L(" صفحة")), { Library.initialTab = 2; onLibrary() }, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.blue) { Icon(Icons.Default.Info, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(3, 5), L("المكتبة"), null, onLibrary, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.orange) { Icon(Icons.Default.Star, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(4, 5), L("الإعدادات"), null, onSettings, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Settings, null, Modifier.size(18.dp)) } }
         }
     }
 }

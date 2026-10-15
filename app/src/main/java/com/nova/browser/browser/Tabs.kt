@@ -3,6 +3,11 @@ package com.nova.browser
 import android.content.*
 import android.webkit.*
 import androidx.compose.foundation.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -65,8 +70,12 @@ fun TabSwitcher(
     var picked by remember { mutableIntStateOf(-1) }
     val usedTags = tabs.map { it.tag }.filter { it > 0 }.distinct().sorted()
     val filter = if ((picked > 0 && picked !in usedTags) || (picked == -2 && tabs.none { it.pinned })) -1 else picked
+    var tabQuery by remember { mutableStateOf("") }
+    val tq = tabQuery.trim()
     val shown = tabs.withIndex().filter { (_, t) -> when (filter) { -1 -> true; -2 -> t.pinned; else -> t.tag == filter } }
-    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = (current / 2) * 2)
+        .filter { (_, t) -> tq.isBlank() || t.title.contains(tq, true) || t.url.contains(tq, true) }
+    val showSearch = tabs.size >= 4
+    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = (current / 2) * 2 + (if (showSearch) 1 else 0))
     var filterMenu by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(ios.tabsBg)) {
         LazyVerticalGrid(
@@ -75,6 +84,7 @@ fun TabSwitcher(
             horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp)
         ) {
+            if (showSearch) item(span = { GridItemSpan(maxLineSpan) }) { PanelSearch(tabQuery, { tabQuery = it }, L("بحث في التبويبات")) }
             items(shown, key = { it.value.id }) { (i, t) ->
                 val blank = t.url.isBlank()
                 val host = if (blank) "nova" else hostOf(t.url)
@@ -82,20 +92,24 @@ fun TabSwitcher(
                 var menu by remember { mutableStateOf(false) }
                 val cardShape = RoundedCornerShape(14.dp)
                 var dx by remember { mutableFloatStateOf(0f) }
+                var dragging by remember { mutableStateOf(false) }
+                val dxShown by animateFloatAsState(dx, if (dragging) snap() else spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow), label = "swipeClose")
+                val cardSrc = remember { MutableInteractionSource() }
                 Box(
-                    Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem()
-                        .graphicsLayer { translationX = dx; alpha = (1f - kotlin.math.abs(dx) / (size.width * 1.2f)).coerceIn(0f, 1f) }
+                    Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem().pressScale(cardSrc, 0.96f)
+                        .graphicsLayer { translationX = dxShown; alpha = (1f - kotlin.math.abs(dxShown) / (size.width * 1.2f)).coerceIn(0f, 1f) }
                         .pointerInput(t.id) {
                             detectHorizontalDragGestures(
-                                onDragEnd = { if (kotlin.math.abs(dx) > size.width * 0.35f) onClose(i) else dx = 0f },
-                                onDragCancel = { dx = 0f },
+                                onDragStart = { dragging = true },
+                                onDragEnd = { dragging = false; if (kotlin.math.abs(dx) > size.width * 0.35f) onClose(i) else dx = 0f },
+                                onDragCancel = { dragging = false; dx = 0f },
                                 onHorizontalDrag = { c, d -> c.consume(); dx += d }
                             )
                         }
                 ) {
                     Column(
                         Modifier.fillMaxSize().shadow(2.dp, cardShape).clip(cardShape).background(ios.cell)
-                            .combinedClickable(onClick = { onSelect(i) }, onLongClick = { menu = true })
+                            .combinedClickable(interactionSource = cardSrc, indication = null, onClick = { onSelect(i) }, onLongClick = { menu = true })
                     ) {
                         if (t.tag > 0) Box(Modifier.fillMaxWidth().height(3.dp).background(TabTagColors[t.tag]))
                         Row(Modifier.fillMaxWidth().height(34.dp).padding(start = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {

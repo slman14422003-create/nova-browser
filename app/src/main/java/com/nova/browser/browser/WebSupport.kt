@@ -101,6 +101,15 @@ object WebSupport {
 
     @android.annotation.SuppressLint("ClickableViewAccessibility")
     fun installScrollGuard(wv: WebView) {
+        // بداية كل لمسة تمسح الحالة قبل أن تصل رسالة الصفحة، وتأخذ الصفحة تركيز النظام كي يظهر الكيبورد لخانات الإدخال دائماً
+        wv.isFocusable = true; wv.isFocusableInTouchMode = true
+        wv.setOnTouchListener { v, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                innerScroll.remove(wv)
+                if (!v.hasFocus()) v.requestFocus()
+            }
+            false
+        }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
             !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         val js = scrollGuardJs ?: return
@@ -109,11 +118,6 @@ object WebSupport {
                 if (message.data == "1") innerScroll.add(view) else innerScroll.remove(view)
             })
             WebViewCompat.addDocumentStartJavaScript(wv, js, setOf("*"))
-            // بداية كل لمسة تمسح الحالة قبل أن تصل رسالة الصفحة (اللمسة تصل للـ View قبل أن تصل لعملية العرض): لا حالة قديمة عالقة أبداً
-            wv.setOnTouchListener { _, e ->
-                if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) innerScroll.remove(wv)
-                false
-            }
         }
     }
 
@@ -180,6 +184,22 @@ object WebSupport {
         runCatching { wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE }
         hard.add(wv)
         wv.reload()
+    }
+
+    /** يجلب أحدث تصميم للصفحة: يلغي service workers ومخازن الكاش للموقع ويمسح كاش المتصفح ثم يعيد التحميل دون كاش. */
+    fun refreshDesign(wv: WebView) {
+        val js = "(async function(){try{if(navigator.serviceWorker){var r=await navigator.serviceWorker.getRegistrations();for(var i=0;i<r.length;i++){await r[i].unregister()}}" +
+            "if(window.caches){var k=await caches.keys();for(var j=0;j<k.length;j++){await caches.delete(k[j])}}}catch(e){}return 'ok'})()"
+        runCatching { wv.evaluateJavascript(js, null) }
+        runCatching { wv.clearCache(true) }
+        toast(wv.context, L("جارٍ جلب أحدث تصميم للصفحة…"))
+        wv.postDelayed({ hardReload(wv) }, 400)
+    }
+
+    /** بعد ظهور الكيبورد: يُظهر خانة الإدخال المحدَّدة في منتصف الصفحة المرئية كي لا يغطيها الكيبورد. */
+    fun revealFocused(wv: WebView) {
+        wv.evaluateJavascript("(function(){var e=document.activeElement;if(!e||e===document.body)return;var t=(e.tagName||'').toLowerCase();" +
+            "if(t==='input'||t==='textarea'||e.isContentEditable){e.scrollIntoView({block:'center',behavior:'smooth'})}})()", null)
     }
 
     fun scroll(wv: WebView, top: Boolean) {

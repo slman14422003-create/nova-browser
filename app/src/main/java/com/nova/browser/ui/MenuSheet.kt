@@ -22,6 +22,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 private fun ShareHeader(tab: BrowserTab, onClose: () -> Unit) {
@@ -46,6 +49,69 @@ private fun ShareHeader(tab: BrowserTab, onClose: () -> Unit) {
     }
 }
 
+private class ShareTarget(val label: String, val icon: android.graphics.Bitmap?, val pkg: String, val cls: String)
+
+private fun appIconBitmap(d: android.graphics.drawable.Drawable, sz: Int): android.graphics.Bitmap {
+    val b = android.graphics.Bitmap.createBitmap(sz, sz, android.graphics.Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(b)
+    d.setBounds(0, 0, sz, sz); d.draw(c)
+    return b
+}
+
+/** صف تطبيقات المشاركة بتصميم Nova بدل نافذة المشاركة الخاصة بالنظام. */
+@Composable
+private fun ShareApps(url: String, title: String, act: (() -> Unit) -> Unit) {
+    val ios = LocalIos.current
+    val ctx = LocalContext.current
+    val targets = remember(url) {
+        val pm = ctx.packageManager
+        val probe = Intent(Intent.ACTION_SEND).setType("text/plain")
+        runCatching {
+            pm.queryIntentActivities(probe, 0)
+                .filter { it.activityInfo.packageName != ctx.packageName }
+                .map { ShareTarget(it.loadLabel(pm).toString(), runCatching { appIconBitmap(it.loadIcon(pm), 128) }.getOrNull(), it.activityInfo.packageName, it.activityInfo.name) }
+                .sortedBy { it.label.lowercase() }
+        }.getOrDefault(emptyList())
+    }
+    LazyRow(Modifier.fillMaxWidth().padding(bottom = 16.dp), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        items(targets) { t ->
+            Column(
+                Modifier.width(72.dp).clip(RoundedCornerShape(10.dp)).clickable {
+                    act {
+                        runCatching {
+                            ctx.startActivity(
+                                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, url).putExtra(Intent.EXTRA_SUBJECT, title)
+                                    .setClassName(t.pkg, t.cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
+                }.padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(Modifier.size(56.dp).clip(RoundedCornerShape(13.dp)).background(ios.cell), contentAlignment = Alignment.Center) {
+                    val ic = t.icon
+                    if (ic != null) Image(ic.asImageBitmap(), null, Modifier.fillMaxSize())
+                    else Text(t.label.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = ios.label2)
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(t.label, fontSize = 11.sp, color = ios.label2, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            }
+        }
+        item {
+            Column(
+                Modifier.width(72.dp).clip(RoundedCornerShape(10.dp)).clickable { act { shareText(ctx, url) } }.padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(Modifier.size(56.dp).clip(RoundedCornerShape(13.dp)).background(ios.cell), contentAlignment = Alignment.Center) {
+                    IosIcon(IosGlyph.Ellipsis, ios.label, 24.dp)
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(L("المزيد"), fontSize = 11.sp, color = ios.label2, maxLines = 1)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuSheet(
@@ -59,26 +125,38 @@ fun MenuSheet(
     val hasPage = tab.url.isNotBlank()
     fun act(a: () -> Unit) { scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); a() } }
     val marked = hasPage && Library.isBookmarked(tab.url)
+    val reading = hasPage && Library.isInReadingList(tab.url)
+    val startFav = hasPage && Library.isFavorite(tab.url)
     ModalBottomSheet(
         onDismissRequest = onDismiss, sheetState = state, containerColor = ios.groupedBg, shape = IosShape.sheet,
         dragHandle = { Box(Modifier.padding(top = 6.dp, bottom = 8.dp).size(width = 36.dp, height = 5.dp).clip(CircleShape).background(ios.gray3)) }
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 20.dp)) {
             ShareHeader(tab) { act {} }
+            if (hasPage) ShareApps(tab.url, tab.title) { a -> act(a) }
             IosGroup {
-                IosCell(L("مشاركة"), { act(onShare) }, enabled = hasPage, trailing = { IosIcon(IosGlyph.Share, ios.label, 22.dp) })
                 IosCell(L("نسخ الرابط"), { act(onCopy) }, enabled = hasPage, divider = false, trailing = { IosIcon(IosGlyph.Copy, ios.label, 22.dp) })
             }
             Spacer(Modifier.height(20.dp))
             IosGroup {
                 IosCell(L("تبويب جديد"), { act(onNewTab) }, trailing = { IosIcon(IosGlyph.PlusSquare, ios.label, 22.dp) })
                 IosCell(
+                    if (reading) L("إزالة من قائمة القراءة") else L("إضافة إلى قائمة القراءة"),
+                    { act { toast(ctx, if (Library.toggleReading(tab.url, tab.title)) L("أُضيفت إلى قائمة القراءة") else L("أُزيلت من قائمة القراءة")) } },
+                    enabled = hasPage, trailing = { IosIcon(IosGlyph.Book, ios.label, 22.dp) }
+                )
+                IosCell(
                     if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"),
                     { act { toast(ctx, if (Library.toggleBookmark(tab.url, tab.title)) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) } },
                     enabled = hasPage, trailing = { IosIcon(IosGlyph.Book, ios.label, 22.dp) }
                 )
+                IosCell(
+                    if (startFav) L("إزالة من صفحة البداية") else L("إضافة إلى صفحة البداية"),
+                    { act { toast(ctx, if (Library.toggleFavorite(tab.url, tab.title)) L("أُضيفت إلى صفحة البداية") else L("أُزيلت من صفحة البداية")) } },
+                    enabled = hasPage, trailing = { IosIcon(IosGlyph.Plus, ios.label, 22.dp) }
+                )
                 IosCell(L("بحث في الصفحة"), { act(onFind) }, enabled = hasPage, trailing = { IosIcon(IosGlyph.Magnifier, ios.label, 22.dp) })
-                IosCell("Add to home screen", { act { PageExtras.pinShortcut(ctx, tab) } }, enabled = hasPage, trailing = { IosIcon(IosGlyph.PlusSquare, ios.label, 22.dp) })
+                IosCell(L("إضافة إلى الشاشة الرئيسية"), { act { PageExtras.pinShortcut(ctx, tab) } }, enabled = hasPage, trailing = { IosIcon(IosGlyph.PlusSquare, ios.label, 22.dp) })
                 IosCell(L("طباعة / حفظ PDF"), { act(onPrint) }, enabled = hasPage, divider = false, trailing = { IosIcon(IosGlyph.Printer, ios.label, 22.dp) })
             }
         }
@@ -132,6 +210,7 @@ fun PageMenu(
                 IosDivider()
                 IosCell(L("الأعلى"), { act { tab.webView?.let { WebSupport.scroll(it, true) } } })
                 IosCell(L("الأسفل"), { act { tab.webView?.let { WebSupport.scroll(it, false) } } })
+                IosCell(L("تحديث تصميم الصفحة"), { act { tab.webView?.let { WebSupport.refreshDesign(it) } } })
                 IosCell(L("تحديث كامل"), { act { tab.webView?.let { WebSupport.hardReload(it) } } })
                 IosCell(L("إخفاء العائم"), { act { tab.webView?.let { WebSupport.toggleFloating(it) } } })
                 IosCell(L("الصور"), { act { tab.webView?.let { WebSupport.toggleImages(it) } } })

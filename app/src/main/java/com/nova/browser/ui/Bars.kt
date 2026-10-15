@@ -41,6 +41,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -165,7 +168,8 @@ private fun RowScope.ToolbarBtn(
         ),
         contentAlignment = Alignment.Center
     ) {
-        IosIcon(kind, if (enabled) ios.blue else ios.label3, 25.dp, Modifier.pressScale(src, 0.86f))
+        val tbTint by animateColorAsState(if (enabled) ios.blue else ios.label3, tween(Adaptive.ms(200)), label = "tbTint")
+        IosIcon(kind, tbTint, 25.dp, Modifier.pressScale(src, 0.86f))
         if (menu != null) DropdownMenu(
             expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(14.dp),
             containerColor = ios.menu, tonalElevation = 0.dp, shadowElevation = 12.dp
@@ -208,7 +212,7 @@ fun BottomPill(
     LaunchedEffect(editing) { if (!editing) { query = ""; fill = null } }
 
     Column(Modifier.imePadding().fillMaxWidth().background(ios.chrome).iosHairlineTop(ios.separator)) {
-        Column(Modifier.navigationBarsPadding()) {
+        Column(Modifier.navigationBarsPadding().animateContentSize(tween(Adaptive.ms(240), easing = NovaMotion.emphasized))) {
             if (editing) SuggestionsPanel(
                 query = query,
                 onPick = { onGo(it); setEditing(false); focus.clearFocus() },
@@ -216,7 +220,10 @@ fun BottomPill(
             )
             AnimatedContent(
                 targetState = editing,
-                transitionSpec = { fadeIn(tween(Adaptive.ms(120))) togetherWith fadeOut(tween(Adaptive.ms(80))) },
+                transitionSpec = {
+                    (fadeIn(tween(Adaptive.ms(200), delayMillis = Adaptive.ms(40))) + scaleIn(tween(Adaptive.ms(260), easing = NovaMotion.emphasized), initialScale = 0.97f)) togetherWith
+                        fadeOut(tween(Adaptive.ms(110)))
+                },
                 label = "bar"
             ) { isEditing ->
                 if (isEditing) {

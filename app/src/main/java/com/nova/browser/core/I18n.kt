@@ -11,6 +11,23 @@ object I18n {
     fun code(): String = if (isEnglish()) "en" else "ar"
 
     val en: Map<String, String> = mapOf(
+        "تحديث تصميم الصفحة" to "Refresh page design",
+        "جارٍ جلب أحدث تصميم للصفحة…" to "Fetching the latest page design…",
+        "المزيد" to "More",
+        "إضافة إلى صفحة البداية" to "Add to Start Page",
+        "إزالة من صفحة البداية" to "Remove from Start Page",
+        "أُضيفت إلى صفحة البداية" to "Added to Start Page",
+        "أُزيلت من صفحة البداية" to "Removed from Start Page",
+        "بحث في التبويبات" to "Search Tabs",
+        " صفحة" to " pages",
+        "قائمة القراءة" to "Reading List",
+        "إضافة إلى قائمة القراءة" to "Add to Reading List",
+        "إزالة من قائمة القراءة" to "Remove from Reading List",
+        "أُضيفت إلى قائمة القراءة" to "Added to Reading List",
+        "أُزيلت من قائمة القراءة" to "Removed from Reading List",
+        "قائمة القراءة فارغة" to "Reading List is empty",
+        "احفظ صفحات لقراءتها لاحقاً من قائمة المشاركة" to "Save pages to read later from the share menu",
+        "إضافة إلى الشاشة الرئيسية" to "Add to Home Screen",
         "سجل الأعطال" to "Crash log",
         "لا توجد أعطال مسجلة" to "No crashes recorded",
         "اضغط لعرض آخر عطل ونسخه" to "Tap to view and copy the latest crash",

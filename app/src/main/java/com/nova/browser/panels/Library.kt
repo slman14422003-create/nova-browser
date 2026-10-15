@@ -35,6 +35,9 @@ object Library {
     var show by mutableStateOf(false)
     val bookmarks = mutableStateListOf<Bookmark>()
     val history = mutableStateListOf<HistoryItem>()
+    val readingList = mutableStateListOf<Bookmark>()
+    val favorites = mutableStateListOf<Bookmark>()
+    var initialTab = 0
     private const val MAX_HISTORY = 5000
     private var file: File? = null
     private val main = Handler(Looper.getMainLooper())
@@ -45,15 +48,17 @@ object Library {
         if (file != null) return
         val f = File(c.applicationContext.filesDir, "library.json"); file = f
         Thread({
-            val b = ArrayList<Bookmark>(); val h = ArrayList<HistoryItem>()
+            val b = ArrayList<Bookmark>(); val h = ArrayList<HistoryItem>(); val rl = ArrayList<Bookmark>(); val fv = ArrayList<Bookmark>()
             runCatching {
                 if (f.exists()) {
                     val o = JSONObject(f.readText())
                     o.optJSONArray("b")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { x -> b.add(Bookmark(x.getString("u"), x.optString("t"), x.optString("f"), x.optLong("a"))) } }
+                    o.optJSONArray("f")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { x -> fv.add(Bookmark(x.getString("u"), x.optString("t"), "", x.optLong("a"))) } }
+                    o.optJSONArray("r")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { x -> rl.add(Bookmark(x.getString("u"), x.optString("t"), "", x.optLong("a"))) } }
                     o.optJSONArray("h")?.let { a -> for (i in 0 until a.length()) a.getJSONObject(i).let { x -> h.add(HistoryItem(x.getString("u"), x.optString("t"), x.optLong("m"))) } }
                 }
             }
-            main.post { bookmarks.addAll(b); history.addAll(h); loaded = true }
+            main.post { bookmarks.addAll(b); history.addAll(h); readingList.addAll(rl); favorites.addAll(fv); loaded = true }
         }, "nova-library").start()
     }
 
@@ -62,11 +67,13 @@ object Library {
         saveQueued = true
         main.postDelayed({
             saveQueued = false
-            val b = bookmarks.toList(); val h = history.toList(); val f = file ?: return@postDelayed
+            val b = bookmarks.toList(); val h = history.toList(); val rl = readingList.toList(); val fv = favorites.toList(); val f = file ?: return@postDelayed
             Thread({
                 runCatching {
                     val o = JSONObject()
                     o.put("b", JSONArray().also { a -> b.forEach { a.put(JSONObject().put("u", it.url).put("t", it.title).put("f", it.folder).put("a", it.added)) } })
+                    o.put("f", JSONArray().also { a -> fv.forEach { a.put(JSONObject().put("u", it.url).put("t", it.title).put("a", it.added)) } })
+                    o.put("r", JSONArray().also { a -> rl.forEach { a.put(JSONObject().put("u", it.url).put("t", it.title).put("a", it.added)) } })
                     o.put("h", JSONArray().also { a -> h.forEach { a.put(JSONObject().put("u", it.url).put("t", it.title).put("m", it.time)) } })
                     val tmp = File(f.parentFile, "library.tmp"); tmp.writeText(o.toString()); tmp.renameTo(f)
                 }
@@ -83,6 +90,28 @@ object Library {
         if (added) bookmarks.add(0, Bookmark(url, title.ifBlank { url }, "", System.currentTimeMillis())) else bookmarks.removeAt(i)
         scheduleSave(); return added
     }
+
+    fun isInReadingList(url: String) = readingList.any { it.url == url }
+
+    /** يضيف أو يزيل من قائمة القراءة (كسفاري)؛ يعيد true إن أُضيفت. */
+    fun toggleReading(url: String, title: String): Boolean {
+        val i = readingList.indexOfFirst { it.url == url }
+        val added = i < 0
+        if (added) readingList.add(0, Bookmark(url, title.ifBlank { url }, "", System.currentTimeMillis())) else readingList.removeAt(i)
+        scheduleSave(); return added
+    }
+
+    fun isFavorite(url: String) = favorites.any { it.url == url }
+
+    /** مفضلة صفحة البداية (كسفاري)؛ يعيد true إن أُضيفت. */
+    fun toggleFavorite(url: String, title: String): Boolean {
+        val i = favorites.indexOfFirst { it.url == url }
+        val added = i < 0
+        if (added) favorites.add(Bookmark(url, title.ifBlank { hostOf(url) }, "", System.currentTimeMillis())) else favorites.removeAt(i)
+        scheduleSave(); return added
+    }
+
+    fun removeReading(b: Bookmark) { readingList.remove(b); scheduleSave() }
 
     fun removeBookmark(b: Bookmark) { bookmarks.remove(b); scheduleSave() }
     fun removeHistory(h: HistoryItem) { history.remove(h); scheduleSave() }
@@ -136,7 +165,7 @@ object Library {
 fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(Library.initialTab.also { Library.initialTab = 0 }) }
     var query by remember { mutableStateOf("") }
     var importing by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ImportResult?>(null) }
@@ -155,6 +184,7 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
 
     val q = query.trim()
     val bms = Library.bookmarks.filter { q.isBlank() || it.title.contains(q, true) || it.url.contains(q, true) || it.folder.contains(q, true) }
+    val rds = Library.readingList.filter { q.isBlank() || it.title.contains(q, true) || it.url.contains(q, true) }
     val hs = Library.history.filter { q.isBlank() || it.title.contains(q, true) || it.url.contains(q, true) }
     val rows = if (tab == 1) buildRows(hs.take(1000)) else emptyList()
     val timeFmt = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
@@ -167,15 +197,17 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                     if (Library.history.isNotEmpty()) DropdownMenuItem(text = { Text(L("مسح السجل")) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { close(); confirmClear = true })
                 }
             }
-            PanelSegments(listOf(L("المفضلة") + " (${Library.bookmarks.size})", L("السجل") + " (${Library.history.size})"), tab) { tab = it }
+            PanelSegments(listOf(L("المفضلة") + " (${Library.bookmarks.size})", L("السجل") + " (${Library.history.size})", L("قائمة القراءة") + " (${Library.readingList.size})"), tab) { tab = it }
             PanelSearch(query, { query = it }, L("بحث"))
             if (importing) NovaLoadingRow(L("جارٍ الاستيراد…"))
-            val empty = if (tab == 0) bms.isEmpty() else hs.isEmpty()
+            val empty = when (tab) { 0 -> bms.isEmpty(); 2 -> rds.isEmpty(); else -> hs.isEmpty() }
             val emptyMod = Modifier.weight(1f).fillMaxWidth()
             if (empty && q.isNotBlank()) {
                 PanelEmpty(Icons.Default.Search, L("لا نتائج"), modifier = emptyMod)
             } else if (empty && tab == 0) {
                 PanelEmpty(Icons.Default.FavoriteBorder, L("لا توجد مفضلة بعد"), L("اضغط «المفضلة» في قائمة الخيارات لحفظ الصفحة هنا"), emptyMod)
+            } else if (empty && tab == 2) {
+                PanelEmpty(Icons.Default.Info, L("قائمة القراءة فارغة"), L("احفظ صفحات لقراءتها لاحقاً من قائمة المشاركة"), emptyMod)
             } else if (empty) {
                 PanelEmpty(Icons.Default.Refresh, L("السجل فارغ"), L("الصفحات التي تزورها تظهر هنا"), emptyMod)
             } else if (tab == 0) {
@@ -183,6 +215,13 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                     itemsIndexed(bms, key = { i, b -> b.url + i }) { i, b ->
                         ListRow(groupShape(i, bms.size), b.title, if (b.folder.isBlank()) hostOf(b.url) else b.folder + " • " + hostOf(b.url), { onOpen(b.url) },
                             trailing = { ItemMenu(b.url, b.title, false, { onOpen(b.url) }, { Library.removeBookmark(b) }) }) { SiteIcon(b.url, Icons.Default.Star) }
+                    }
+                }
+            } else if (tab == 2) {
+                LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                    itemsIndexed(rds, key = { i, b -> b.url + i }) { i, b ->
+                        ListRow(groupShape(i, rds.size), b.title, hostOf(b.url), { onOpen(b.url) },
+                            trailing = { ItemMenu(b.url, b.title, false, { onOpen(b.url) }, { Library.removeReading(b) }) }) { SiteIcon(b.url, Icons.Default.Info) }
                     }
                 }
             } else {
