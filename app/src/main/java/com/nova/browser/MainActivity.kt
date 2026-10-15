@@ -1,5 +1,8 @@
 package com.nova.browser
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.animation.animateColorAsState
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
@@ -836,6 +839,15 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
+            val tintTarget = if (tab.url.isBlank()) iosC.groupedBg else (tab.topColor?.let { Color(it) } ?: iosC.bg)
+            val stColor by animateColorAsState(if (site != null) iosC.chrome else tintTarget, tween(Adaptive.ms(220)), label = "statusTint")
+            SideEffect {
+                WindowInsetsControllerCompat(activity.window, activity.window.decorView).isAppearanceLightStatusBars = stColor.luminance() > 0.5f
+            }
+            if (site == null && !inPip) Box(
+                Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(stColor)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { tab.webView?.let { WebSupport.scroll(it, true) } }
+            )
             // لون شريط الحالة يتبع لون شريط الموقع (كان خلفية سادة بينما الشريط مائل للون الهوية)
             AnimatedVisibility(visible = site != null, enter = fadeIn(tween(Adaptive.ms(160))), exit = fadeOut(tween(Adaptive.ms(120)))) { StatusBarWash() }
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
@@ -934,7 +946,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onLibrary = { openPanel(activity, "library") },
+                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onLibrary = { openPanel(activity, "library") }, onCloseCurrent = { closeTab(current) },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }

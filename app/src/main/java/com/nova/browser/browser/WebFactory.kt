@@ -159,6 +159,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtWeb.isYtUrl(u)) { v.post { YtWeb.swapIfNeeded(tab, u) }; return }   // وصلنا ليوتيوب (تحويل من الخادم): يُكمل في الـ WebView المخصّص
             WebSupport.resetInnerScroll(v)
+            PageTint.onStart(tab, u)
             tab.loading = true; tab.url = u; tab.shieldHost = Shield.hostFor(u); Shield.onPageStart(v); Perf.onPageStart(v); Pwa.onPageStart(v, u); if (WebCompat.loopTrip(v, tab, u)) return; WebCompat.onPageStart(v, tab, u)
         }
         override fun doUpdateVisitedHistory(v: WebView, u: String, isReload: Boolean) {
@@ -175,6 +176,8 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = WebView
             WebCompat.onPageDone(tab)
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
+            PageTint.sample(v, tab)
+            v.postDelayed({ PageTint.sample(v, tab) }, 700)
             if (!tab.popup) Library.visit(u, v.title)   // سجل التصفح
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =

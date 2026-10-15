@@ -123,6 +123,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 
 private fun hostColor(host: String): Color = Color.hsv((host.hashCode().toLong().let { if (it < 0) -it else it } % 360).toFloat(), 0.55f, 0.72f)
 
@@ -156,7 +157,18 @@ fun TabSwitcher(
                 val accent = remember(host) { hostColor(host) }
                 var menu by remember { mutableStateOf(false) }
                 val cardShape = RoundedCornerShape(12.dp)
-                Box(Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem()) {
+                var dx by remember { mutableFloatStateOf(0f) }
+                Box(
+                    Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem()
+                        .graphicsLayer { translationX = dx; alpha = (1f - kotlin.math.abs(dx) / (size.width * 1.2f)).coerceIn(0f, 1f) }
+                        .pointerInput(t.id) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = { if (kotlin.math.abs(dx) > size.width * 0.35f) onClose(i) else dx = 0f },
+                                onDragCancel = { dx = 0f },
+                                onHorizontalDrag = { c, d -> c.consume(); dx += d }
+                            )
+                        }
+                ) {
                     Column(
                         Modifier.fillMaxSize().shadow(2.dp, cardShape).clip(cardShape).background(ios.cell)
                             .combinedClickable(onClick = { onSelect(i) }, onLongClick = { menu = true })
@@ -165,7 +177,8 @@ fun TabSwitcher(
                         Row(Modifier.fillMaxWidth().height(34.dp).padding(start = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             val fvTick = Favicons.version
                             val ic = if (blank) null else remember(host, fvTick) { Favicons.get(host) }
-                            Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(if (ic != null) Color.White else accent), contentAlignment = Alignment.Center) {
+                            if (t.loading) NovaSpinner(size = 17.dp, color = ios.blue)
+                            else Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(if (ic != null) Color.White else accent), contentAlignment = Alignment.Center) {
                                 if (ic != null) {
                                     val ib = remember(ic) { ic.asImageBitmap() }
                                     Image(ib, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)

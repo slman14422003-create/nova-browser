@@ -499,6 +499,7 @@ object I18n {
         "قنوات الإشعارات" to "Notification channels",
         "الصوت والأهمية لكل نوع من إعدادات النظام" to "Sound and importance for each type, in system settings",
         "تم" to "Done",
+        "إغلاق التبويب" to "Close tab",
         "تقرير الخصوصية" to "Privacy Report",
         "متتبعات تم منعها من تتبعك" to "Trackers prevented from profiling you"
     )

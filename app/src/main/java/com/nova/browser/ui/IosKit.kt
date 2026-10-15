@@ -128,7 +128,7 @@ import kotlin.math.sin
 
 enum class IosGlyph {
     Back, Forward, Disclosure, ChevronDown, ChevronUp, Share, Book, Tabs, Reload, Close, Plus, Magnifier, Lock,
-    Ellipsis, EllipsisCircle, Check, ShieldFill, ArrowUpLeft, Copy, PlusSquare, Printer, XCircleFill
+    Ellipsis, EllipsisCircle, Check, ShieldFill, ArrowUpLeft, Copy, PlusSquare, Printer, XCircleFill, Download
 }
 
 private fun IosGlyph.mirrors() = this == IosGlyph.Back || this == IosGlyph.Forward || this == IosGlyph.Disclosure || this == IosGlyph.ArrowUpLeft
@@ -240,6 +240,7 @@ fun IosIcon(kind: IosGlyph, tint: Color, size: Dp = 24.dp, modifier: Modifier = 
                 drawRoundRect(tint, Offset(7f * s, 3.5f * s), Size(10f * s, 5f * s), CornerRadius(1f * s), style = st)
                 drawRoundRect(tint, Offset(7f * s, 14f * s), Size(10f * s, 6.5f * s), CornerRadius(1f * s), style = st)
             }
+            IosGlyph.Download -> { line(12f, 4f, 12f, 15f); poly(7.5f, 10.5f, 12f, 15f, 16.5f, 10.5f); line(5f, 19.5f, 19f, 19.5f) }
             IosGlyph.XCircleFill -> {
                 drawCircle(tint, radius = 10f * s, center = P(12f, 12f))
                 drawLine(accent, P(8.6f, 8.6f), P(15.4f, 15.4f), strokeWidth = 2f * s, cap = StrokeCap.Round)

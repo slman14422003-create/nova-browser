@@ -98,6 +98,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 
 class BrowserTab(val id: Int, startUrl: String = "") {
+    var topColor by mutableStateOf<Int?>(null)
     var upgradedFrom: String? = null        // رابط http الأصلي إذا رُقّي إلى https
     var upgradedTo: String? = null
     var noUpgradeHost: String? = null

@@ -37,9 +37,17 @@ IosIcon (Canvas glyphs: Back, Forward, Disclosure, Share, Book, Tabs, Reload, Cl
 - Library, Downloads, Passwords, Updater dialog, YouTube download sheet, PWA SiteBar restyled in place.
 - Resources: iOS palette in values/values-night colors, dialog backgrounds 14dp, launcher icon blue gradient with white glyph, error page restyled in core/Utils.kt.
 
+# Round 2 additions
+
+- Status bar tint: BrowserTab.topColor sampled by browser/PageTint.kt (theme-color meta, else body/html background) on page finish and 700ms later; MainActivity paints the status bar strip with it, flips icon contrast by luminance, tap on strip scrolls to top. Start page uses grouped background.
+- Blue 12-spoke NovaSpinner now shows in the address field and tab card while loading, in pull-to-refresh and loading rows.
+- Long-press back/forward lists history (copyBackForwardList); long-press tabs button gives New Tab / Close Tab.
+- Download arrow appears in the address field while downloads are active.
+- Tab cards swipe horizontally to close.
+
 # Known gaps and next steps
 
 - Address bar does not collapse on scroll (would need WebView scroll listener and animated insets).
-- No swipe-to-close on tab cards; no zoom transition from page to tab grid (scale + fade used).
+- No zoom transition from page to tab grid (scale + fade used).
 - Switch thumb mirrors in RTL by design.
 - Verify visually on device: aA menu width, tab card aspect (0.74), glyph stroke weights.

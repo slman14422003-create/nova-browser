@@ -90,7 +90,7 @@ fun NovaSpinner(modifier: Modifier = Modifier, size: Dp = 24.dp, color: Color = 
 @Composable
 fun NovaLoadingRow(text: String? = null, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        NovaSpinner(size = 22.dp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        NovaSpinner(size = 22.dp, color = LocalIos.current.blue)
         if (text != null) {
             Spacer(Modifier.width(10.dp))
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -116,7 +116,7 @@ fun NovaPullIndicator(state: PullToRefreshState, isRefreshing: Boolean, modifier
             .background(cs.surfaceContainerHigh, CircleShape)
             .size(40.dp),
         contentAlignment = Alignment.Center
-    ) { NovaSpinner(size = 20.dp, color = cs.onSurface) }
+    ) { NovaSpinner(size = 20.dp, color = LocalIos.current.blue) }
 }
 
 /** نسخة Drawable للـ Views (مؤشر SwipeRefreshLayout). تدور فقط ما دامت ظاهرة، فلا تستهلك شيئاً وهي مخفية. */

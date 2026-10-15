@@ -221,16 +221,43 @@ fun EngineAlertBanner(ctx: Context) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RowScope.ToolbarBtn(kind: IosGlyph, enabled: Boolean, onClick: () -> Unit) {
+private fun RowScope.ToolbarBtn(
+    kind: IosGlyph, enabled: Boolean, onClick: () -> Unit,
+    menu: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null
+) {
     val ios = LocalIos.current
+    val haptic = LocalHapticFeedback.current
     val src = remember { MutableInteractionSource() }
+    var open by remember { mutableStateOf(false) }
     Box(
-        Modifier.weight(1f).fillMaxHeight().clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
+        Modifier.weight(1f).fillMaxHeight().combinedClickable(
+            interactionSource = src, indication = null, enabled = enabled, onClick = onClick,
+            onLongClick = if (menu != null) ({ haptic.performHapticFeedback(HapticFeedbackType.LongPress); open = true }) else null
+        ),
         contentAlignment = Alignment.Center
     ) {
         IosIcon(kind, if (enabled) ios.blue else ios.label3, 25.dp, Modifier.pressScale(src, 0.86f))
+        if (menu != null) DropdownMenu(
+            expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(14.dp),
+            containerColor = ios.menu, tonalElevation = 0.dp, shadowElevation = 12.dp
+        ) {
+            Column(Modifier.width(260.dp)) { menu({ open = false }) }
+        }
     }
+}
+
+private fun historyItems(tab: BrowserTab, back: Boolean): List<Pair<String, Int>> {
+    val wv = tab.webView ?: return emptyList()
+    val l = wv.copyBackForwardList()
+    val cur = l.currentIndex
+    val range = if (back) (cur - 1 downTo 0) else (cur + 1 until l.size)
+    return range.map { i ->
+        val e = l.getItemAtIndex(i)
+        val t = e.title
+        (if (!t.isNullOrBlank()) t else hostOf(e.url ?: "")) to (i - cur)
+    }.take(12)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -240,7 +267,7 @@ fun BottomPill(
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
     onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit,
     onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit, onTranslate: () -> Unit = {},
-    onPrint: () -> Unit = {}, onLibrary: () -> Unit = {}
+    onPrint: () -> Unit = {}, onLibrary: () -> Unit = {}, onCloseCurrent: () -> Unit = {}
 ) {
     val ios = LocalIos.current
     val focus = LocalFocusManager.current
@@ -353,7 +380,8 @@ fun BottomPill(
                                     ) {
                                         val insecure = tab.url.startsWith("http://")
                                         if (hasPage) {
-                                            if (insecure) Icon(Icons.Default.Warning, L("اتصال غير مشفّر"), Modifier.size(13.dp), tint = ios.red)
+                                            if (tab.loading) NovaSpinner(size = 15.dp, color = ios.blue)
+                                            else if (insecure) Icon(Icons.Default.Warning, L("اتصال غير مشفّر"), Modifier.size(13.dp), tint = ios.red)
                                             else if (tab.url.startsWith("https")) IosIcon(IosGlyph.Lock, ios.label2, 12.dp)
                                             Spacer(Modifier.width(5.dp))
                                         } else {
@@ -365,6 +393,10 @@ fun BottomPill(
                                             style = MaterialTheme.typography.bodyLarge, color = if (hasPage) ios.label else ios.label2
                                         )
                                     }
+                                    val dlActive = Downloader.tasks.count { it.status == Downloader.DOWNLOADING || it.status == Downloader.PREPARING }
+                                    if (hasPage && dlActive > 0) Box(
+                                        Modifier.width(36.dp).fillMaxHeight().clickable { onDownloads() }, contentAlignment = Alignment.Center
+                                    ) { IosIcon(IosGlyph.Download, ios.blue, 19.dp) }
                                     if (hasPage) Box(
                                         Modifier.width(44.dp).fillMaxHeight().clickable { if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() },
                                         contentAlignment = Alignment.Center
@@ -374,11 +406,26 @@ fun BottomPill(
                             }
                         }
                         Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ToolbarBtn(IosGlyph.Back, tab.canBack || hasPage) { if (tab.canBack) tab.webView?.goBack() else onHome() }
-                            ToolbarBtn(IosGlyph.Forward, tab.canForward) { tab.webView?.goForward() }
-                            ToolbarBtn(IosGlyph.Share, hasPage) { sheet = true }
-                            ToolbarBtn(IosGlyph.Book, true) { onLibrary() }
-                            ToolbarBtn(IosGlyph.Tabs, true) { onTabs() }
+                            ToolbarBtn(
+                                IosGlyph.Back, tab.canBack || hasPage, { if (tab.canBack) tab.webView?.goBack() else onHome() },
+                                menu = if (tab.canBack) ({ close ->
+                                    val items = historyItems(tab, true)
+                                    items.forEachIndexed { n, p -> IosCell(p.first, { close(); tab.webView?.goBackOrForward(p.second) }, divider = n < items.lastIndex) }
+                                }) else null
+                            )
+                            ToolbarBtn(
+                                IosGlyph.Forward, tab.canForward, { tab.webView?.goForward() },
+                                menu = if (tab.canForward) ({ close ->
+                                    val items = historyItems(tab, false)
+                                    items.forEachIndexed { n, p -> IosCell(p.first, { close(); tab.webView?.goBackOrForward(p.second) }, divider = n < items.lastIndex) }
+                                }) else null
+                            )
+                            ToolbarBtn(IosGlyph.Share, hasPage, { sheet = true })
+                            ToolbarBtn(IosGlyph.Book, true, { onLibrary() })
+                            ToolbarBtn(IosGlyph.Tabs, true, { onTabs() }, menu = { close ->
+                                IosCell(L("تبويب جديد"), { close(); onNewTab() })
+                                IosCell(L("إغلاق التبويب"), { close(); onCloseCurrent() }, tint = ios.red, divider = false)
+                            })
                         }
                     }
                 }
