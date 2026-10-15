@@ -307,8 +307,7 @@ fun BottomPill(
                                     ) {
                                         val insecure = tab.url.startsWith("http://")
                                         if (hasPage) {
-                                            if (tab.loading) NovaSpinner(size = 15.dp, color = ios.blue)
-                                            else if (insecure) Icon(Icons.Default.Warning, L("اتصال غير مشفّر"), Modifier.size(13.dp), tint = ios.red)
+                                            if (insecure) Icon(Icons.Default.Warning, L("اتصال غير مشفّر"), Modifier.size(13.dp), tint = ios.red)
                                             else if (tab.url.startsWith("https")) IosIcon(IosGlyph.Lock, ios.label2, 12.dp)
                                             Spacer(Modifier.width(5.dp))
                                         } else {

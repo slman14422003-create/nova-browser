@@ -33,6 +33,26 @@ private fun hostColor(host: String): Color = Color.hsv((host.hashCode().toLong()
 
 val TabTagColors = listOf(Color.Transparent, Color(0xFFFF3B30), Color(0xFFFF9500), Color(0xFF34C759), Color(0xFF007AFF), Color(0xFFAF52DE), Color(0xFFFF2D55))
 
+/** معاينة مصغّرة لصفحة البداية (كما يفعل سفاري) بدل نص «صفحة البداية». */
+@Composable
+private fun MiniStartPage() {
+    val ios = LocalIos.current
+    val cols = listOf(Color(0xFF34C759), Color(0xFF007AFF), Color(0xFFFF3B30), Color(0xFFEA4335), Color(0xFF8E8E93), Color(0xFF3A3A3C))
+    Column(Modifier.fillMaxSize().background(ios.groupedBg).padding(horizontal = 10.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.width(44.dp).height(6.dp).clip(CircleShape).background(ios.fill2))
+        cols.chunked(4).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { c -> Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(6.dp)).background(c)) }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(16.dp).clip(RoundedCornerShape(5.dp)).background(ios.cell))
+        Box(Modifier.width(60.dp).height(6.dp).clip(CircleShape).background(ios.fill2))
+        Box(Modifier.fillMaxWidth().height(26.dp).clip(RoundedCornerShape(5.dp)).background(ios.cell))
+        Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(5.dp)).background(ios.cell))
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TabSwitcher(
@@ -60,7 +80,7 @@ fun TabSwitcher(
                 val host = if (blank) "nova" else hostOf(t.url)
                 val accent = remember(host) { hostColor(host) }
                 var menu by remember { mutableStateOf(false) }
-                val cardShape = RoundedCornerShape(12.dp)
+                val cardShape = RoundedCornerShape(14.dp)
                 var dx by remember { mutableFloatStateOf(0f) }
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem()
@@ -90,7 +110,7 @@ fun TabSwitcher(
                             }
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                if (blank) L("صفحة البداية") else t.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                if (blank) L("صفحة البداية") else if (t.title.isBlank() || t.title == L("تبويب جديد")) host else t.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ios.label, modifier = Modifier.weight(1f)
                             )
                             Box(Modifier.size(30.dp).clickable { onClose(i) }, contentAlignment = Alignment.Center) {
@@ -105,9 +125,16 @@ fun TabSwitcher(
                                 val img = remember(th) { th.asImageBitmap() }
                                 Image(img, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
                             } else {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    if (blank) Text(L("صفحة البداية"), style = MaterialTheme.typography.bodySmall, color = ios.label2)
-                                    else Text(host.take(1).uppercase(), fontSize = 34.sp, color = accent, fontWeight = FontWeight.Bold)
+                                if (blank) MiniStartPage()
+                                else Box(Modifier.fillMaxSize().background(ios.bg), contentAlignment = Alignment.Center) {
+                                    val fv2 = Favicons.version
+                                    val ic2 = remember(host, fv2) { Favicons.get(host) }
+                                    if (ic2 != null) {
+                                        Box(Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Color.White), contentAlignment = Alignment.Center) {
+                                            val ib2 = remember(ic2) { ic2.asImageBitmap() }
+                                            Image(ib2, null, Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit)
+                                        }
+                                    } else Text(host.take(1).uppercase(), fontSize = 34.sp, color = accent, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
