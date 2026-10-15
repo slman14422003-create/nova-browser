@@ -1,32 +1,7 @@
 package com.nova.browser
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.app.AlertDialog
-import android.app.DownloadManager
 import android.content.*
-import android.content.pm.ActivityInfo
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.net.Uri
-import android.net.http.SslError
-import android.os.Build
-import android.os.Bundle
-import android.os.Environment
-import android.view.View
-import android.view.ViewGroup
 import android.webkit.*
-import android.widget.FrameLayout
-import android.widget.Toast
-import kotlinx.coroutines.flow.debounce
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -34,101 +9,42 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.app.ActivityCompat
-import android.provider.Settings
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
-import androidx.activity.SystemBarStyle
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.vector.ImageVector
-import kotlinx.coroutines.launch
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import org.json.JSONObject
-import java.net.URLEncoder
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.foundation.ExperimentalFoundationApi
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 enum class IosGlyph {
     Back, Forward, Disclosure, ChevronDown, ChevronUp, Share, Book, Tabs, Reload, Close, Plus, Magnifier, Lock,
-    Ellipsis, EllipsisCircle, Check, ShieldFill, ArrowUpLeft, Copy, PlusSquare, Printer, XCircleFill, Download
+    Ellipsis, EllipsisCircle, Check, ShieldFill, ArrowUpLeft, Copy, PlusSquare, Printer, XCircleFill, Download,
+    Trash, Play, Pause
 }
 
 private fun IosGlyph.mirrors() = this == IosGlyph.Back || this == IosGlyph.Forward || this == IosGlyph.Disclosure || this == IosGlyph.ArrowUpLeft
@@ -241,6 +157,23 @@ fun IosIcon(kind: IosGlyph, tint: Color, size: Dp = 24.dp, modifier: Modifier = 
                 drawRoundRect(tint, Offset(7f * s, 14f * s), Size(10f * s, 6.5f * s), CornerRadius(1f * s), style = st)
             }
             IosGlyph.Download -> { line(12f, 4f, 12f, 15f); poly(7.5f, 10.5f, 12f, 15f, 16.5f, 10.5f); line(5f, 19.5f, 19f, 19.5f) }
+            IosGlyph.Trash -> {
+                line(4.5f, 7f, 19.5f, 7f)
+                line(9.5f, 3.8f, 14.5f, 3.8f)
+                val b = Path()
+                b.m(6.2f, 7f); b.l(7f, 19.2f); b.q(7.1f, 20.5f, 8.4f, 20.5f); b.l(15.6f, 20.5f); b.q(16.9f, 20.5f, 17f, 19.2f); b.l(17.8f, 7f)
+                drawPath(b, tint, style = st)
+                line(10f, 10.3f, 10.3f, 17f); line(14f, 10.3f, 13.7f, 17f)
+            }
+            IosGlyph.Play -> {
+                val p = Path()
+                p.m(7.3f, 4.8f); p.l(19f, 12f); p.l(7.3f, 19.2f); p.close()
+                drawPath(p, tint, style = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            IosGlyph.Pause -> {
+                drawRoundRect(tint, Offset(6f * s, 4.5f * s), Size(4f * s, 15f * s), CornerRadius(1.6f * s))
+                drawRoundRect(tint, Offset(14f * s, 4.5f * s), Size(4f * s, 15f * s), CornerRadius(1.6f * s))
+            }
             IosGlyph.XCircleFill -> {
                 drawCircle(tint, radius = 10f * s, center = P(12f, 12f))
                 drawLine(accent, P(8.6f, 8.6f), P(15.4f, 15.4f), strokeWidth = 2f * s, cap = StrokeCap.Round)
@@ -345,16 +278,6 @@ fun ListRow(
 @Composable
 fun IosGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(10.dp)).background(LocalIos.current.cell), content = content)
-}
-
-@Composable
-fun IosSectionHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = LocalIos.current.label2, modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 24.dp, bottom = 7.dp))
-}
-
-@Composable
-fun IosSectionFooter(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = LocalIos.current.label2, modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 8.dp))
 }
 
 @Composable

@@ -3,13 +3,13 @@ package com.nova.browser
 import android.app.Activity
 import android.content.Context
 import android.webkit.WebView
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,8 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -80,7 +78,7 @@ fun SavePasswordDialog(p: PendingSave, onSave: () -> Unit, onNever: () -> Unit, 
         title = if (upd) L("تحديث كلمة المرور؟") else L("حفظ كلمة المرور؟"), icon = Icons.Default.Lock, onDismiss = onDismiss,
         confirmText = if (upd) L("تحديث") else L("حفظ"), onConfirm = onSave,
         dismissText = L("ليس الآن"), onDismissClick = onDismiss,
-        extraAction = { TextButton(onClick = onNever) { Text(L("عدم الحفظ لهذا الموقع")) } }
+        extraAction = { IosTextButton(L("عدم الحفظ لهذا الموقع"), onNever) }
     ) {
         Text(p.host, fontWeight = FontWeight.Bold)
         if (p.user.isNotBlank()) Text(p.user)
@@ -90,22 +88,20 @@ fun SavePasswordDialog(p: PendingSave, onSave: () -> Unit, onNever: () -> Unit, 
 
 @Composable
 fun FillBanner(o: FillOffer, onFill: (Cred) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     Surface(
         modifier.padding(horizontal = 12.dp).fillMaxWidth(), shape = RoundedCornerShape(14.dp),
-        color = LocalIos.current.menu, tonalElevation = 0.dp, shadowElevation = 10.dp
+        color = ios.menu, tonalElevation = 0.dp, shadowElevation = 10.dp
     ) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Lock, null, Modifier.size(18.dp))
+                IosIcon(IosGlyph.Lock, ios.label, 18.dp)
                 Spacer(Modifier.width(8.dp))
-                Text(L("تعبئة تلقائية"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Close, L("إغلاق"), Modifier.size(18.dp)) }
+                Text(L("تعبئة تلقائية"), style = MaterialTheme.typography.labelLarge, color = ios.label, modifier = Modifier.weight(1f))
+                Box(Modifier.size(32.dp).clickable { onClose() }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.Close, ios.label2, 18.dp) }
             }
             o.creds.take(3).forEach { c ->
-                TextButton(onClick = { onFill(c) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(c.user.ifBlank { c.host }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                IosTextButton(c.user.ifBlank { c.host }, { onFill(c) })
             }
         }
     }
@@ -113,7 +109,7 @@ fun FillBanner(o: FillOffer, onFill: (Cred) -> Unit, onClose: () -> Unit, modifi
 
 @Composable
 fun PasswordsScreen(onBack: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val activity = LocalContext.current as Activity
     var query by remember { mutableStateOf("") }
     var sel by remember { mutableStateOf<Cred?>(null) }
@@ -123,16 +119,14 @@ fun PasswordsScreen(onBack: () -> Unit) {
     val q = query.trim()
     val list = Vault.items.filter { q.isBlank() || it.host.contains(q, true) || it.user.contains(q, true) }.sortedBy { it.host }
 
-    Surface(Modifier.fillMaxSize(), color = LocalIos.current.groupedBg) {
+    Surface(Modifier.fillMaxSize(), color = ios.groupedBg) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             PanelTopBar(L("كلمات المرور"), null, onBack) {
-                RoundBtn(onClick = { edit = Cred("", "", "", "", 0L) }) { IosIcon(IosGlyph.Plus, LocalIos.current.blue, 24.dp) }
+                RoundBtn(onClick = { edit = Cred("", "", "", "", 0L) }) { IosIcon(IosGlyph.Plus, ios.blue, 24.dp) }
             }
             PanelSearch(query, { query = it }, L("بحث"))
             if (list.isEmpty()) {
-                Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text(L("لا توجد كلمات مرور محفوظة"), color = cs.onSurfaceVariant)
-                }
+                PanelEmpty(Icons.Default.Lock, L("لا توجد كلمات مرور محفوظة"))
             } else {
                 LazyColumn(
                     Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -140,7 +134,7 @@ fun PasswordsScreen(onBack: () -> Unit) {
                 ) {
                     itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
                         ListRow(groupShape(i, list.size), c.host, c.user.ifBlank { "—" }, { sel = c; revealed = false }, modifier = Modifier.animateItem()) {
-                            IconCircle { Icon(Icons.Default.Lock, null) }
+                            IconCircle { IosIcon(IosGlyph.Lock, ios.label2, 16.dp) }
                         }
                     }
                 }
@@ -153,22 +147,22 @@ fun PasswordsScreen(onBack: () -> Unit) {
             title = c.host, icon = Icons.Default.Lock, onDismiss = { sel = null }, dismissText = L("إغلاق")
         ) {
                 Column {
-                    Text(L("اسم المستخدم"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-                    Text(c.user.ifBlank { "—" })
+                    Text(L("اسم المستخدم"), style = MaterialTheme.typography.labelMedium, color = ios.label2)
+                    Text(c.user.ifBlank { "—" }, color = ios.label)
                     Spacer(Modifier.height(12.dp))
-                    Text(L("كلمة المرور"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-                    Text(if (revealed) c.pass else "••••••••••")
+                    Text(L("كلمة المرور"), style = MaterialTheme.typography.labelMedium, color = ios.label2)
+                    Text(if (revealed) c.pass else "••••••••••", color = ios.label)
                     Spacer(Modifier.height(8.dp))
                     Row {
-                        TextButton(onClick = {
+                        IosTextButton(if (revealed) L("إخفاء") else L("إظهار"), {
                             if (revealed) revealed = false else Auth.run(activity, L("تأكيد الهوية")) { revealed = true }
-                        }) { Text(if (revealed) L("إخفاء") else L("إظهار")) }
-                        TextButton(onClick = { Auth.run(activity, L("تأكيد الهوية")) { copyText(activity, c.pass, sensitive = true) } }) { Text(L("نسخ كلمة المرور")) }
+                        })
+                        IosTextButton(L("نسخ كلمة المرور"), { Auth.run(activity, L("تأكيد الهوية")) { copyText(activity, c.pass, sensitive = true) } })
                     }
                     Row {
-                        TextButton(onClick = { copyText(activity, c.user) }) { Text(L("نسخ المستخدم")) }
-                        TextButton(onClick = { Auth.run(activity, L("تأكيد الهوية")) { edit = c; sel = null } }) { Text(L("تعديل")) }
-                        TextButton(onClick = { confirmDel = c }) { Text(L("حذف")) }
+                        IosTextButton(L("نسخ المستخدم"), { copyText(activity, c.user) })
+                        IosTextButton(L("تعديل"), { Auth.run(activity, L("تأكيد الهوية")) { edit = c; sel = null } })
+                        IosTextButton(L("حذف"), { confirmDel = c }, color = ios.red)
                     }
                 }
         }
@@ -190,13 +184,10 @@ fun PasswordsScreen(onBack: () -> Unit) {
             confirmText = L("حفظ"), dismissText = L("إلغاء"),
             onConfirm = { if (Vault.cleanHost(host).isNotBlank() && pass.isNotEmpty()) { Vault.upsert(e.id, Vault.cleanHost(host), user.trim(), pass); edit = null } }
         ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(host, { host = it }, singleLine = true, label = { Text(L("الموقع (مثال: example.com)")) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                    OutlinedTextField(user, { user = it }, singleLine = true, label = { Text(L("اسم المستخدم")) })
-                    OutlinedTextField(pass, { pass = it }, singleLine = true, label = { Text(L("كلمة المرور")) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    IosField(host, { host = it }, L("الموقع (مثال: example.com)"), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    IosField(user, { user = it }, L("اسم المستخدم"))
+                    IosField(pass, { pass = it }, L("كلمة المرور"), password = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 }
         }
     }

@@ -118,8 +118,6 @@ object Vault {
 
     fun delete(id: String) { items.removeAll { it.id == id }; persist() }
 
-    fun clearAll() { items.clear(); persist() }
-
     // مواقع اختار المستخدم عدم حفظ كلمات المرور لها
     fun isNever(host: String) = sp.getStringSet("never", emptySet())!!.contains(norm(host))
     fun neverSave(host: String) {

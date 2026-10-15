@@ -10,9 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.webkit.WebSettings
 import android.webkit.WebView
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature

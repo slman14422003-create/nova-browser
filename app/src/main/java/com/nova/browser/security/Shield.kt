@@ -7,9 +7,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream

@@ -70,9 +70,9 @@ private fun statusLine(t: DlTask): String {
 
 @Composable
 fun SegmentBar(t: DlTask) {
-    val cs = MaterialTheme.colorScheme
-    val track = cs.surfaceContainerHighest; val fill = cs.tertiary; val gap = cs.surfaceContainerHigh
-    Canvas(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
+    val ios = LocalIos.current
+    val track = ios.fill3; val fill = ios.blue; val gap = ios.groupedBg
+    Canvas(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))) {
         drawRect(track)
         val tot = t.total
         if (tot > 0 && t.segSnap.isNotEmpty()) {
@@ -103,20 +103,22 @@ private fun kindLabel(k: Int) = when (k) {
 }
 
 @Composable
-private fun kindColors(k: Int): Pair<Color, Color> {
-    val cs = MaterialTheme.colorScheme
+private fun kindColor(k: Int): Color {
+    val ios = LocalIos.current
     return when (k) {
-        1 -> cs.primaryContainer to cs.onPrimaryContainer
-        2, 5 -> cs.secondaryContainer to cs.onSecondaryContainer
-        3 -> cs.tertiaryContainer to cs.onTertiaryContainer
-        6 -> cs.errorContainer to cs.onErrorContainer
-        else -> cs.surfaceContainerHighest to cs.onSurface
+        1 -> ios.purple
+        2 -> ios.pink
+        3 -> ios.teal
+        4 -> ios.orange
+        5 -> ios.yellow
+        6 -> ios.indigo
+        else -> ios.gray
     }
 }
 
 @Composable
 fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val ctx = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -124,30 +126,29 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
     val failed = t.status == Downloader.FAILED
     val done = t.status == Downloader.DONE
     val kind = kindOf(t.name)
-    val (badgeBg, badgeFg) = kindColors(kind)
-    Surface(shape = RoundedCornerShape(10.dp), color = cs.surface, modifier = modifier.fillMaxWidth()) {
+    Box(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(ios.cell)) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(badgeBg), contentAlignment = Alignment.Center) {
-                    Text(t.name.substringAfterLast('.', "?").take(4).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeFg)
+                IosTile(kindColor(kind), size = 46.dp) {
+                    Text(t.name.substringAfterLast('.', "?").take(4).uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(t.name.ifBlank { hostOf(t.origUrl) }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                    Text(statusLine(t), style = MaterialTheme.typography.bodySmall, color = if (failed) cs.error else cs.onSurfaceVariant)
+                    Text(t.name.ifBlank { hostOf(t.origUrl) }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall, color = ios.label)
+                    Text(statusLine(t), style = MaterialTheme.typography.bodySmall, color = if (failed) ios.red else ios.label2)
                     if (done) Text(
                         java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT).format(java.util.Date(t.createdAt)) + " • " + kindLabel(kind) + " • " + hostOf(t.origUrl),
-                        style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis
+                        style = MaterialTheme.typography.labelSmall, color = ios.label2, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 }
                 Box {
-                    Box(Modifier.size(36.dp).clickable { menu = true }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.EllipsisCircle, LocalIos.current.blue, 24.dp) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp), containerColor = LocalIos.current.menu, tonalElevation = 0.dp) {
-                        DropdownMenuItem(text = { Text(L("نسخ الرابط")) }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; copyText(ctx, t.origUrl) })
+                    Box(Modifier.size(36.dp).clickable { menu = true }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.EllipsisCircle, ios.blue, 24.dp) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp), containerColor = ios.menu, tonalElevation = 0.dp) {
+                        DropdownMenuItem(text = { Text(L("نسخ الرابط")) }, leadingIcon = { IosIcon(IosGlyph.Copy, ios.label) }, onClick = { menu = false; copyText(ctx, t.origUrl) })
                         if (done) {
-                            DropdownMenuItem(text = { Text(L("إزالة من القائمة")) }, leadingIcon = { Icon(Icons.Default.Close, null) }, onClick = { menu = false; Downloader.remove(t, false) })
-                            DropdownMenuItem(text = { Text(L("حذف الملف")) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menu = false; confirmDelete = true })
-                        } else DropdownMenuItem(text = { Text(L("إلغاء وحذف")) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menu = false; Downloader.cancel(t) })
+                            DropdownMenuItem(text = { Text(L("إزالة من القائمة")) }, leadingIcon = { IosIcon(IosGlyph.Close, ios.label) }, onClick = { menu = false; Downloader.remove(t, false) })
+                            DropdownMenuItem(text = { Text(L("حذف الملف"), color = ios.red) }, leadingIcon = { IosIcon(IosGlyph.Trash, ios.red) }, onClick = { menu = false; confirmDelete = true })
+                        } else DropdownMenuItem(text = { Text(L("إلغاء وحذف"), color = ios.red) }, leadingIcon = { IosIcon(IosGlyph.Trash, ios.red) }, onClick = { menu = false; Downloader.cancel(t) })
                     }
                 }
             }
@@ -155,15 +156,18 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
                 when {
                     done -> {
-                        TextButton(onClick = { shareFile(ctx, t) }) { Text(L("مشاركة")) }
+                        IosTextButton(L("مشاركة"), { shareFile(ctx, t) })
+                        Spacer(Modifier.width(4.dp))
                         IosPillButton(L("فتح"), { openFile(ctx, t) })
                     }
                     running -> {
-                        TextButton(onClick = { Downloader.cancel(t) }) { Text(L("إلغاء")) }
+                        IosTextButton(L("إلغاء"), { Downloader.cancel(t) })
+                        Spacer(Modifier.width(4.dp))
                         IosPillButton(L("إيقاف مؤقت"), { Downloader.pause(t) })
                     }
                     else -> {
-                        TextButton(onClick = { Downloader.cancel(t) }) { Text(L("إلغاء")) }
+                        IosTextButton(L("إلغاء"), { Downloader.cancel(t) })
+                        Spacer(Modifier.width(4.dp))
                         IosPillButton(if (failed) L("إعادة المحاولة") else L("استئناف"), { Downloader.resume(t) })
                     }
                 }
@@ -178,26 +182,25 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ActiveSummary(running: List<DlTask>) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val speed = running.sumOf { it.speed }
     val known = running.filter { it.total > 0 }
     val totalB = known.sumOf { it.total }
     val progress = if (totalB > 0) (known.sumOf { it.downloaded }.toFloat() / totalB).coerceIn(0f, 1f) else 0f
-    Surface(shape = RoundedCornerShape(10.dp), color = cs.primaryContainer, modifier = Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(ios.blue.copy(alpha = 0.12f))) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(L("جارٍ تنزيل ") + running.size + L(" ملف"), style = MaterialTheme.typography.titleSmall, color = cs.onPrimaryContainer, fontWeight = FontWeight.Bold)
-                    Text(fmtSpeed(speed) + if (totalB > 0) " • ${(progress * 100).toInt()}%" else "", style = MaterialTheme.typography.bodySmall, color = cs.onPrimaryContainer)
+                    Text(L("جارٍ تنزيل ") + running.size + L(" ملف"), style = MaterialTheme.typography.titleSmall, color = ios.blue, fontWeight = FontWeight.Bold)
+                    Text(fmtSpeed(speed) + if (totalB > 0) " • ${(progress * 100).toInt()}%" else "", style = MaterialTheme.typography.bodySmall, color = ios.blue)
                 }
-                TextButton(onClick = { Downloader.pauseAll() }) { Text(L("إيقاف الكل"), color = cs.onPrimaryContainer) }
+                IosTextButton(L("إيقاف الكل"), { Downloader.pauseAll() }, color = ios.blue)
             }
             if (totalB > 0) {
                 Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { progress }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                    color = cs.primary, trackColor = cs.onPrimaryContainer.copy(alpha = 0.15f)
-                )
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(ios.blue.copy(alpha = 0.18f))) {
+                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(ios.blue))
+                }
             }
         }
     }
@@ -205,7 +208,7 @@ private fun ActiveSummary(running: List<DlTask>) {
 
 @Composable
 fun DownloadsScreen(onBack: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     var filter by remember { mutableIntStateOf(0) }
     var sort by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
@@ -230,18 +233,18 @@ fun DownloadsScreen(onBack: () -> Unit) {
     val doneBytes = all.filter(isDone).sumOf { if (it.total > 0) it.total else it.downloaded }
     val subtitle = if (all.isEmpty()) null else all.size.toString() + " " + L("ملف") + " • " + fmtSize(doneBytes)
 
-    Surface(Modifier.fillMaxSize(), color = LocalIos.current.groupedBg) {
+    Surface(Modifier.fillMaxSize(), color = ios.groupedBg) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             PanelTopBar(L("التنزيلات"), subtitle, onBack) {
                 if (all.isNotEmpty()) PanelMenu { close ->
-                    if (nRun > 0) DropdownMenuItem(text = { Text(L("إيقاف الكل")) }, leadingIcon = { Icon(Icons.Default.Close, null) }, onClick = { close(); Downloader.pauseAll() })
-                    if (nStop > 0) DropdownMenuItem(text = { Text(L("استئناف الكل")) }, leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
+                    if (nRun > 0) DropdownMenuItem(text = { Text(L("إيقاف الكل")) }, leadingIcon = { IosIcon(IosGlyph.Pause, ios.label) }, onClick = { close(); Downloader.pauseAll() })
+                    if (nStop > 0) DropdownMenuItem(text = { Text(L("استئناف الكل")) }, leadingIcon = { IosIcon(IosGlyph.Play, ios.label) },
                         onClick = { close(); all.filter(isStop).forEach { Downloader.resume(it) } })
-                    if (nDone > 0) DropdownMenuItem(text = { Text(L("مسح المكتملة من القائمة")) }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { close(); confirmClear = true })
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Text(L("الترتيب"), style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                    if (nDone > 0) DropdownMenuItem(text = { Text(L("مسح المكتملة من القائمة"), color = ios.red) }, leadingIcon = { IosIcon(IosGlyph.Trash, ios.red) }, onClick = { close(); confirmClear = true })
+                    IosDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(L("الترتيب"), style = MaterialTheme.typography.labelMedium, color = ios.label2, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                     listOf(L("الأحدث أولاً"), L("الاسم"), L("الحجم")).forEachIndexed { i, n ->
-                        DropdownMenuItem(text = { Text(n) }, trailingIcon = { if (sort == i) Icon(Icons.Default.Check, null) }, onClick = { close(); sort = i })
+                        DropdownMenuItem(text = { Text(n) }, trailingIcon = { if (sort == i) IosIcon(IosGlyph.Check, ios.blue, 18.dp) }, onClick = { close(); sort = i })
                     }
                 }
             }

@@ -1,15 +1,11 @@
 package com.nova.browser
 
 import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.media.MediaMetadata
 import android.media.session.MediaSession
@@ -17,13 +13,6 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.webkit.WebView
-import androidx.core.content.ContextCompat
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
-import org.json.JSONObject
-import java.lang.ref.WeakReference
-import java.net.URL
 
 class MediaService : Service() {
     companion object { @Volatile var instance: MediaService? = null }

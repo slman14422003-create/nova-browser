@@ -1,6 +1,5 @@
 package com.nova.browser
 
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Notification
 import android.app.PendingIntent

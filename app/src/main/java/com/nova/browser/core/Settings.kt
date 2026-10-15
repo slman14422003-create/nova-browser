@@ -5,9 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,8 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,13 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.Color
 
 /** إعدادات التطبيق (محفوظة، وقابلة للقراءة من أي مكان كحالة Compose) */
 object Prefs {
@@ -169,9 +161,6 @@ object Prefs {
     fun pickNotifAsked(v: Boolean) { notifAsked = v; sp?.putBoolean("notifasked", v) }
     fun pickPopups(v: Boolean) { popups = v; sp?.putBoolean("popups", v) }
     fun pickLazyMedia(v: Boolean) { lazyMedia = v; sp?.putBoolean("lazy", v) }
-
-    /** قراءة مبكرة (قبل Prefs.init) لتقرير التنظيف أثناء الـ Splash. */
-    fun autoCleanEnabled(c: Context) = ConfStore.open(c).getBoolean("autoclean", false)
 }
 
 private class RowSpec(

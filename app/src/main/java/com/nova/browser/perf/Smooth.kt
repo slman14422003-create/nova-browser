@@ -27,9 +27,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.core.content.ContextCompat
@@ -277,9 +275,6 @@ object NovaMotion {
         return slideOutHorizontally(tween(Adaptive.ms(220), easing = emphasizedAccel)) { s * it / 10 } +
             fadeOut(tween(Adaptive.ms(120)))
     }
-
-    /** نابض ناعم لعناصر تتحرك بلمس المستخدم (قليل الارتداد، يستقر سريعاً). */
-    fun <T> softSpring() = spring<T>(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
 
     /** الشريط العلوي: ينزل من الأعلى. */
     val barEnter: EnterTransition
