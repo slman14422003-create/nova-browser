@@ -46,6 +46,8 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /*
  * مؤشر التحميل الموحّد للتطبيق (نمط iPhone): 12 شريطاً مستديراً يدور بخطوات منفصلة ويتلاشى ذيله.

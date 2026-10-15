@@ -12,6 +12,8 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * مساعد محرك العرض. التطبيق يعرض الصفحات بمحرك Android System WebView (نفس محرك كروم) ولا يمكنه ترقيته بنفسه،

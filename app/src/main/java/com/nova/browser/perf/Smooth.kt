@@ -34,6 +34,8 @@ import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /*
  * Smooth.kt — ملف السلاسة الموحّد (كان Perf.kt + Adaptive.kt + Motion.kt):

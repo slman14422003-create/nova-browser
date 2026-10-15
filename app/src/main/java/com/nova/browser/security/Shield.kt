@@ -14,6 +14,8 @@ import java.io.ByteArrayInputStream
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * الحماية الفورية (Shield): طبقة تعمل أثناء التصفح على كل طلب وكل تنقّل وكل نافذة، وتصدّ:

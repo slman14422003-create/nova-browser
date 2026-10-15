@@ -16,6 +16,8 @@ import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URL
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val netImageCache = object : android.util.LruCache<String, Bitmap>(24) {}
 

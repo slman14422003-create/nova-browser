@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 /**
  * أدوات دعم الـ WebView: كل ما يخص صحّة المحرك وتسريع التنقل وأدوات الصفحة (قراءة/تمرير/تحديث كامل).
