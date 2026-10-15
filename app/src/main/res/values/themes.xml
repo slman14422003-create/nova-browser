@@ -16,20 +16,20 @@
          الاختيار فاتح/داكن حسب إعداد المظهر داخل التطبيق (انظر novaDialog في Utils.kt). -->
     <style name="Theme.Nova.Dialog.Light" parent="@android:style/Theme.DeviceDefault.Light.Dialog.Alert">
         <item name="android:windowBackground">@drawable/nova_dialog_bg_light</item>
-        <item name="android:textColorPrimary">#FF141413</item>
-        <item name="android:textColorSecondary">#FF6B6A68</item>
-        <item name="android:colorAccent">#FFC6613F</item>
+        <item name="android:textColorPrimary">#FF000000</item>
+        <item name="android:textColorSecondary">#993C3C43</item>
+        <item name="android:colorAccent">#FF007AFF</item>
         <item name="android:windowTitleStyle">@style/Nova.DialogTitle</item>
     </style>
     <style name="Theme.Nova.Dialog.Dark" parent="@android:style/Theme.DeviceDefault.Dialog.Alert">
         <item name="android:windowBackground">@drawable/nova_dialog_bg_dark</item>
-        <item name="android:textColorPrimary">#FFFAF9F5</item>
-        <item name="android:textColorSecondary">#FFB0AEA5</item>
-        <item name="android:colorAccent">#FFD97757</item>
+        <item name="android:textColorPrimary">#FFFFFFFF</item>
+        <item name="android:textColorSecondary">#99EBEBF5</item>
+        <item name="android:colorAccent">#FF0A84FF</item>
         <item name="android:windowTitleStyle">@style/Nova.DialogTitle</item>
     </style>
     <style name="Nova.DialogTitle" parent="@android:style/TextAppearance.DeviceDefault.DialogWindowTitle">
         <item name="android:textStyle">bold</item>
-        <item name="android:textSize">20sp</item>
+        <item name="android:textSize">17sp</item>
     </style>
 </resources>

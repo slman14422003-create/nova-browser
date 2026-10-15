@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
@@ -96,53 +97,75 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import org.json.JSONObject
 import java.net.URLEncoder
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.ExperimentalFoundationApi
 
 private class Site(val name: String, val host: String, val url: String, val glyph: String, val color: Long, val icon: ImageVector?)
 
-/** عنوان وضع الذكاء الاصطناعي (AI Mode) في بحث جوجل. */
 const val AI_MODE_URL = "https://www.google.com/search?udm=50"
 
 @Composable
-private fun SiteTile(st: Site, modifier: Modifier, onClick: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = cs.surface, modifier = modifier) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 14.dp, horizontal = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            // شارة مربعة بزوايا دائرية (squircle) بدل الدائرة — تماماً كأيقونات المواقع المفضّلة
-            // في صفحة بداية Safari على iOS، وبلون الموقع الحقيقي بدل رمادي محايد.
-            Box(
-                Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(st.color).copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (st.icon != null) Icon(st.icon, null, Modifier.size(22.dp), tint = Color(st.color))
-                else Text(st.glyph, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(st.color))
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(st.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun FavoriteItem(st: Site, modifier: Modifier, onClick: () -> Unit) {
+    val ios = LocalIos.current
+    val src = remember { MutableInteractionSource() }
+    Column(
+        modifier.pressScale(src, 0.92f).clickable(interactionSource = src, indication = null, onClick = onClick).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.size(60.dp).clip(RoundedCornerShape(13.5.dp)).background(Color(st.color)), contentAlignment = Alignment.Center) {
+            if (st.icon != null) Icon(st.icon, null, Modifier.size(28.dp), tint = Color.White)
+            else Text(st.glyph, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
+        Spacer(Modifier.height(6.dp))
+        Text(st.name, style = MaterialTheme.typography.labelMedium, color = ios.label, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
+}
+
+@Composable
+private fun StartHeader(text: String) {
+    Text(text, style = MaterialTheme.typography.headlineSmall, color = LocalIos.current.label, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 10.dp))
 }
 
 @Composable
 fun StartPage(
     tabsCount: Int, activeDl: Int, onSearchClick: () -> Unit, onAi: () -> Unit, onOpen: (String) -> Unit,
-    onTabs: () -> Unit, onDownloads: () -> Unit
+    onTabs: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit = {}, onLibrary: () -> Unit = {}
 ) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
-    // حركة دخول واحدة تُنفَّذ في طبقة الرسم (بدون إعادة تركيب) لمنع التقطيع
     val appear by animateFloatAsState(if (shown) 1f else 0f, tween(Adaptive.ms(280)), label = "appear")
-    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-    val greet = when { hour < 5 -> L("ليلة هادئة"); hour < 12 -> L("صباح الخير"); hour < 18 -> L("طاب يومك"); else -> L("مساء الخير") }
-    val date = remember { java.text.SimpleDateFormat(L("EEEE، d MMMM"), java.util.Locale.forLanguageTag(I18n.code())).format(java.util.Date()) }
     val sites = remember {
         listOf(
-            Site(L("الخرائط"), "maps.google.com", "https://maps.google.com", "", 0xFF34A853, Icons.Default.Place),
-            Site(L("ترجمة جوجل"), "translate.google.com", "https://translate.google.com", "文A", 0xFF4285F4, null),
-            Site("YouTube", "youtube.com", "https://m.youtube.com", "", 0xFFFF4D4D, Icons.Default.PlayArrow),
+            Site(L("الخرائط"), "maps.google.com", "https://maps.google.com", "", 0xFF34C759, Icons.Default.Place),
+            Site(L("ترجمة جوجل"), "translate.google.com", "https://translate.google.com", "文A", 0xFF007AFF, null),
+            Site("YouTube", "youtube.com", "https://m.youtube.com", "", 0xFFFF3B30, Icons.Default.PlayArrow),
             Site("Gmail", "mail.google.com", "https://mail.google.com", "", 0xFFEA4335, Icons.Default.Email),
-            Site("Wikipedia", "wikipedia.org", "https://www.wikipedia.org", "W", 0xFF8A8F9E, null),
-            Site("GitHub", "github.com", "https://github.com", "</>", 0xFFA78BFA, null)
+            Site("Wikipedia", "wikipedia.org", "https://www.wikipedia.org", "W", 0xFF8E8E93, null),
+            Site("GitHub", "github.com", "https://github.com", "</>", 0xFF3A3A3C, null)
         )
     }
     val latest = Downloader.tasks.firstOrNull()
@@ -153,64 +176,43 @@ fun StartPage(
     }
 
     Column(
-        Modifier.fillMaxSize().graphicsLayer { alpha = appear; translationY = (1f - appear) * 36f }
-            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 24.dp)
+        Modifier.fillMaxSize().background(ios.groupedBg).graphicsLayer { alpha = appear; translationY = (1f - appear) * 36f }
+            .verticalScroll(rememberScrollState()).padding(bottom = 24.dp)
     ) {
-        // أعلى الصفحة: شريط البحث + زر التبويبات
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(onClick = onSearchClick, shape = CircleShape, color = cs.surface, modifier = Modifier.weight(1f).height(52.dp)) {
-                Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Search, null, tint = cs.onSurfaceVariant)
-                    Spacer(Modifier.width(12.dp))
-                    Text(L("ابحث في الويب أو اكتب رابطاً"), style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        StartHeader(L("المفضلة"))
+        Column(Modifier.padding(horizontal = 12.dp)) {
+            sites.chunked(4).forEach { row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { st -> FavoriteItem(st, Modifier.weight(1f)) { onOpen(st.url) } }
+                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            RoundBtn(onClick = onTabs) {
-                Box(Modifier.size(22.dp).border(1.8.dp, cs.onSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                    Text("$tabsCount", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
+        }
+        Spacer(Modifier.height(12.dp))
+        IosGroup {
+            IosCell(
+                L("وضع الذكاء الاصطناعي"), onAi, sub = L("اسأل Google أي شيء"), chevron = true, divider = false,
+                leading = { IosTile(ios.indigo) { Text("✦", fontSize = 15.sp, color = Color.White) } }
+            )
+        }
+        StartHeader(L("تقرير الخصوصية"))
+        Row(
+            Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(ios.cell).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IosIcon(IosGlyph.ShieldFill, ios.blue, 40.dp, accent = ios.cell)
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(Shield.total.toString(), style = MaterialTheme.typography.headlineMedium, color = ios.label)
+                Text(L("متتبعات تم منعها من تتبعك"), style = MaterialTheme.typography.bodySmall, color = ios.label2)
             }
         }
         Spacer(Modifier.height(24.dp))
-        Column(Modifier.padding(horizontal = 8.dp)) {
-            Text(greet, style = MaterialTheme.typography.headlineMedium)
-            Text(date, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-        }
-        Spacer(Modifier.height(18.dp))
-
-        // وضع الذكاء الاصطناعي: بطاقة هادئة بألوان التطبيق فقط (لمسة التمييز tertiary)
-        Surface(onClick = onAi, shape = IosShape.card, color = cs.surface, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
-                    Text("✦", color = cs.tertiary, fontSize = 20.sp)
-                }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(L("وضع الذكاء الاصطناعي"), style = MaterialTheme.typography.labelMedium, color = cs.tertiary)
-                    Text(L("اسأل Google أي شيء"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(L("اطرح سؤالك كاملاً واحصل على إجابة مفصّلة"), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                Spacer(Modifier.width(10.dp))
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = cs.onSurfaceVariant)
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-        Text(L("وصول سريع"), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            sites.chunked(3).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { st -> SiteTile(st, Modifier.weight(1f)) { onOpen(st.url) } }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(18.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            ListRow(groupShape(0, 2), L("التنزيلات"), dlSub, onDownloads) { IconCircle { Icon(Icons.Default.KeyboardArrowDown, null) } }
-            ListRow(groupShape(1, 2), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs) { IconCircle { Icon(Icons.Default.Menu, null) } }
+        Column {
+            ListRow(groupShape(0, 4), L("التنزيلات"), dlSub, onDownloads, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.blue) { Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp)) } }
+            ListRow(groupShape(1, 4), L("التبويبات"), ("" + tabsCount + L(" مفتوحة")), onTabs, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Menu, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(2, 4), L("المكتبة"), null, onLibrary, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.orange) { Icon(Icons.Default.Star, null, Modifier.size(18.dp)) } }
+            ListRow(groupShape(3, 4), L("الإعدادات"), null, onSettings, modifier = Modifier.padding(horizontal = 16.dp)) { IosTile(ios.gray) { Icon(Icons.Default.Settings, null, Modifier.size(18.dp)) } }
         }
     }
 }

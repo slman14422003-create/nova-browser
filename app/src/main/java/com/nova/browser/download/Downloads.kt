@@ -1,5 +1,6 @@
 package com.nova.browser
 
+import androidx.compose.foundation.clickable
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.Canvas
@@ -124,10 +125,10 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
     val done = t.status == Downloader.DONE
     val kind = kindOf(t.name)
     val (badgeBg, badgeFg) = kindColors(kind)
-    Surface(shape = RoundedCornerShape(28.dp), color = cs.surfaceContainerHigh, modifier = modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(10.dp), color = cs.surface, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(badgeBg), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(badgeBg), contentAlignment = Alignment.Center) {
                     Text(t.name.substringAfterLast('.', "?").take(4).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeFg)
                 }
                 Spacer(Modifier.width(12.dp))
@@ -140,8 +141,8 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
                     )
                 }
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, L("المزيد")) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp)) {
+                    Box(Modifier.size(36.dp).clickable { menu = true }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.EllipsisCircle, LocalIos.current.blue, 24.dp) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp), containerColor = LocalIos.current.menu, tonalElevation = 0.dp) {
                         DropdownMenuItem(text = { Text(L("نسخ الرابط")) }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; copyText(ctx, t.origUrl) })
                         if (done) {
                             DropdownMenuItem(text = { Text(L("إزالة من القائمة")) }, leadingIcon = { Icon(Icons.Default.Close, null) }, onClick = { menu = false; Downloader.remove(t, false) })
@@ -155,15 +156,15 @@ fun DownloadCard(t: DlTask, modifier: Modifier = Modifier) {
                 when {
                     done -> {
                         TextButton(onClick = { shareFile(ctx, t) }) { Text(L("مشاركة")) }
-                        FilledTonalButton(onClick = { openFile(ctx, t) }) { Text(L("فتح")) }
+                        IosPillButton(L("فتح"), { openFile(ctx, t) })
                     }
                     running -> {
                         TextButton(onClick = { Downloader.cancel(t) }) { Text(L("إلغاء")) }
-                        FilledTonalButton(onClick = { Downloader.pause(t) }) { Text(L("إيقاف مؤقت")) }
+                        IosPillButton(L("إيقاف مؤقت"), { Downloader.pause(t) })
                     }
                     else -> {
                         TextButton(onClick = { Downloader.cancel(t) }) { Text(L("إلغاء")) }
-                        FilledTonalButton(onClick = { Downloader.resume(t) }) { Text(if (failed) L("إعادة المحاولة") else L("استئناف")) }
+                        IosPillButton(if (failed) L("إعادة المحاولة") else L("استئناف"), { Downloader.resume(t) })
                     }
                 }
             }
@@ -182,7 +183,7 @@ private fun ActiveSummary(running: List<DlTask>) {
     val known = running.filter { it.total > 0 }
     val totalB = known.sumOf { it.total }
     val progress = if (totalB > 0) (known.sumOf { it.downloaded }.toFloat() / totalB).coerceIn(0f, 1f) else 0f
-    Surface(shape = RoundedCornerShape(28.dp), color = cs.primaryContainer, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(10.dp), color = cs.primaryContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -229,7 +230,7 @@ fun DownloadsScreen(onBack: () -> Unit) {
     val doneBytes = all.filter(isDone).sumOf { if (it.total > 0) it.total else it.downloaded }
     val subtitle = if (all.isEmpty()) null else all.size.toString() + " " + L("ملف") + " • " + fmtSize(doneBytes)
 
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
+    Surface(Modifier.fillMaxSize(), color = LocalIos.current.groupedBg) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             PanelTopBar(L("التنزيلات"), subtitle, onBack) {
                 if (all.isNotEmpty()) PanelMenu { close ->

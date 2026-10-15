@@ -1,5 +1,7 @@
 package com.nova.browser
 
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -63,19 +65,20 @@ fun SiteBar(
     modifier: Modifier = Modifier
 ) {
     val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val haptic = LocalHapticFeedback.current
     fun tap(a: () -> Unit): () -> Unit = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); a() }
-    val wash = siteWash(cs)
+    val wash = siteWash(ios.chrome)
 
-    Column(modifier.fillMaxWidth().background(cs.background)) {
+    Column(modifier.fillMaxWidth().background(ios.chrome)) {
         Row(
             Modifier.fillMaxWidth().height(UiLayout.BAR_ROW_DP.dp).background(wash).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // شارة الهوية
             Box(
-                Modifier.size(30.dp).clip(RoundedCornerShape(10.dp))
-                    .background(Brush.linearGradient(listOf(cs.tertiary, lerp(cs.tertiary, cs.primaryContainer, 0.45f)))),
+                Modifier.size(30.dp).clip(RoundedCornerShape(7.dp))
+                    .background(ios.blue),
                 contentAlignment = Alignment.Center
             ) {
                 if (info.kind == SiteKind.AI) SparkGlyph(cs.onTertiary, Modifier.size(18.dp))
@@ -85,10 +88,10 @@ fun SiteBar(
                 Modifier.weight(1f).then(if (onTitleTap != null) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = tap(onTitleTap)) else Modifier),
                 verticalArrangement = Arrangement.spacedBy(1.dp)
             ) {
-                Text(info.name, fontSize = 14.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, color = cs.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(info.name, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, color = ios.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Icon(Icons.Default.Lock, null, Modifier.size(10.dp), tint = cs.tertiary)
-                    Text(info.host.removePrefix("www."), fontSize = 11.sp, lineHeight = 13.sp, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IosIcon(IosGlyph.Lock, ios.label2, 10.dp)
+                    Text(info.host.removePrefix("www."), fontSize = 11.sp, lineHeight = 13.sp, color = ios.label2, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (onPip != null) GlyphButton(L("منبثق"), tap(onPip)) { c -> PipGlyph(c, Modifier.size(19.dp)) }
@@ -97,30 +100,29 @@ fun SiteBar(
                 val spin = if (loading && Adaptive.ms(100) > 0)
                     rememberInfiniteTransition(label = "spin").animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "rot").value
                 else 0f
-                GlyphButton(L("تحديث"), tap(onReload), tonal = false) { c -> Icon(Icons.Default.Refresh, null, Modifier.size(20.dp).graphicsLayer { rotationZ = spin }, tint = c) }
-                GlyphButton(L("مشاركة"), tap(onShare), tonal = false) { c -> Icon(Icons.Default.Share, null, Modifier.size(19.dp), tint = c) }
+                GlyphButton(L("تحديث"), tap(onReload), tonal = false) { c -> IosIcon(IosGlyph.Reload, ios.blue, 20.dp, Modifier.graphicsLayer { rotationZ = spin }) }
+                GlyphButton(L("مشاركة"), tap(onShare), tonal = false) { c -> IosIcon(IosGlyph.Share, ios.blue, 21.dp) }
             }
         }
         // خط التقدّم + الفاصل
         val p by animateFloatAsState(if (loading) progress.coerceIn(0.06f, 1f) else 0f, tween(Adaptive.ms(180)), label = "p")
         Box(Modifier.fillMaxWidth().height(UiLayout.PROGRESS_DP.dp)) {
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(cs.outlineVariant.copy(alpha = 0.7f)))
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(hairlineDp()).background(ios.separator))
             if (p in 0.001f..0.999f)
                 Box(Modifier.fillMaxWidth(p).height(2.dp).align(Alignment.BottomStart)
-                    .background(Brush.horizontalGradient(listOf(cs.tertiary.copy(alpha = 0.4f), cs.tertiary))))
+                    .background(ios.blue))
         }
     }
 }
 
 /** تدرّج هوية الشريط العلوي (يُستخدم أيضاً خلف شريط حالة النظام كي يتطابق اللونان). */
-fun siteWash(cs: androidx.compose.material3.ColorScheme): Brush =
-    Brush.horizontalGradient(listOf(cs.tertiary.copy(alpha = 0.12f), Color.Transparent))
+fun siteWash(base: Color): Brush = SolidColor(base)
 
 /** امتداد خلفية الشريط خلف شريط حالة النظام: نفس الخلفية ونفس التدرّج بلا حدّ فاصل. */
 @Composable
 fun StatusBarWash(modifier: Modifier = Modifier) {
-    val cs = MaterialTheme.colorScheme
-    Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(cs.background).background(siteWash(cs)))
+    val ios = LocalIos.current
+    Box(modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(siteWash(ios.chrome)))
 }
 
 @Composable
@@ -131,7 +133,7 @@ internal fun GlyphButton(desc: String, onClick: () -> Unit, tonal: Boolean = tru
         onClick = onClick, interactionSource = src, shape = CircleShape,
         color = if (tonal) cs.surfaceContainerHigh else Color.Transparent,
         modifier = Modifier.size(36.dp).pressScale(src).semantics { contentDescription = desc }
-    ) { Box(contentAlignment = Alignment.Center) { glyph(cs.onSurface) } }
+    ) { Box(contentAlignment = Alignment.Center) { glyph(LocalIos.current.blue) } }
 }
 
 @Composable

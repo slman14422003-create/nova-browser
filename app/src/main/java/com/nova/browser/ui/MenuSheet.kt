@@ -37,7 +37,6 @@ import androidx.compose.foundation.text.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,6 +49,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
@@ -97,105 +97,146 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import org.json.JSONObject
 import java.net.URLEncoder
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.ExperimentalFoundationApi
 
 @Composable
-private fun RowScope.QuickTile(label: String, icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick, enabled = enabled, shape = RoundedCornerShape(20.dp), color = cs.surfaceContainerHigh,
-        modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.4f)
-    ) {
-        Column(Modifier.padding(vertical = 16.dp, horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, null)
-            Spacer(Modifier.height(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun ShareHeader(tab: BrowserTab, onClose: () -> Unit) {
+    val ios = LocalIos.current
+    val host = hostOf(tab.url)
+    val fvTick = Favicons.version
+    val ic = remember(host, fvTick) { Favicons.get(host) }
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(ios.cell), contentAlignment = Alignment.Center) {
+            if (ic != null) Image(ic.asImageBitmap(), null, Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)))
+            else Text(host.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = ios.label2)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tab.title.ifBlank { host }, style = MaterialTheme.typography.titleSmall, color = ios.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(host, style = MaterialTheme.typography.bodySmall, color = ios.label2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.size(30.dp).clip(CircleShape).background(ios.fill2).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
+            IosIcon(IosGlyph.Close, ios.label2, 13.dp, weight = 1.2f)
         }
     }
 }
 
-/**
- * قائمة الخيارات: الشاشة الرئيسية قصيرة (أزرار سريعة + 4 صفوف)، وكل أدوات الصفحة في صفحة فرعية واحدة
- * داخل نفس الورقة، فلا تمرير طويل ولا ازدحام.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuSheet(
-    tab: BrowserTab, onDismiss: () -> Unit, onNewTab: () -> Unit, onFind: () -> Unit, onDesktop: () -> Unit,
-    onShare: () -> Unit, onCopy: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit, onHome: () -> Unit, onTranslate: () -> Unit = {},
-    onPrint: () -> Unit = {}
+    tab: BrowserTab, onDismiss: () -> Unit, onNewTab: () -> Unit, onFind: () -> Unit,
+    onShare: () -> Unit, onCopy: () -> Unit, onPrint: () -> Unit = {}
 ) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val hasPage = tab.url.isNotBlank()
-    var tools by remember { mutableStateOf(false) }
     fun act(a: () -> Unit) { scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); a() } }
+    val marked = hasPage && Library.isBookmarked(tab.url)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss, sheetState = state, containerColor = ios.groupedBg, shape = IosShape.sheet,
+        dragHandle = { Box(Modifier.padding(top = 6.dp, bottom = 8.dp).size(width = 36.dp, height = 5.dp).clip(CircleShape).background(ios.gray3)) }
+    ) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 20.dp)) {
+            ShareHeader(tab) { act {} }
+            IosGroup {
+                IosCell(L("مشاركة"), { act(onShare) }, enabled = hasPage, trailing = { IosIcon(IosGlyph.Share, ios.label, 22.dp) })
+                IosCell(L("نسخ الرابط"), { act(onCopy) }, enabled = hasPage, divider = false, trailing = { IosIcon(IosGlyph.Copy, ios.label, 22.dp) })
+            }
+            Spacer(Modifier.height(20.dp))
+            IosGroup {
+                IosCell(L("تبويب جديد"), { act(onNewTab) }, trailing = { IosIcon(IosGlyph.PlusSquare, ios.label, 22.dp) })
+                IosCell(
+                    if (marked) L("إزالة من المفضلة") else L("إضافة إلى المفضلة"),
+                    { act { toast(ctx, if (Library.toggleBookmark(tab.url, tab.title)) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) } },
+                    enabled = hasPage, trailing = { IosIcon(IosGlyph.Book, ios.label, 22.dp) }
+                )
+                IosCell(L("بحث في الصفحة"), { act(onFind) }, enabled = hasPage, trailing = { IosIcon(IosGlyph.Magnifier, ios.label, 22.dp) })
+                IosCell("Add to home screen", { act { PageExtras.pinShortcut(ctx, tab) } }, enabled = hasPage, trailing = { IosIcon(IosGlyph.PlusSquare, ios.label, 22.dp) })
+                IosCell(L("طباعة / حفظ PDF"), { act(onPrint) }, enabled = hasPage, divider = false, trailing = { IosIcon(IosGlyph.Printer, ios.label, 22.dp) })
+            }
+        }
+    }
+}
 
-    // ورقة سفلية بزوايا علوية 20dp (نفس انحناء Action Sheet في iOS) وخلفية "Grouped" رمادية فاتحة
-    // تُبرز صفوف القوائم البيضاء فوقها — بدل سطح مسطّح واحد اللون.
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = cs.background, shape = IosShape.sheet) {
-        BackHandler(enabled = tools) { tools = false }
-        AnimatedContent(
-            targetState = tools, label = "menu",
-            transitionSpec = { fadeIn(tween(Adaptive.ms(180))) togetherWith fadeOut(tween(Adaptive.ms(120))) }
-        ) { isTools ->
-            Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 20.dp)) {
-                if (!isTools) {
-                    val marked = hasPage && Library.isBookmarked(tab.url)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickTile(L("التالي"), Icons.AutoMirrored.Filled.ArrowForward, tab.canForward) { act { tab.webView?.goForward() } }
-                        QuickTile(if (tab.loading) L("إيقاف") else L("تحديث"), if (tab.loading) Icons.Default.Close else Icons.Default.Refresh, hasPage) {
-                            act { if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() }
-                        }
-                        QuickTile(L("مشاركة"), Icons.Default.Share, hasPage) { act(onShare) }
-                        QuickTile(L("المفضلة"), if (marked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, hasPage) {
-                            act { toast(ctx, if (Library.toggleBookmark(tab.url, tab.title)) L("أُضيفت إلى المفضلة") else L("أُزيلت من المفضلة")) }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickTile(L("المكتبة"), Icons.Default.Star, true) { act { openPanel(ctx as android.app.Activity, "library") } }
-                        QuickTile(L("التنزيلات"), Icons.Default.KeyboardArrowDown, true) { act(onDownloads) }
-                        QuickTile(L("الإعدادات"), Icons.Default.Settings, true) { act(onSettings) }
-                        QuickTile(L("الرئيسية"), Icons.Default.Home, true) { act(onHome) }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        ListRow(groupShape(0, 4), L("تبويب جديد"), null, { act(onNewTab) }) { IconCircle { Icon(Icons.Default.Add, null) } }
-                        ListRow(groupShape(1, 4), L("بحث في الصفحة"), null, { act(onFind) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Search, null) } }
-                        ListRow(groupShape(2, 4), L("نسخة سطح المكتب"), null, { onDesktop() }, enabled = hasPage,
-                            trailing = { Switch(checked = tab.desktop, onCheckedChange = null) }) { IconCircle { Icon(Icons.Default.Build, null) } }
-                        ListRow(groupShape(3, 4), L("أدوات الصفحة"), L("ترجمة • طباعة • وضع القراءة • نسخ"), { tools = true }, enabled = hasPage,
-                            trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null) }) { IconCircle { Icon(Icons.Default.Menu, null) } }
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RoundBtn(onClick = { tools = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, L("رجوع")) }
-                        Spacer(Modifier.width(8.dp))
-                        Text(L("أدوات الصفحة"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickTile(L("الأعلى"), Icons.Default.KeyboardArrowUp, hasPage) { act { tab.webView?.let { WebSupport.scroll(it, true) } } }
-                        QuickTile(L("الأسفل"), Icons.Default.KeyboardArrowDown, hasPage) { act { tab.webView?.let { WebSupport.scroll(it, false) } } }
-                        QuickTile(L("وضع القراءة"), Icons.Default.Menu, hasPage) { act { tab.webView?.let { WebSupport.reader(it) } } }
-                        QuickTile(L("تحديث كامل"), Icons.Default.Refresh, hasPage) { act { tab.webView?.let { WebSupport.hardReload(it) } } }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickTile(L("إخفاء العائم"), Icons.Default.Close, hasPage) { act { tab.webView?.let { WebSupport.toggleFloating(it) } } }
-                        QuickTile(L("الصور"), Icons.Default.Info, hasPage) { act { tab.webView?.let { WebSupport.toggleImages(it) } } }
-                        QuickTile(L("إبقاء الشاشة"), Icons.Default.Star, hasPage) { act { tab.webView?.let { WebSupport.toggleKeepOn(it) } } }
-                        QuickTile(L("نسخ النص"), Icons.Default.Edit, hasPage) { act { tab.webView?.let { WebSupport.copyPageText(it) } } }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        ListRow(groupShape(0, 4), L("نسخ الرابط"), null, { act(onCopy) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Edit, null) } }
-                        ListRow(groupShape(1, 4), L("ترجمة الصفحة"), null, { act(onTranslate) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Share, null) } }
-                        ListRow(groupShape(2, 4), L("طباعة / حفظ PDF"), null, { act(onPrint) }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Create, null) } }
-                        ListRow(groupShape(3, 4), "Add to home screen", null, { act { PageExtras.pinShortcut(ctx, tab) } }, enabled = hasPage) { IconCircle { Icon(Icons.Default.Add, null) } }
-                    }
+@Composable
+fun PageMenu(
+    tab: BrowserTab, expanded: Boolean, onDismiss: () -> Unit, onDesktop: () -> Unit,
+    onTranslate: () -> Unit, onDownloads: () -> Unit, onSettings: () -> Unit
+) {
+    val ios = LocalIos.current
+    var sub by remember { mutableStateOf(false) }
+    LaunchedEffect(expanded) { if (!expanded) sub = false }
+    val zoomNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
+    fun act(a: () -> Unit) { onDismiss(); a() }
+    DropdownMenu(
+        expanded = expanded, onDismissRequest = onDismiss, shape = RoundedCornerShape(14.dp),
+        containerColor = ios.menu, tonalElevation = 0.dp, shadowElevation = 12.dp
+    ) {
+        Column(Modifier.width(260.dp)) {
+            if (!sub) {
+                Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight().clickable(enabled = Prefs.textZoom > 0) { Prefs.pickTextZoom(Prefs.textZoom - 1) },
+                        contentAlignment = Alignment.Center
+                    ) { Text("A", fontSize = 14.sp, color = if (Prefs.textZoom > 0) ios.label else ios.label3) }
+                    Text(zoomNames.getOrElse(Prefs.textZoom) { "" }, style = MaterialTheme.typography.bodyMedium, color = ios.label2, maxLines = 1)
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight().clickable(enabled = Prefs.textZoom < zoomNames.lastIndex) { Prefs.pickTextZoom(Prefs.textZoom + 1) },
+                        contentAlignment = Alignment.Center
+                    ) { Text("A", fontSize = 24.sp, color = if (Prefs.textZoom < zoomNames.lastIndex) ios.label else ios.label3) }
                 }
+                IosDivider()
+                IosCell(L("نسخة سطح المكتب"), { act(onDesktop) }, trailing = if (tab.desktop) ({ IosIcon(IosGlyph.Check, ios.blue, 20.dp) }) else null)
+                IosCell(L("وضع القراءة"), { act { tab.webView?.let { WebSupport.reader(it) } } })
+                IosCell(L("ترجمة الصفحة"), { act(onTranslate) })
+                IosCell(L("أدوات الصفحة"), { sub = true }, chevron = true)
+                Box(Modifier.fillMaxWidth().height(6.dp).background(ios.fill4))
+                IosCell(L("التنزيلات"), { act(onDownloads) })
+                IosCell(L("الإعدادات"), { act(onSettings) }, divider = false)
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().height(44.dp).clickable { sub = false }.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IosIcon(IosGlyph.Back, ios.blue, 20.dp, weight = 1.1f)
+                    Spacer(Modifier.width(4.dp))
+                    Text(L("أدوات الصفحة"), style = MaterialTheme.typography.titleSmall, color = ios.label)
+                }
+                IosDivider()
+                IosCell(L("الأعلى"), { act { tab.webView?.let { WebSupport.scroll(it, true) } } })
+                IosCell(L("الأسفل"), { act { tab.webView?.let { WebSupport.scroll(it, false) } } })
+                IosCell(L("تحديث كامل"), { act { tab.webView?.let { WebSupport.hardReload(it) } } })
+                IosCell(L("إخفاء العائم"), { act { tab.webView?.let { WebSupport.toggleFloating(it) } } })
+                IosCell(L("الصور"), { act { tab.webView?.let { WebSupport.toggleImages(it) } } })
+                IosCell(L("إبقاء الشاشة"), { act { tab.webView?.let { WebSupport.toggleKeepOn(it) } } })
+                IosCell(L("نسخ النص"), { act { tab.webView?.let { WebSupport.copyPageText(it) } } }, divider = false)
             }
         }
     }

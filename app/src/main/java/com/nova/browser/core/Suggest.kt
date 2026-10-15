@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -137,7 +138,6 @@ object Suggest {
 /** قائمة الاقتراحات فوق شريط العنوان أثناء الكتابة. أقرب عنصر للحقل هو الأهم (القائمة معكوسة). */
 @Composable
 fun SuggestionsPanel(query: String, onPick: (String) -> Unit, onFill: (String) -> Unit) {
-    val cs = MaterialTheme.colorScheme
     val q = query.trim()
     val local = remember(q, Library.history.size, Library.bookmarks.size) { if (q.isEmpty()) Suggest.recent() else Suggest.local(q) }
     var remote by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -163,33 +163,33 @@ fun SuggestionsPanel(query: String, onPick: (String) -> Unit, onFill: (String) -
     if (rows.isEmpty()) return
     Favicons.version   // اشتراك: يُعاد الرسم عند وصول أيقونات جديدة
 
-    Surface(
-        color = cs.surfaceContainer, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp).animateContentSize()
+    val ios = LocalIos.current
+    Column(
+        Modifier.fillMaxWidth().background(ios.cell).animateContentSize()
     ) {
         LazyColumn(Modifier.heightIn(max = 320.dp), reverseLayout = true) {
             items(rows, key = { it.kind.toString() + (it.url ?: it.text) }) { s ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { onPick(s.url ?: s.text) }.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val ic = if (s.url != null) Favicons.get(hostOf(s.url)) else null
-                    if (ic != null) {
-                        val img = remember(ic) { ic.asImageBitmap() }
-                        Image(img, null, Modifier.size(20.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Fit)
-                    } else Icon(
-                        when (s.kind) { 2 -> Icons.Default.Star; 1 -> Icons.Default.DateRange; else -> Icons.Default.Search },
-                        null, Modifier.size(20.dp), tint = cs.onSurfaceVariant
-                    )
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
-                        Text(s.text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
-                        if (s.url != null) Text(hostOf(s.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onPick(s.url ?: s.text) }.heightIn(min = 44.dp).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val ic = if (s.url != null) Favicons.get(hostOf(s.url)) else null
+                        if (ic != null) {
+                            val img = remember(ic) { ic.asImageBitmap() }
+                            Image(img, null, Modifier.size(20.dp).clip(RoundedCornerShape(5.dp)), contentScale = ContentScale.Fit)
+                        } else IosIcon(if (s.kind == 2) IosGlyph.Book else IosGlyph.Magnifier, ios.label2, 20.dp)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+                            Text(s.text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, color = ios.label)
+                            if (s.url != null) Text(hostOf(s.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall, color = ios.label2)
+                        }
+                        Box(Modifier.size(44.dp).clickable { onFill(s.url ?: s.text) }, contentAlignment = Alignment.Center) {
+                            IosIcon(IosGlyph.ArrowUpLeft, ios.label3, 18.dp)
+                        }
                     }
-                    IconButton(onClick = { onFill(s.url ?: s.text) }) {
-                        Icon(Icons.Default.KeyboardArrowUp, L("إدراج في الشريط"), Modifier.rotate(-45f), tint = cs.onSurfaceVariant)
-                    }
+                    IosDivider(50.dp)
                 }
             }
         }

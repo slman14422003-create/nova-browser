@@ -302,7 +302,7 @@ fun YtDownloadSheet(url: String, onDismiss: () -> Unit, onStarted: () -> Unit) {
     }
     fun pick(i: YtInfo, o: YtOpt) { YtDownload.start(ctx, i, o); toast(ctx, L("بدأ التنزيل — القائمة ⋮ ثم التنزيلات")); onStarted(); onDismiss() }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = cs.surface, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = LocalIos.current.groupedBg, shape = IosShape.sheet, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(L("تنزيل من يوتيوب"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(14.dp))
@@ -310,7 +310,7 @@ fun YtDownloadSheet(url: String, onDismiss: () -> Unit, onStarted: () -> Unit) {
 
             // بطاقة الفيديو: صورة مصغّرة + العنوان + القناة + المدة
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.surfaceContainer).padding(10.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.surfaceContainer).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.width(132.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))) {
@@ -340,7 +340,7 @@ fun YtDownloadSheet(url: String, onDismiss: () -> Unit, onStarted: () -> Unit) {
                 err != null -> {
                     Spacer(Modifier.height(14.dp))
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cs.errorContainer.copy(alpha = 0.35f)).padding(16.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.errorContainer.copy(alpha = 0.35f)).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -379,7 +379,7 @@ fun YtDownloadSheet(url: String, onDismiss: () -> Unit, onStarted: () -> Unit) {
                             Spacer(Modifier.height(12.dp))
                         }
                         val list = if (showVideo) i.videos else i.audios
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
                             list.forEachIndexed { n, o ->
                                 ListRow(
                                     groupShape(n, list.size), o.label, o.sub, { pick(i, o) },
@@ -396,7 +396,7 @@ fun YtDownloadSheet(url: String, onDismiss: () -> Unit, onStarted: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     Text(
                         L("للاستخدام الشخصي فقط — احترم حقوق صاحب المحتوى وشروط الخدمة."), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainer).padding(12.dp)
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(cs.surfaceContainer).padding(12.dp)
                     )
                 }
             }

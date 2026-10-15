@@ -79,6 +79,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -806,6 +808,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         if (mainAct != null && mainAct.pipAuto != want) { mainAct.pipAuto = want; mainAct.refreshPip() }
     }
 
+    val iosC = LocalIos.current
     val primaryInt = cs.primary.toArgb()
     val bgInt = cs.surfaceContainerHigh.toArgb()
     val spinnerInt = cs.onSurface.toArgb()
@@ -829,14 +832,14 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
     }
 
     Box(Modifier.fillMaxSize()) {
-        Surface(Modifier.fillMaxSize(), color = if (inPip) Color.Black else cs.background) {
+        Surface(Modifier.fillMaxSize(), color = if (inPip) Color.Black else iosC.bg) {
             // وضع التطبيق: الارتفاع يتبدّل فوراً (تحريك ارتفاع الـ WebView كل إطار يسبب تقطيعاً)، والشريط نفسه ينزلق على طبقة الرسم
             val site = if (Prefs.pwaMode && !inPip && customView == null) Pwa.info(tab.url) else null
             val barH = if (site != null) Pwa.BAR_H.dp else 0.dp
             // لون شريط الحالة يتبع لون شريط الموقع (كان خلفية سادة بينما الشريط مائل للون الهوية)
             AnimatedVisibility(visible = site != null, enter = fadeIn(tween(Adaptive.ms(160))), exit = fadeOut(tween(Adaptive.ms(120)))) { StatusBarWash() }
             Box(Modifier.fillMaxSize().statusBarsPadding().displayCutoutPadding()) {
-                Box(Modifier.fillMaxSize().padding(top = barH).pageInsets({ imeSettled.value }, navInsets, pageTyping, inPip).background(cs.background)) {
+                Box(Modifier.fillMaxSize().padding(top = barH).pageInsets({ imeSettled.value }, navInsets, pageTyping, inPip).background(iosC.bg)) {
                     AnimatedContent(
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
@@ -852,7 +855,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                     tabsCount = tabs.size,
                                     activeDl = Downloader.tasks.count { it.status == Downloader.DOWNLOADING || it.status == Downloader.PREPARING },
                                     onSearchClick = { editing = true }, onAi = { go(tb, AI_MODE_URL) }, onOpen = { go(tb, it) },
-                                    onTabs = { openTabs() }, onDownloads = { openPanel(activity, "downloads") }
+                                    onTabs = { openTabs() }, onDownloads = { openPanel(activity, "downloads") },
+                                    onSettings = { openPanel(activity, "settings") }, onLibrary = { openPanel(activity, "library") }
                                 )
                             } else key(id, tb.epoch) {
                                 AndroidView(
@@ -930,7 +934,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     onFind = { tab.findInfo = ""; tab.finding = true },
                     onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
-                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) },
+                    onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onLibrary = { openPanel(activity, "library") },
                     onSwitch = { d -> snap(tab); current = (current + d).coerceIn(0, tabs.lastIndex) }
                 )
                 }
@@ -946,8 +950,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         if (Updater.prompt) UpdateDialog()
         AnimatedVisibility(
             visible = showTabs,
-            enter = fadeIn(tween(Adaptive.ms(180))) + slideInVertically(tween(Adaptive.ms(240), easing = FastOutSlowInEasing)) { it / 12 },
-            exit = fadeOut(tween(Adaptive.ms(130))) + slideOutVertically(tween(Adaptive.ms(180), easing = FastOutSlowInEasing)) { it / 12 }
+            enter = fadeIn(tween(Adaptive.ms(200))) + scaleIn(tween(Adaptive.ms(260), easing = FastOutSlowInEasing), initialScale = 0.92f),
+            exit = fadeOut(tween(Adaptive.ms(150))) + scaleOut(tween(Adaptive.ms(200), easing = FastOutSlowInEasing), targetScale = 0.92f)
         ) {
             TabSwitcher(
                 tabs = tabs, current = current.coerceIn(0, tabs.lastIndex),

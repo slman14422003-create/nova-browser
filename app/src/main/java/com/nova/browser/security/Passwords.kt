@@ -92,8 +92,8 @@ fun SavePasswordDialog(p: PendingSave, onSave: () -> Unit, onNever: () -> Unit, 
 fun FillBanner(o: FillOffer, onFill: (Cred) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
     Surface(
-        modifier.padding(horizontal = 12.dp).fillMaxWidth(), shape = RoundedCornerShape(24.dp),
-        color = cs.surfaceContainerHigh, tonalElevation = 6.dp, shadowElevation = 6.dp
+        modifier.padding(horizontal = 12.dp).fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+        color = LocalIos.current.menu, tonalElevation = 0.dp, shadowElevation = 10.dp
     ) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -123,26 +123,19 @@ fun PasswordsScreen(onBack: () -> Unit) {
     val q = query.trim()
     val list = Vault.items.filter { q.isBlank() || it.host.contains(q, true) || it.user.contains(q, true) }.sortedBy { it.host }
 
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
+    Surface(Modifier.fillMaxSize(), color = LocalIos.current.groupedBg) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundBtn(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, L("رجوع")) }
-                Spacer(Modifier.width(8.dp))
-                Text(L("كلمات المرور"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                RoundBtn(onClick = { edit = Cred("", "", "", "", 0L) }) { Icon(Icons.Default.Add, L("إضافة")) }
+            PanelTopBar(L("كلمات المرور"), null, onBack) {
+                RoundBtn(onClick = { edit = Cred("", "", "", "", 0L) }) { IosIcon(IosGlyph.Plus, LocalIos.current.blue, 24.dp) }
             }
-            OutlinedTextField(
-                value = query, onValueChange = { query = it }, singleLine = true,
-                placeholder = { Text(L("بحث")) }, leadingIcon = { Icon(Icons.Default.Search, null) },
-                shape = RoundedCornerShape(28.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-            )
+            PanelSearch(query, { query = it }, L("بحث"))
             if (list.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                     Text(L("لا توجد كلمات مرور محفوظة"), color = cs.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
-                    Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(3.dp),
+                    Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     itemsIndexed(list, key = { _, c -> c.id }) { i, c ->

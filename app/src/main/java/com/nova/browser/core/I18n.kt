@@ -497,7 +497,10 @@ object I18n {
         "أزرار التشغيل في الخلفية" to "Background playback controls",
         "إشعار التحكم بيوتيوب وشاشة القفل — يُضبط من قسم يوتيوب" to "YouTube controls in the notification and lock screen — also set in the YouTube section",
         "قنوات الإشعارات" to "Notification channels",
-        "الصوت والأهمية لكل نوع من إعدادات النظام" to "Sound and importance for each type, in system settings"
+        "الصوت والأهمية لكل نوع من إعدادات النظام" to "Sound and importance for each type, in system settings",
+        "تم" to "Done",
+        "تقرير الخصوصية" to "Privacy Report",
+        "متتبعات تم منعها من تتبعك" to "Trackers prevented from profiling you"
     )
 }
 

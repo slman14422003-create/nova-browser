@@ -97,133 +97,163 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import org.json.JSONObject
 import java.net.URLEncoder
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.ExperimentalFoundationApi
 
 @Composable
 fun FindBar(tab: BrowserTab) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     var q by remember { mutableStateOf("") }
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { fr.requestFocus() }
-    Surface(Modifier.imePadding().fillMaxWidth(), color = cs.background) {
-        Row(Modifier.navigationBarsPadding().height(60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            BasicTextField(
-                value = q, onValueChange = { q = it; tab.webView?.findAllAsync(it) }, singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface), cursorBrush = SolidColor(cs.primary),
-                modifier = Modifier.weight(1f).padding(start = 12.dp).focusRequester(fr),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (q.isEmpty()) Text(L("بحث في الصفحة"), color = cs.onSurfaceVariant)
-                        inner()
+    Column(Modifier.imePadding().fillMaxWidth().background(ios.chrome).iosHairlineTop(ios.separator)) {
+        Row(Modifier.navigationBarsPadding().height(52.dp).padding(start = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(10.dp)).background(ios.fill3).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IosIcon(IosGlyph.Magnifier, ios.label2, 16.dp)
+                Spacer(Modifier.width(6.dp))
+                BasicTextField(
+                    value = q, onValueChange = { q = it; tab.webView?.findAllAsync(it) }, singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = ios.label), cursorBrush = SolidColor(ios.blue),
+                    modifier = Modifier.weight(1f).focusRequester(fr),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (q.isEmpty()) Text(L("بحث في الصفحة"), style = MaterialTheme.typography.bodyLarge, color = ios.label2, maxLines = 1)
+                            inner()
+                        }
                     }
-                }
-            )
-            Text(tab.findInfo, style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
-            IconButton(onClick = { tab.webView?.findNext(false) }) { Icon(Icons.Default.KeyboardArrowUp, L("السابق")) }
-            IconButton(onClick = { tab.webView?.findNext(true) }) { Icon(Icons.Default.KeyboardArrowDown, L("التالي")) }
-            IconButton(onClick = { tab.webView?.clearMatches(); tab.finding = false }) { Icon(Icons.Default.Close, L("إغلاق")) }
+                )
+                if (tab.findInfo.isNotEmpty()) Text(tab.findInfo, style = MaterialTheme.typography.bodySmall, color = ios.label2, maxLines = 1)
+            }
+            Box(Modifier.size(40.dp).clickable { tab.webView?.findNext(false) }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.ChevronUp, ios.blue, 22.dp) }
+            Box(Modifier.size(40.dp).clickable { tab.webView?.findNext(true) }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.ChevronDown, ios.blue, 22.dp) }
+            IosTextButton(L("تم"), { tab.webView?.clearMatches(); tab.finding = false }, bold = true)
         }
     }
 }
 
 class SitePrompt(val title: String, val message: String, val onAllow: () -> Unit, val onDeny: () -> Unit)
 
-/**
- * شاشة كاملة تُعرض بدل المتصفح عند تعذّر الوصول لمحرك Android System WebView (معطّل أو غير مثبّت على الجهاز).
- * نعرضها بدل محاولة إنشاء أي WebView لأن ذلك ينهار بلا تفسير مفهوم للمستخدم إن كان المزوّد مفقوداً فعلاً؛
- * الفحص في WebEngine.init آمن (لا يُنشئ WebView فعلياً) فنعرف الحالة مسبقاً.
- */
 @Composable
 fun EngineMissingScreen(ctx: Context, onRetry: () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
+    val ios = LocalIos.current
+    Surface(Modifier.fillMaxSize(), color = ios.groupedBg) {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(32.dp),
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.Warning, null, Modifier.size(56.dp), tint = cs.error)
+            Icon(Icons.Default.Warning, null, Modifier.size(56.dp), tint = ios.orange)
             Spacer(Modifier.height(20.dp))
-            Text(L("تعذّر تشغيل محرك عرض الصفحات"), style = MaterialTheme.typography.titleLarge, color = cs.onBackground)
+            Text(L("تعذّر تشغيل محرك عرض الصفحات"), style = MaterialTheme.typography.headlineSmall, color = ios.label, textAlign = TextAlign.Center)
             Spacer(Modifier.height(10.dp))
             Text(
                 L("يعتمد Nova على مكوّن Android System WebView، ويبدو أنه معطّل أو غير مثبّت على جهازك. فعّله أو حدّثه ثم أعد المحاولة."),
-                style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                style = MaterialTheme.typography.bodyMedium, color = ios.label2, textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(28.dp))
-            Button(onClick = {
+            IosButton(L("فتح صفحة WebView في المتجر"), {
                 runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     .onFailure { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
-            }, modifier = Modifier.fillMaxWidth()) { Text(L("فتح صفحة WebView في المتجر")) }
+            })
             Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = {
+            IosButton(L("إعدادات تطبيق WebView"), {
                 runCatching { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", "com.google.android.webview", null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            }, modifier = Modifier.fillMaxWidth()) { Text(L("إعدادات تطبيق WebView")) }
-            Spacer(Modifier.height(10.dp))
-            TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text(L("إعادة المحاولة")) }
+            }, filled = false)
+            Spacer(Modifier.height(4.dp))
+            IosTextButton(L("إعادة المحاولة"), onRetry)
         }
     }
 }
 
-/**
- * شريط تنبيه دائم (غير توست عابر) عندما يكون محرك العرض متأخراً بشكل خطير (6+ إصدارات) أو مفقوداً تماماً.
- * يظهر فوق الصفحة لا داخل الإعدادات فقط، لأن خطورة محرك قديم/معطّل تمسّ كل صفحة يفتحها المستخدم فوراً.
- */
 @Composable
 fun EngineAlertBanner(ctx: Context) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     AnimatedVisibility(
         visible = WebEngine.bannerVisible,
         enter = fadeIn(tween(Adaptive.ms(160))) + slideInVertically(tween(Adaptive.ms(160))) { -it },
         exit = fadeOut(tween(Adaptive.ms(120))) + slideOutVertically(tween(Adaptive.ms(120))) { -it }
     ) {
-        Surface(color = cs.errorContainer, contentColor = cs.onErrorContainer, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().background(ios.chrome).iosHairlineBottom(ios.separator)) {
             Row(
-                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp),
+                Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Warning, null, Modifier.size(18.dp))
+                Icon(Icons.Default.Warning, null, Modifier.size(18.dp), tint = ios.orange)
                 Spacer(Modifier.width(10.dp))
                 Text(
                     if (WebEngine.missing) L("تعذّر تشغيل محرك عرض الصفحات (Android System WebView) — بعض المواقع لن تعمل")
                     else L("محرك عرض الصفحات قديم جداً ويشكّل خطراً أمنياً — حدّثه الآن"),
-                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis
+                    style = MaterialTheme.typography.bodySmall, color = ios.label, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.width(8.dp))
-                TextButton(onClick = {
+                IosTextButton(L("تحديث"), {
                     if (WebEngine.missing) {
                         runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     } else WebEngine.openStore(ctx)
-                }) { Text(L("تحديث"), color = cs.onErrorContainer, fontWeight = FontWeight.Bold) }
-                IconButton(onClick = { WebEngine.dismissBanner() }) { Icon(Icons.Default.Close, L("إغلاق"), tint = cs.onErrorContainer) }
+                }, bold = true)
+                Box(Modifier.size(36.dp).clickable { WebEngine.dismissBanner() }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.Close, ios.label2, 16.dp) }
             }
         }
     }
 }
 
 @Composable
+private fun RowScope.ToolbarBtn(kind: IosGlyph, enabled: Boolean, onClick: () -> Unit) {
+    val ios = LocalIos.current
+    val src = remember { MutableInteractionSource() }
+    Box(
+        Modifier.weight(1f).fillMaxHeight().clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        IosIcon(kind, if (enabled) ios.blue else ios.label3, 25.dp, Modifier.pressScale(src, 0.86f))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun BottomPill(
     tab: BrowserTab, tabCount: Int, editing: Boolean, setEditing: (Boolean) -> Unit,
     onGo: (String) -> Unit, onTabs: () -> Unit, onNewTab: () -> Unit, onHome: () -> Unit,
     onFind: () -> Unit, onDesktop: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit,
     onDownloads: () -> Unit, onSwitch: (Int) -> Unit, onSettings: () -> Unit, onTranslate: () -> Unit = {},
-    onPrint: () -> Unit = {}
+    onPrint: () -> Unit = {}, onLibrary: () -> Unit = {}
 ) {
-    val cs = MaterialTheme.colorScheme
+    val ios = LocalIos.current
     val focus = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var menu by remember { mutableStateOf(false) }
+    var sheet by remember { mutableStateOf(false) }
+    var pageMenu by remember { mutableStateOf(false) }
     val hasPage = tab.url.isNotBlank()
-    var query by remember { mutableStateOf("") }          // نص الحقل أثناء الكتابة (لاقتراحات البحث)
-    var fill by remember { mutableStateOf<String?>(null) } // اقتراح طُلب إدراجه في الحقل
+    var query by remember { mutableStateOf("") }
+    var fill by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(editing) { if (!editing) { query = ""; fill = null } }
 
-    // خلفية شبه شفافة بحافة علوية رفيعة (hairline) بدل سطح معتم كامل — تقريب لأسلوب الزجاج
-    // المصقول (Liquid Glass) في شريط أدوات Safari الحديث على iOS، دون الحاجة لمكتبة ضبابية خارجية.
-    Surface(
-        Modifier.imePadding().fillMaxWidth()
-            .drawBehind { drawLine(cs.outlineVariant, Offset(0f, 0f), Offset(size.width, 0f), strokeWidth = 1.2f * density) },
-        shape = RectangleShape, color = cs.surface.copy(alpha = 0.92f)
-    ) {
+    Column(Modifier.imePadding().fillMaxWidth().background(ios.chrome).iosHairlineTop(ios.separator)) {
         Column(Modifier.navigationBarsPadding()) {
             if (editing) SuggestionsPanel(
                 query = query,
@@ -235,23 +265,22 @@ fun BottomPill(
                 transitionSpec = { fadeIn(tween(Adaptive.ms(120))) togetherWith fadeOut(tween(Adaptive.ms(80))) },
                 label = "bar"
             ) { isEditing ->
-                Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (isEditing) {
+                if (isEditing) {
+                    Row(Modifier.fillMaxWidth().height(52.dp).padding(start = 12.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         var field by remember { mutableStateOf(TextFieldValue(tab.url, TextRange(0, tab.url.length))) }
                         val fr = remember { FocusRequester() }
                         var got by remember { mutableStateOf(false) }
                         LaunchedEffect(Unit) { fr.requestFocus() }
                         LaunchedEffect(fill) { fill?.let { f -> field = TextFieldValue(f, TextRange(f.length)); query = f; fill = null } }
-                        // الحقل داخل كبسولة بنفس شكل شريط العنوان العادي (بدل حقل مسطّح بلا حدود)
                         Row(
-                            Modifier.weight(1f).height(48.dp).clip(CircleShape).background(cs.surfaceContainerHigh).padding(start = 14.dp),
+                            Modifier.weight(1f).height(40.dp).clip(IosShape.field).background(ios.fill3).padding(start = 10.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Search, null, Modifier.size(20.dp), tint = cs.onSurfaceVariant)
-                            Spacer(Modifier.width(10.dp))
+                            IosIcon(IosGlyph.Magnifier, ios.label2, 17.dp)
+                            Spacer(Modifier.width(8.dp))
                             BasicTextField(
                                 value = field, onValueChange = { field = it; query = it.text }, singleLine = true,
-                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = cs.onSurface), cursorBrush = SolidColor(cs.primary),
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = ios.label), cursorBrush = SolidColor(ios.blue),
                                 keyboardOptions = KeyboardOptions(
                                     capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None,
                                     keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go
@@ -263,96 +292,111 @@ fun BottomPill(
                                 modifier = Modifier.weight(1f).focusRequester(fr).onFocusChanged { if (it.isFocused) got = true else if (got) setEditing(false) },
                                 decorationBox = { inner ->
                                     Box(contentAlignment = Alignment.CenterStart) {
-                                        if (field.text.isEmpty()) Text(L("ابحث أو اكتب عنوان"), color = cs.onSurfaceVariant, maxLines = 1)
+                                        if (field.text.isEmpty()) Text(L("ابحث أو اكتب عنوان"), style = MaterialTheme.typography.bodyLarge, color = ios.label2, maxLines = 1)
                                         inner()
                                     }
                                 }
                             )
-                            // الحقل فارغ: زر لصق (يقرأ الحافظة عند الضغط فقط، فلا يظهر تنبيه وصول للحافظة عند فتح الشريط)
-                            if (field.text.isNotEmpty()) IconButton(onClick = { field = TextFieldValue(""); query = "" }) { Icon(Icons.Default.Close, L("مسح")) }
-                            else TextButton(onClick = {
-                                val t = runCatching {
-                                    (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                                        .primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty().trim()
-                                }.getOrDefault("")
-                                if (t.isNotEmpty()) { field = TextFieldValue(t, TextRange(t.length)); query = t }
-                            }) { Text(L("لصق")) }
+                            if (field.text.isNotEmpty()) Box(
+                                Modifier.size(32.dp).clickable { field = TextFieldValue(""); query = "" }, contentAlignment = Alignment.Center
+                            ) { IosIcon(IosGlyph.XCircleFill, ios.label3, 18.dp, accent = if (ios.dark) Color(0xFF3A3A3C) else Color.White) }
+                            else Text(
+                                L("لصق"), style = MaterialTheme.typography.bodyMedium, color = ios.blue,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable {
+                                    val t = runCatching {
+                                        (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                                            .primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString().orEmpty().trim()
+                                    }.getOrDefault("")
+                                    if (t.isNotEmpty()) { field = TextFieldValue(t, TextRange(t.length)); query = t }
+                                }.padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
                         }
-                        Spacer(Modifier.width(4.dp))
-                    } else {
-                        RoundBtn(onClick = { if (tab.canBack) tab.webView?.goBack() else onHome() }) {
-                            Icon(if (tab.canBack) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Home, if (tab.canBack) L("رجوع") else L("الرئيسية"))
-                        }
-                        Row(
-                            Modifier.weight(1f).height(48.dp).clip(CircleShape).background(cs.surfaceContainerHigh)
-                                .pointerInput(Unit) {
-                                    var dx = 0f; var dy = 0f
-                                    detectDragGestures(
-                                        onDragStart = { dx = 0f; dy = 0f },
-                                        onDrag = { _, a -> dx += a.x; dy += a.y },
-                                        onDragEnd = {
-                                            if (dy < -60f && kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress); onTabs()
-                                            } else if (kotlin.math.abs(dx) > 120f) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSwitch(if (dx < 0) 1 else -1)
+                        IosTextButton(L("إلغاء"), { setEditing(false); focus.clearFocus() })
+                    }
+                } else {
+                    Column(Modifier.fillMaxWidth()) {
+                        Box(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                            val animatedProgress by animateFloatAsState(
+                                targetValue = if (tab.loading) tab.progress.coerceIn(0.05f, 1f) else 0f,
+                                animationSpec = tween(180, easing = FastOutSlowInEasing), label = "loadBar"
+                            )
+                            Box(
+                                Modifier.fillMaxSize().clip(IosShape.field).background(ios.fill3)
+                                    .pointerInput(Unit) {
+                                        var dx = 0f; var dy = 0f
+                                        detectDragGestures(
+                                            onDragStart = { dx = 0f; dy = 0f },
+                                            onDrag = { _, a -> dx += a.x; dy += a.y },
+                                            onDragEnd = {
+                                                if (dy < -60f && kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress); onTabs()
+                                                } else if (kotlin.math.abs(dx) > 120f) {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onSwitch(if (dx < 0) 1 else -1)
+                                                }
                                             }
+                                        )
+                                    }
+                            ) {
+                                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                    if (hasPage) Box(Modifier.width(44.dp).fillMaxHeight().clickable { pageMenu = true }, contentAlignment = Alignment.Center) {
+                                        Row {
+                                            Text("A", fontSize = 12.sp, color = ios.label, modifier = Modifier.alignByBaseline())
+                                            Text("A", fontSize = 19.sp, color = ios.label, modifier = Modifier.alignByBaseline())
                                         }
-                                    )
+                                        PageMenu(tab, pageMenu, { pageMenu = false }, onDesktop, onTranslate, onDownloads, onSettings)
+                                    } else Spacer(Modifier.width(44.dp))
+                                    Row(
+                                        Modifier.weight(1f).fillMaxHeight().clickable(
+                                            interactionSource = remember { MutableInteractionSource() }, indication = null
+                                        ) { setEditing(true) },
+                                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        val insecure = tab.url.startsWith("http://")
+                                        if (hasPage) {
+                                            if (insecure) Icon(Icons.Default.Warning, L("اتصال غير مشفّر"), Modifier.size(13.dp), tint = ios.red)
+                                            else if (tab.url.startsWith("https")) IosIcon(IosGlyph.Lock, ios.label2, 12.dp)
+                                            Spacer(Modifier.width(5.dp))
+                                        } else {
+                                            IosIcon(IosGlyph.Magnifier, ios.label2, 15.dp)
+                                            Spacer(Modifier.width(6.dp))
+                                        }
+                                        Text(
+                                            if (!hasPage) L("ابحث أو اكتب عنوان") else hostOf(tab.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.bodyLarge, color = if (hasPage) ios.label else ios.label2
+                                        )
+                                    }
+                                    if (hasPage) Box(
+                                        Modifier.width(44.dp).fillMaxHeight().clickable { if (tab.loading) tab.webView?.stopLoading() else tab.webView?.reload() },
+                                        contentAlignment = Alignment.Center
+                                    ) { IosIcon(if (tab.loading) IosGlyph.Close else IosGlyph.Reload, ios.label, 17.dp) } else Spacer(Modifier.width(44.dp))
                                 }
-                                .clickable { setEditing(true) }.padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center
-                        ) {
-                            val insecure = tab.url.startsWith("http://")
-                            Icon(
-                                if (insecure) Icons.Default.Warning else if (tab.url.startsWith("https")) Icons.Default.Lock else Icons.Default.Search,
-                                if (insecure) L("اتصال غير مشفّر") else null, Modifier.size(15.dp),
-                                tint = if (insecure) cs.error else cs.onSurfaceVariant
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                if (!hasPage) L("ابحث أو اكتب عنوان") else hostOf(tab.url), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium, color = if (hasPage) cs.onSurface else cs.onSurfaceVariant
-                            )
-                            // دائرة تحميل بأسلوب Safari على الآيفون: حلقة رفيعة محدّدة التقدّم بجانب عنوان الصفحة مباشرة
-                            if (tab.loading) {
-                                Spacer(Modifier.width(7.dp))
-                                val animatedProgress by animateFloatAsState(
-                                    targetValue = tab.progress, animationSpec = tween(180, easing = FastOutSlowInEasing), label = "loadRing"
-                                )
-                                CircularProgressIndicator(
-                                    progress = { animatedProgress },
-                                    modifier = Modifier.size(15.dp),
-                                    color = cs.primary,
-                                    trackColor = cs.onSurfaceVariant.copy(alpha = 0.25f),
-                                    strokeWidth = 1.6.dp,
-                                    strokeCap = StrokeCap.Round
-                                )
+                                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(animatedProgress).height(2.dp).background(ios.blue))
                             }
                         }
-                        RoundBtn(onClick = onTabs) {
-                            // مربع بزوايا دائرية بنفس تناسب أيقونة التبويبات في Safari (بدل مربع حاد الزوايا)
-                            Box(Modifier.size(25.dp).border(1.8.dp, cs.onSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                                Text(if (tabCount > 99) "99+" else "$tabCount", maxLines = 1, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                            }
+                        Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                            ToolbarBtn(IosGlyph.Back, tab.canBack || hasPage) { if (tab.canBack) tab.webView?.goBack() else onHome() }
+                            ToolbarBtn(IosGlyph.Forward, tab.canForward) { tab.webView?.goForward() }
+                            ToolbarBtn(IosGlyph.Share, hasPage) { sheet = true }
+                            ToolbarBtn(IosGlyph.Book, true) { onLibrary() }
+                            ToolbarBtn(IosGlyph.Tabs, true) { onTabs() }
                         }
-                        RoundBtn(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, L("المزيد")) }
-                        if (menu) MenuSheet(tab, { menu = false }, onNewTab, onFind, onDesktop, onShare, onCopy, onDownloads, onSettings, onHome, onTranslate, onPrint)
                     }
                 }
             }
         }
     }
+    if (sheet) MenuSheet(tab, { sheet = false }, onNewTab, onFind, onShare, onCopy, onPrint)
 }
 
 @Composable
 fun RoundBtn(onClick: () -> Unit, enabled: Boolean = true, content: @Composable () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val ios = LocalIos.current
+    val src = remember { MutableInteractionSource() }
     Box(
-        Modifier.padding(horizontal = 2.dp).size(48.dp).pressScale(src, 0.9f).clip(CircleShape).background(cs.surfaceContainerHigh)
-            .clickable(interactionSource = src, indication = androidx.compose.foundation.LocalIndication.current, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
+        Modifier.size(44.dp).pressScale(src, 0.88f).alpha(if (enabled) 1f else 0.4f)
+            .clickable(interactionSource = src, indication = null, enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
-    ) { CompositionLocalProvider(LocalContentColor provides cs.onSurface) { content() } }
+    ) { CompositionLocalProvider(LocalContentColor provides ios.blue) { content() } }
 }
 
 @Composable
@@ -361,40 +405,4 @@ fun Reveal(shown: Boolean, delay: Int, content: @Composable () -> Unit) {
         visible = shown,
         enter = fadeIn(tween(Adaptive.ms(320), delay.coerceAtMost(240))) + slideInVertically(tween(Adaptive.ms(320), delay.coerceAtMost(240), FastOutSlowInEasing)) { it / 8 }
     ) { content() }
-}
-
-fun groupShape(i: Int, n: Int): RoundedCornerShape {
-    val big = 28.dp; val small = 6.dp
-    val top = if (i == 0) big else small
-    val bot = if (i == n - 1) big else small
-    return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bot, bottomEnd = bot)
-}
-
-@Composable
-fun IconCircle(content: @Composable () -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    Box(Modifier.size(40.dp).clip(CircleShape).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) { content() }
-}
-
-@Composable
-fun ListRow(
-    shape: RoundedCornerShape, title: String, sub: String?, onClick: () -> Unit,
-    enabled: Boolean = true, trailing: (@Composable () -> Unit)? = null, modifier: Modifier = Modifier, leading: @Composable () -> Unit
-) {
-    val cs = MaterialTheme.colorScheme
-    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Surface(
-        onClick = onClick, enabled = enabled, shape = shape, color = cs.surfaceContainerHigh, interactionSource = src,
-        modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.4f).pressScale(src, 0.985f)
-    ) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            leading()
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (trailing != null) { Spacer(Modifier.width(8.dp)); trailing() }
-        }
-    }
 }

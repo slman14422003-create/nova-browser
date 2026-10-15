@@ -159,11 +159,12 @@ fun errorHtml(url: String, desc: String): String {
 <html data-nova-err><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <style>
-:root{color-scheme:light dark}body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;
-justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:$dir}
-h2{margin:8px}p{opacity:.65;word-break:break-all;margin:4px}
-button{margin-top:22px;padding:12px 30px;border:0;border-radius:24px;background:#3D5AFE;color:#fff;font-size:16px}
-</style></head><body data-u="$u"><div style="font-size:56px">📡</div><h2>${L("تعذّر فتح الصفحة")}</h2>
+:root{color-scheme:light dark}body{font-family:-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;
+justify-content:center;height:100vh;margin:0;padding:24px;text-align:center;direction:$dir;background:#F2F2F7;color:#000}
+h2{margin:8px;font-size:20px;font-weight:600}p{color:#3C3C4399;word-break:break-all;margin:4px;font-size:15px}
+button{margin-top:22px;padding:0;border:0;background:none;color:#007AFF;font-size:17px}
+@media(prefers-color-scheme:dark){body{background:#000;color:#fff}p{color:#EBEBF599}button{color:#0A84FF}}
+</style></head><body data-u="$u"><div style="font-size:56px;opacity:.5">⚠︎</div><h2>${L("تعذّر فتح الصفحة")}</h2>
 <p>$d</p><p>$u</p>
 <button id="r">${L("إعادة المحاولة")}</button>
 <script>document.getElementById('r').onclick=function(){location.replace(document.body.getAttribute('data-u'))}</script></body></html>"""

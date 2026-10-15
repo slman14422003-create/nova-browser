@@ -1,5 +1,7 @@
 package com.nova.browser
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -160,7 +162,7 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val rows = if (tab == 1) buildRows(hs.take(1000)) else emptyList()
     val timeFmt = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
 
-    Surface(Modifier.fillMaxSize(), color = cs.background) {
+    Surface(Modifier.fillMaxSize(), color = LocalIos.current.groupedBg) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             PanelTopBar(L("المكتبة"), Library.bookmarks.size.toString() + " " + L("المفضلة") + " • " + Library.history.size + " " + L("السجل"), onBack) {
                 PanelMenu { close ->
@@ -180,18 +182,18 @@ fun LibraryScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             } else if (empty) {
                 PanelEmpty(Icons.Default.Refresh, L("السجل فارغ"), L("الصفحات التي تزورها تظهر هنا"), emptyMod)
             } else if (tab == 0) {
-                LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(3.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+                LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     itemsIndexed(bms, key = { i, b -> b.url + i }) { i, b ->
                         ListRow(groupShape(i, bms.size), b.title, if (b.folder.isBlank()) hostOf(b.url) else b.folder + " • " + hostOf(b.url), { onOpen(b.url) },
                             trailing = { ItemMenu(b.url, b.title, false, { onOpen(b.url) }, { Library.removeBookmark(b) }) }) { SiteIcon(b.url, Icons.Default.Star) }
                     }
                 }
             } else {
-                LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(3.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+                LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(0.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                     itemsIndexed(rows, key = { i, r -> if (r.header != null) "h" + r.header else "i$i" }) { _, r ->
                         if (r.header != null) {
-                            Text(r.header, style = MaterialTheme.typography.titleSmall, color = cs.primary, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 8.dp, top = 18.dp, bottom = 6.dp))
+                            Text(r.header, style = MaterialTheme.typography.titleMedium, color = LocalIos.current.label,
+                                modifier = Modifier.padding(start = 4.dp, top = 22.dp, bottom = 8.dp))
                         } else {
                             val h = r.item!!
                             ListRow(groupShape(r.idx, r.n), h.title, hostOf(h.url) + " • " + timeFmt.format(java.util.Date(h.time)), { onOpen(h.url) },
@@ -280,7 +282,7 @@ private fun SiteIcon(url: String, fallback: androidx.compose.ui.graphics.vector.
     val ver = Favicons.version
     val bmp = remember(ver, url) { Favicons.get(hostOf(url)) }
     IconCircle {
-        if (bmp != null) Image(bmp.asImageBitmap(), null, Modifier.size(22.dp)) else Icon(fallback, null)
+        if (bmp != null) Image(bmp.asImageBitmap(), null, Modifier.size(22.dp).clip(RoundedCornerShape(5.dp))) else Icon(fallback, null)
     }
 }
 
@@ -289,8 +291,8 @@ private fun ItemMenu(url: String, title: String, showFav: Boolean, onOpen: () ->
     val ctx = LocalContext.current
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, L("المزيد")) }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(20.dp)) {
+        Box(Modifier.size(36.dp).clickable { open = true }, contentAlignment = Alignment.Center) { IosIcon(IosGlyph.EllipsisCircle, LocalIos.current.blue, 24.dp) }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(14.dp), containerColor = LocalIos.current.menu, tonalElevation = 0.dp) {
             DropdownMenuItem(text = { Text(L("فتح")) }, leadingIcon = { Icon(Icons.Default.ExitToApp, null) }, onClick = { open = false; onOpen() })
             DropdownMenuItem(text = { Text(L("نسخ الرابط")) }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { open = false; copyText(ctx, url) })
             DropdownMenuItem(text = { Text(L("مشاركة")) }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { open = false; shareText(ctx, url) })
