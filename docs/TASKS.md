@@ -1,0 +1,52 @@
+# سجل المهام والتعديلات
+
+## 2026-10-16 - smart assistant, WebView support, smoothness audit
+- New: summarize.js + SmartAssist.kt (on-device page summary, Ask AI via Google AI Mode), SmartCalc.java (address-bar calculator), NovaWebView.kt (selection toolbar actions), WebBoost.kt (slow-network image deferral), Strings.kt + res/values(-ar)/strings.xml (resource strings that follow Prefs.lang).
+- Menus: Summarize page and Ask AI in the page menu; Close duplicate tabs in the tab overview menu.
+- Manifest: PROCESS_TEXT filter (select text in any app, open with Nova). Prefs.smart toggle in Settings.
+- Audit fixes: Suggest.local allocation and scan cap, Library filtering via derivedStateOf, stable LazyRow keys, earlier status-bar tint (onPageCommitVisible).
+- tools/project_check.py: checks R.string parity (values vs values-ar), Arabic-free new code files, PROCESS_TEXT filter.
+- Not compiled in the session; run a Gradle build first.
+
+## 2026-10-14 — البصمة (EFF) + مكتبات دعم الصفحات واللغات + استقرار
+- `assets/privacy.js` (إعادة كتابة): توحيد `platform`/`maxTouchPoints`/`hardwareConcurrency`، أبعاد الشاشة وdevicePixelRatio إلى قيم شائعة، إخفاء الخطوط غير الشائعة (measureText وقياس عناصر الاختبار)، وWebGL: حدود المعاملات والامتدادات وprecision وvendor/renderer بقيم شائعة، وزمن الصوت. `toString()` للدوال المعدّلة يُظهر الأصلية. فحص صفحة التحقق يخفّ بعد 5 ثوانٍ.
+- `assets/polyfills.js` (جديد): Array.at/findLast/toSorted…، Object.groupBy/hasOwn، Set.union…، Promise.withResolvers/any، structuredClone، AbortSignal.timeout/any، crypto.randomUUID، URL.canParse… (تعمل فقط عند غياب الميزة).
+- `assets/langfix.js` (جديد): يضبط `lang` للصفحات التي بلا lang من نص الصفحة (الصينية المبسّطة/التقليدية، اليابانية، الكورية، الهندية، التايلندية، العبرية، الفارسية، الأردية، الروسية…) فيختار المحرك نموذج الحروف الصحيح.
+- `browser/WebCompat.kt`: حقن polyfills ثم webcompat ثم langfix. `core/Settings.kt`: 13 لغة جديدة لـ«لغة المواقع» في نهاية القائمة. `res/xml/locales_config.xml` وlocaleFilters: 23 لغة.
+- `MainActivity.kt`: `onLowMemory` يحرّر تبويبات الخلفية كـ onTrimMemory. `proguard-rules.pro`: حذف Log.v/d من الإصدار.
+
+## 2026-10-13 — إصلاح النافذة المنبثقة (PiP) لمشغّل يوتيوب فقط
+- `assets/yt.js`: إعادة كتابة `__novaPip` (وسم بخاصية بدل class، إعادة تطبيق دورية، إلغاء خصائص الآباء، اختيار أفضل عنصر فيديو)، وإرسال `vw/vh` مع حالة التشغيل.
+- `yt/YtMedia.kt`: حفظ أبعاد الفيديو (`vw/vh`) وتصفيرها عند الإيقاف.
+- `yt/YtWeb.kt`: `onPip` يفعّل حماية التشغيل قبل نمط المنبثقة.
+- `MainActivity.kt`: نسبة المنبثقة من أبعاد الفيديو + تحديثها عند تغيّرها؛ فشل الدخول يُبلَّغ بدل الصمت؛ إصلاح التقاط «إغلاق المنبثقة» خطأً بعد التوسيع؛ الدخول التلقائي لا يشترط التشغيل الجاري؛ خلفية سوداء أثناء المنبثقة؛ زر منبثق عائم لا يعتمد على وضع التطبيق.
+- `pwa/SiteBar.kt`: `PipGlyph` صارت `internal` لاستعمالها في الزر العائم.
+- `core/I18n.kt`: ترجمتان إنجليزيتان لرسالتي الفشل.
+- لم يُمسّ أي كود خاص بالمتصفح العام؛ كل التعديلات محصورة بمشغّل يوتيوب والمنبثقة.
+
+## 2026-10-13 — سلاسة الواجهة والتنقل + توفير البطارية والمعالج
+- `perf/Smooth.kt` (Adaptive): البطارية ≤15% وغير موصولة بالشاحن تُدخل وضع التخفيف (أنيميشن أقصر، 60Hz، عدد تبويبات حيّة أقل) تلقائياً؛ يُقرأ الشحن ببث لاصق ويُحدَّث عند BATTERY_LOW/OKAY وتوصيل/فصل الشاحن.
+- `MainActivity.kt`: تحرير الـ WebView للتبويبات الخلفية الخاملة (15 دقيقة، و5 عند التخفيف) مع حفظ السجل والتمرير؛ لا يمسّ المثبّتة ولا قيد التحميل ولا يوتيوب الجاري. وقت الاستخدام يُسجَّل عند مغادرة التبويب. حكم «منع السحب للتحديث» يُحفظ لكل رابط بدل تحليل الرابط مع كل حركة لمس أثناء التمرير.
+- `download/DownloadService.kt`: القفل الجزئي (WakeLock) كان يُمسك 6 ساعات متواصلة؛ صار يُمسك فقط أثناء تنزيل فعلي ويُحرَّر عند الإيقاف المؤقت/الانتهاء. تحديث الإشعار كل 5ث بدل 1ث والشاشة مطفأة.
+- `browser/Popups.kt`: مراقبة عنوان النافذة المنبثقة كل 1000ms بدل 400ms.
+- `assets/yt.js`: قياس موضع الترجمة الدوري كل 1ث بدل 0.7ث ويتوقف مع إيقاف الفيديو.
+- ملاحظة: ميزة تحرير التبويبات الخاملة قد توقف صوتاً يعمل في تبويب خلفي لموقع غير يوتيوب بعد المهلة؛ المهلة قابلة للتعديل في `MainActivity.kt` (المتغيّر `idle`).
+
+## 2026-10-13 — كاش الصفحات + إصلاح تنزيل apk باسم .bin
+- السبب: `URLUtil.guessFileName` يستبدل امتداد الملف بامتداد نوع المحتوى إن اختلفا؛ الخوادم تعيد apk بنوع octet-stream فيصير `.bin`، وتسجيل MediaStore بنوع عام قد يُلحق `.bin` أيضاً.
+- `download/Downloader.kt`: دالتان `smartName` و`smartMime`: الاسم الحقيقي مقدَّم على نوع المحتوى، والبحث عن اسم apk داخل الرابط (`?file=x.apk`) للسكربتات والأنواع العامة، ونوع apk الصحيح (`application/vnd.android.package-archive`) يُسجَّل في MediaStore ويُستعمل عند الفتح (يفتح المثبّت). وإن أضاف النظام `.bin` يُعاد الاسم المطلوب. الملفات المنزَّلة سابقاً باسم `.bin` لا تتغيّر (تُعاد تسميتها يدوياً أو تُنزَّل من جديد).
+- `core/Settings.kt`: «مسح الكاش عند كل تشغيل» صار معطّلاً افتراضياً (كان يمحو كاش HTTP وكود الصفحات والرسوميات مع كل فتح فتبدأ كل صفحة باردة). من فعّله يدوياً يبقى مفعّلاً.
+- `MainActivity.kt`: عند الإيقاف يُقاس حجم الكاش في خيط خلفي (كل 10 دقائق كحدّ أقصى)، وعند التشغيل التالي يُنظَّف فقط إن تجاوز 300MB (`CacheCleaner.cleanLarge`) مع إبقاء كاش الشيفرة والرسوميات.
+- `browser/WebSupport.kt`: `cacheFirst` (تحميل واحد يفضّل الكاش) و`prepareLoad` (بلا اتصال تُفتح الصفحة من الكاش). تُستعمل لاستعادة التبويبات المحرَّرة (غير يوتيوب) فتعود فوراً، ولكل تحميل يبدؤه التطبيق.
+
+## 2026-10-13 — توافق Cloudflare/صفحات التحقق + الصفحات ذات الأكواد الضخمة + مربع البحث والحوارات
+- السبب المرجّح لتعطّل Cloudflare: الحماية من البصمة (`privacy.js`) كانت تضيف ضجيجاً لـ Canvas/WebGL/الصوت وتبدّل `navigator.*` على صفحة التحقق وإطار Turnstile، فيفشل التحقق أو يدور. الآن: لا تدخّل إطلاقاً في نطاقات التحقق (challenges.cloudflare.com وhCaptcha وreCAPTCHA وDataDome…)، وفي صفحة التحقق نفسها تُعاد القيم الحقيقية بعد اكتشافها (`inChallenge`: عنوان الصفحة/`_cf_chl_opt`/سكربتات challenge-platform).
+- `security/Shield.kt`: نطاقات التحقق ومسارات `/cdn-cgi/` لا تُحجب. `browser/WebCompat.kt`: عنوان صفحة التحقق يفعّل كوكيز الطرف الثالث مؤقتاً ويرفع حدّ كاشف حلقات إعادة التحميل من 8 إلى 24 ويمهل الصفحة وقتاً أطول، ثم تعود الإعدادات تلقائياً.
+- `browser/WebSupport.kt`: عملية العرض غير المستجيبة كانت تُقتل بعد 10 ثوانٍ؛ صارت 30ث (60ث لصفحات التحقق) مع إشعار «الصفحة ثقيلة… يرجى الانتظار» عند 8ث.
+- `assets/privacy.js`: الخطافات الثقيلة (measureText وgetImageData وtoDataURL/toBlob وreadPixels) تُطبَّق كاملة على أول استدعاءات ثم على واحد من كل N، فلا تُثقل صفحات الأكواد والمحررات والألعاب؛ وأُضيفت مواقع التطوير (github وgitlab وvscode.dev وstackblitz وcodesandbox وcodepen وreplit وغيرها) للحماية الخفيفة.
+- `assets/smooth.js`: «وضع الصفحات الثقيلة» (DOM فوق 5000 عنصر أو أكثر من 20 كتلة `pre` أو كتلة فوق 60 ألف حرف): نص أسرع بلا ligatures/kerning، وتأجيل تخطيط كتل الأكواد البعيدة (`content-visibility`).
+- `ui/Bars.kt` (مربع البحث): الحقل داخل كبسولة بنفس شكل شريط العنوان، زر مسح يظهر فقط مع وجود نص، وزر «لصق» عند الفراغ (يقرأ الحافظة عند الضغط فقط)، وبلا حروف كبيرة تلقائية. `core/Suggest.kt`: عند فتح الشريط قبل الكتابة تظهر آخر 6 صفحات مزارة، وحركة سلسة لتغيّر حجم القائمة.
+- `core/Settings.kt` (الحوارات): نص سجل الأعطال وسجل الأمان قابل للتحديد والنسخ، وسجل الأعطال بخط ثابت العرض.
+- `download/Downloads.kt`: سطر تفاصيل الملف صار «التاريخ • النوع • الموقع» فلا يُقطع التاريخ.
+- `core/I18n.kt`: ترجمتان («لصق»، «الصفحة ثقيلة…»).
+- لا ضمان بأن كل صفحة Cloudflare ستمرّ: قد يرفض Cloudflare متصفحات WebView بحسب تقييمه، لكن أسباب الفشل التي يتحكم بها التطبيق أُزيلت.
