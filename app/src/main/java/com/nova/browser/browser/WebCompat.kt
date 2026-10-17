@@ -58,10 +58,12 @@ object WebCompat {
         "claude.ai", "gemini.google.com", "web.telegram.org", "web.whatsapp.com", "discord.com", "app.slack.com"
     )
 
+    private val appMatcher = HostMatcher(appHosts.toTypedArray(), arrayOf("workers.dev", "pages.dev"))
+
     /** لوحات تحكم ومحررات أكواد وتطبيقات صفحة واحدة: التمرير فيها داخلي والسحب للتحديث يعيد تحميل العمل غير المحفوظ. */
     fun appLike(host: String): Boolean {
         val h = host.removePrefix("www.")
-        return h in appHosts || appHosts.any { h.endsWith(".$it") } || h.endsWith(".workers.dev") || h.endsWith(".pages.dev")
+        return appMatcher.matches(h)
     }
 
     // ---------- كاشف حلقة إعادة التحميل ----------
@@ -175,13 +177,14 @@ object WebCompat {
 
     // مكتبات دعم الصفحات: polyfills لميزات الويب الحديثة على المحركات القديمة، وlangfix لضبط لغة الصفحة (نموذج الحروف الصحيح للصينية/اليابانية/الكورية وغيرها)
     private val polyfills: String? by lazy { runCatching { Perf.asset("polyfills.js") }.getOrNull() }
+    private val perfboost: String? by lazy { runCatching { Perf.asset("perfboost.js") }.getOrNull() }
     private val langfix: String? by lazy { runCatching { Perf.asset("langfix.js") }.getOrNull() }
     private val enhance: String? by lazy { runCatching { Perf.asset("enhance.js") }.getOrNull() }
 
     fun install(wv: WebView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         // polyfills أولاً كي تجدها بقية السكربتات جاهزة
-        listOfNotNull(polyfills, js, langfix, enhance).forEach { s ->
+        listOfNotNull(polyfills, js, langfix, enhance, perfboost).forEach { s ->
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, s, setOf("*")) }
         }
     }

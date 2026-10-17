@@ -36,3 +36,7 @@
     public static int v(...);
     public static int d(...);
 }
+
+# Kotlin coroutines
+-dontwarn kotlinx.coroutines.debug.**
+-keepclassmembers class kotlinx.coroutines.** { volatile <fields>; }

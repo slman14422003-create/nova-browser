@@ -76,7 +76,7 @@ object WebSupport {
     }
 
     // ---------- إعداد كل WebView جديد ----------
-    fun configure(wv: WebView) {
+    fun configure(wv: WebView) = androidx.tracing.trace("Nova.configure") {
         attached.add(wv)
         runCatching { wv.setNetworkAvailable(online) }
         // المحرك يخفّض أولوية عملية العرض للتبويبات غير الظاهرة (توفير ذاكرة وحرارة)

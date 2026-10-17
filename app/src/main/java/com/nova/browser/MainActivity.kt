@@ -242,6 +242,7 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         CrashLog.install(this)
+        Robust.init(this)
         if (BuildConfig.DEBUG) runCatching {
             // JankStats: يسجّل الإطارات التي تتجاوز ميزانيتها (تقطيع) في Logcat بالوسم NovaJank
             androidx.metrics.performance.JankStats.createAndTrack(window, object : androidx.metrics.performance.JankStats.OnFrameListener {
