@@ -98,7 +98,7 @@ object WebCompat {
         if (on == tab.challenge) return
         tab.challenge = on
         runCatching { CookieManager.getInstance().setAcceptThirdPartyCookies(v, on || isMaps(v.url) || !Prefs.blockThirdCookies) }
-        WebSupport.patient(v, on)
+        WebSupport.patient(v, on || appLike((runCatching { Uri.parse(v.url ?: "") }.getOrNull()?.host ?: "").lowercase()))
     }
 
     /** يُستدعى مع بدء كل صفحة: يضبط الإعدادات حسب الموقع ويعيدها عند مغادرته (فقط عند تغيّر الحالة). */
@@ -114,6 +114,7 @@ object WebCompat {
                 else Perf.applyDark(v)
             }
         }
+        WebSupport.patient(v, tab.challenge || appLike((runCatching { Uri.parse(url) }.getOrNull()?.host ?: "").lowercase()))
         arm(v, tab)
     }
 

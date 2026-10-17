@@ -771,7 +771,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
         }
     }
 
-    BackHandler(enabled = tab.canBack) { tab.webView?.goBack() }
+    BackHandler(enabled = tab.canBack) { tab.webView?.let { WebSupport.goBackFast(it) } }
     BackHandler(enabled = tab.url.isNotBlank() && !tab.canBack) { home(tab) }   // آخر صفحة في السجل: العودة للرئيسية بدل إغلاق التطبيق
     BackHandler(enabled = tab.finding) { tab.webView?.clearMatches(); tab.finding = false }
     BackHandler(enabled = editing) { editing = false }
@@ -844,7 +844,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                         targetState = tab.id to tab.url.isBlank(),
                         transitionSpec = {
                             if (targetState.second) fadeIn(tween(Adaptive.ms(180), easing = NovaMotion.emphasized)) togetherWith fadeOut(tween(Adaptive.ms(110)))
-                            else fadeIn(tween(Adaptive.ms(200), easing = NovaMotion.emphasized)) togetherWith fadeOut(tween(Adaptive.ms(120)))
+                            else (fadeIn(tween(Adaptive.ms(220), easing = NovaMotion.emphasized)) + scaleIn(tween(Adaptive.ms(260), easing = NovaMotion.emphasized), initialScale = 0.985f)) togetherWith fadeOut(tween(Adaptive.ms(120)))
                         },
                         label = "page"
                     ) { (id, blank) ->

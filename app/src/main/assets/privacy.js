@@ -12,7 +12,7 @@
   safe(function () { var a = new Uint32Array(2); crypto.getRandomValues(a); rv = a[0] ^ a[1]; });
   var st = (hash(String(location.hostname)) ^ seed ^ rv ^ ((Math.random() * 4294967296) >>> 0)) >>> 0;
   function rnd() { st = (Math.imul(st, 1664525) + 1013904223) >>> 0; return st / 4294967296; }
-  var LIGHT = /(^|\.)(google\.[a-z.]+|youtube\.com|gstatic\.com|googleusercontent\.com|ytimg\.com|googlevideo\.com|github\.com|githubusercontent\.com|github\.dev|gitlab\.com|bitbucket\.org|vscode\.dev|stackblitz\.com|codesandbox\.io|codepen\.io|replit\.com|jsfiddle\.net|huggingface\.co)$/.test(String(location.hostname));
+  var LIGHT = /(^|\.)(google\.[a-z.]+|youtube\.com|gstatic\.com|googleusercontent\.com|ytimg\.com|googlevideo\.com|github\.com|githubusercontent\.com|github\.dev|gitlab\.com|bitbucket\.org|vscode\.dev|stackblitz\.com|codesandbox\.io|codepen\.io|replit\.com|jsfiddle\.net|huggingface\.co|cloudflare\.com|workers\.dev|pages\.dev|vercel\.com|netlify\.app|supabase\.com|notion\.so|figma\.com)$/.test(String(location.hostname));
   var MOBILE = /Android|Mobile/i.test(navigator.userAgent);
 
   // ---------- إخفاء أثر التعديل: toString() للدوال المعدّلة تُظهر الدالة الأصلية ----------

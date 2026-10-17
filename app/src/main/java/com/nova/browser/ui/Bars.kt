@@ -341,14 +341,14 @@ fun BottomPill(
                         }
                         Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
                             ToolbarBtn(
-                                IosGlyph.Back, tab.canBack || hasPage, { if (tab.canBack) tab.webView?.goBack() else onHome() },
+                                IosGlyph.Back, tab.canBack || hasPage, { if (tab.canBack) tab.webView?.let { WebSupport.goBackFast(it) } else onHome() },
                                 menu = if (tab.canBack) ({ close ->
                                     val items = historyItems(tab, true)
                                     items.forEachIndexed { n, p -> IosCell(p.first, { close(); tab.webView?.goBackOrForward(p.second) }, divider = n < items.lastIndex) }
                                 }) else null
                             )
                             ToolbarBtn(
-                                IosGlyph.Forward, tab.canForward, { tab.webView?.goForward() },
+                                IosGlyph.Forward, tab.canForward, { tab.webView?.let { WebSupport.goForwardFast(it) } },
                                 menu = if (tab.canForward) ({ close ->
                                     val items = historyItems(tab, false)
                                     items.forEachIndexed { n, p -> IosCell(p.first, { close(); tab.webView?.goBackOrForward(p.second) }, divider = n < items.lastIndex) }

@@ -86,6 +86,13 @@ object WebSupport {
             runCatching { WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet()) }
         watchRenderer(wv)
         tuneEngine(wv)
+        runCatching {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE)) {
+                val sw = androidx.webkit.ServiceWorkerControllerCompat.getInstance().serviceWorkerWebSettings
+                sw.setAllowContentAccess(false); sw.setAllowFileAccess(false); sw.setBlockNetworkLoads(false)
+                sw.setCacheMode(WebSettings.LOAD_DEFAULT)
+            }
+        }
     }
 
     private fun tuneEngine(wv: WebView) {
@@ -108,6 +115,24 @@ object WebSupport {
 
     /** هل اللمسة الحالية فوق عنصر داخل الصفحة تمرّر لأسفل؟ إن كان كذلك يُعطَّل السحب للتحديث لهذه اللمسة. */
     fun innerScrolled(wv: WebView): Boolean = innerScroll.contains(wv)
+
+    private val cacheTried = WeakHashMap<WebView, String>()
+
+    /** خطأ شبكة في الصفحة الرئيسية: نجرّب النسخة المخزّنة مرة واحدة لكل رابط قبل عرض صفحة الخطأ. */
+    fun tryCacheFallback(wv: WebView, url: String): Boolean {
+        if (!url.startsWith("http") || cacheTried[wv] == url) return false
+        cacheTried[wv] = url
+        cacheFirst(wv)
+        wv.loadUrl(url)
+        return true
+    }
+
+    /** الرجوع/التقدّم من الكاش مباشرة (فوري) مع عودة الإعداد الافتراضي بعد اكتمال الصفحة. */
+    private fun restoreCacheSoon(wv: WebView) {
+        wv.postDelayed({ if (hard.remove(wv)) runCatching { wv.settings.cacheMode = WebSettings.LOAD_DEFAULT } }, 4000)
+    }
+    fun goBackFast(wv: WebView) { cacheFirst(wv); wv.goBack(); restoreCacheSoon(wv) }
+    fun goForwardFast(wv: WebView) { cacheFirst(wv); wv.goForward(); restoreCacheSoon(wv) }
 
     /** يُستدعى مع بدء كل صفحة جديدة: لا تبقى حالة من الصفحة السابقة. */
     fun resetInnerScroll(wv: WebView) { innerScroll.remove(wv) }
@@ -174,6 +199,7 @@ object WebSupport {
     // الجلب المسبق وإيقاف الفيديو الصامت صارا في smooth.js (Perf.installSmooth)؛ هنا تسخين DNS والتحديث الكامل فقط
     fun onPageDone(wv: WebView) {
         // التحديث الكامل يعطّل الكاش لتحميل واحد فقط ثم يعود الوضع الافتراضي
+        cacheTried.remove(wv)
         if (hard.remove(wv)) runCatching { wv.settings.cacheMode = WebSettings.LOAD_DEFAULT }
     }
 

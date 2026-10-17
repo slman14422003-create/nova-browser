@@ -19,6 +19,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -258,11 +260,13 @@ object NovaMotion {
 
     /** لوحات ملء الشاشة (التنزيلات، الإعدادات، كلمات المرور، المكتبة). */
     val panelEnter: EnterTransition
-        get() = slideInVertically(tween(Adaptive.ms(280), easing = emphasized)) { it / 12 } +
-            fadeIn(tween(Adaptive.ms(200), easing = LinearOutSlowInEasing))
+        get() = slideInVertically(tween(Adaptive.ms(320), easing = emphasized)) { it / 8 } +
+            scaleIn(tween(Adaptive.ms(320), easing = emphasized), initialScale = 0.96f) +
+            fadeIn(tween(Adaptive.ms(220), easing = LinearOutSlowInEasing))
     val panelExit: ExitTransition
-        get() = slideOutVertically(tween(Adaptive.ms(200), easing = emphasizedAccel)) { it / 14 } +
-            fadeOut(tween(Adaptive.ms(150)))
+        get() = slideOutVertically(tween(Adaptive.ms(220), easing = emphasizedAccel)) { it / 12 } +
+            scaleOut(tween(Adaptive.ms(220), easing = emphasizedAccel), targetScale = 0.97f) +
+            fadeOut(tween(Adaptive.ms(160)))
 
     /**
      * انتقال «المحور المشترك» بين شاشة وأخرى داخل نفس اللوحة (الإعدادات ← قسم): الجديدة تنزلق قليلاً مع ظهور تدريجي والقديمة تتراجع.

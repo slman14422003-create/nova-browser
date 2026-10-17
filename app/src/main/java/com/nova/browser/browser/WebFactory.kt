@@ -101,7 +101,6 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
             Perf.flushCookies()   // حفظ جلسات تسجيل الدخول (بحدّ أقصى كل 15 ثانية)
             PasswordBridge.onPageDone(v)
             PageTint.sample(v, tab)
-            v.postDelayed({ PageTint.sample(v, tab) }, 700)
             if (!tab.popup) Library.visit(u, v.title)   // سجل التصفح
         }
         override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? =
@@ -142,6 +141,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
             }
             if (r.isForMainFrame) {
                 val u = r.url.toString()
+                if (WebSupport.tryCacheFallback(v, u)) return
                 v.loadDataWithBaseURL(u, errorHtml(u, e.description.toString()), "text/html", "UTF-8", u)
             }
         }
