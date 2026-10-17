@@ -226,6 +226,41 @@ fun PageMenu(
                     "Add to home screen",
                     { act { Pwa.pinShortcut(ctx, tab.url) } }
                 )
+                if (tab.url.startsWith("http")) {
+                    val sh = hostOf(tab.url)
+                    IosCell(
+                        "Site text size",
+                        { act { val z = SiteStore.nextZoom(sh); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, "$z%") } }
+                    )
+                    IosCell(
+                        "Site JavaScript",
+                        { act { val on = SiteStore.toggleJs(sh); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, if (on) "JavaScript on" else "JavaScript off") } }
+                    )
+                    IosCell(
+                        "Site images",
+                        { act { val on = SiteStore.toggleImages(sh); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, if (on) "Images on" else "Images off") } }
+                    )
+                    IosCell(
+                        "Site desktop mode",
+                        { act { val on = SiteStore.toggleDesktop(sh, tab.desktop); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, if (on) "Desktop" else "Mobile") } }
+                    )
+                    IosCell(
+                        "Site Safari (iPhone) identity",
+                        { act { val on = SiteStore.toggleSafari(sh, tab.safari); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, if (on) "Safari identity on" else "Safari identity off") } }
+                    )
+                    IosCell(
+                        "Safari identity for all sites",
+                        { act { val on = SiteStore.toggleGlobalSafari(); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, if (on) "Safari identity on for all sites" else "Safari identity off for all sites") } }
+                    )
+                    IosCell(
+                        "Clear site data",
+                        { act { SiteStore.clearData(sh); tab.webView?.reload(); toast(ctx, "Site data cleared") } }
+                    )
+                    if (SiteStore.get(sh).custom) IosCell(
+                        "Reset site settings",
+                        { act { SiteStore.reset(sh); SiteStore.refresh(tab, tab.webView, sh); toast(ctx, "Site settings reset") } }
+                    )
+                }
                 IosCell(L("الأعلى"), { act { tab.webView?.let { WebSupport.scroll(it, true) } } })
                 IosCell(L("الأسفل"), { act { tab.webView?.let { WebSupport.scroll(it, false) } } })
                 IosCell(L("تحديث تصميم الصفحة"), { act { tab.webView?.let { WebSupport.refreshDesign(it) } } })

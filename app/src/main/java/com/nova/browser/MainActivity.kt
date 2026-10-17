@@ -253,6 +253,7 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         Prefs.init(this)
+        SiteStore.init(applicationContext)
         GoogleAccounts.init(this)
         Adaptive.init(this)
         Library.init(this)
@@ -935,7 +936,7 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                     tab = tab, tabCount = tabs.size, editing = editing, setEditing = { editing = it },
                     onGo = { go(tab, it) }, onTabs = { openTabs() }, onNewTab = { newTab() }, onHome = { home(tab) },
                     onFind = { tab.findInfo = ""; tab.finding = true },
-                    onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop); it.reload() } },
+                    onDesktop = { tab.desktop = !tab.desktop; tab.webView?.let { applyUa(it, tab.desktop, tab.safari); it.reload() } },
                     onShare = { shareText(activity, tab.url) }, onCopy = { copyText(activity, tab.url) },
                     onDownloads = { openPanel(activity, "downloads") }, onSettings = { openPanel(activity, "settings") }, onTranslate = { translatePage(tab) }, onPrint = { printPage(tab) }, onLibrary = { openPanel(activity, "library") }, onCloseCurrent = { closeTab(current) },
                     onSummarize = { tab.webView?.let { w -> SmartAssist.summarize(activity, w) { u -> openInNewTab(u) } } }, onAskAi = { askPage(tab) },

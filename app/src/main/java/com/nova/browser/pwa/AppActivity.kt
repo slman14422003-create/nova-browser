@@ -124,6 +124,7 @@ class AppActivity : ComponentActivity() {
         CrashLog.install(c)
         Robust.init(c)
         Prefs.init(c)
+        SiteStore.init(c)
         GoogleAccounts.init(c)
         Adaptive.init(c)
         Library.init(c)

@@ -16,11 +16,12 @@ private val UA_ANDROID_RE = Regex("Android [^;)]+; [^)]*\\)")
 private val UA_CHROME_RE = Regex("Chrome/(\\d+)\\.[\\d.]+")
 const val DESKTOP_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
-fun applyUa(wv: WebView, desktop: Boolean) {
+fun applyUa(wv: WebView, desktop: Boolean, safari: Boolean = false) {
     val s = wv.settings
     s.userAgentString = if (desktop) WebEngine.desktopUa()
+    else if (safari) WebEngine.safariUa()
     else reduceUa(Perf.defaultUa(wv.context).replace("; wv", "").replace(UA_VERSION_RE, ""))
-    WebEngine.applyMetadata(wv, desktop)
+    if (safari && !desktop) WebEngine.applyMetadataSafari(wv) else WebEngine.applyMetadata(wv, desktop)
     s.useWideViewPort = true
     s.loadWithOverviewMode = true   // الصفحات الأعرض من الشاشة (بلا viewport) تُصغَّر لتناسب العرض
 }

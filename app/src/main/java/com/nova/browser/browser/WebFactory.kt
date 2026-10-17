@@ -47,7 +47,9 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
         setSupportZoom(true); builtInZoomControls = true; displayZoomControls = false
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
     }
-    applyUa(this, tab.desktop)
+    tab.safari = SiteStore.globalSafari
+    applyUa(this, tab.desktop, tab.safari)
+    SafariMode.sync(this, tab.safari)
     Perf.tune(this)
     Perf.installPrivacy(this)
     Shield.install(this)
@@ -82,6 +84,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
     webViewClient = object : WebViewClient() {
         override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
             if (YtWeb.isYtUrl(u)) { v.post { YtWeb.swapIfNeeded(tab, u) }; return }   // وصلنا ليوتيوب (تحويل من الخادم): يُكمل في الـ WebView المخصّص
+            SiteStore.apply(tab, v, hostOf(u))
             WebSupport.resetInnerScroll(v)
             WebBoost.onPageStart(v)
             PageTint.onStart(tab, u)
@@ -122,7 +125,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
             if (Prefs.smoothAnim && Adaptive.level == 0 && v.alpha > 0.9f) {
                 v.animate().cancel()
                 v.alpha = 0.86f
-                v.animate().alpha(1f).setDuration(240L).setInterpolator(android.view.animation.PathInterpolator(0.32f, 0.72f, 0f, 1f)).start()
+                v.animate().alpha(1f).setDuration(240L).withLayer().setInterpolator(android.view.animation.PathInterpolator(0.32f, 0.72f, 0f, 1f)).start()
             }
         }
         override fun onReceivedHttpAuthRequest(v: WebView, handler: HttpAuthHandler, host: String?, realm: String?) {

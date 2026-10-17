@@ -63,6 +63,23 @@ object WebEngine {
         return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$m.0.0.0 Safari/537.36"
     }
 
+    fun safariUa(): String =
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1"
+
+    fun applyMetadataSafari(wv: WebView) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) return
+        runCatching {
+            val md = UserAgentMetadata.Builder()
+                .setBrandVersionList(listOf(UserAgentMetadata.BrandVersion.Builder().setBrand("Not.A/Brand").setMajorVersion("99").setFullVersion("99.0.0.0").build()))
+                .setPlatform("iOS")
+                .setPlatformVersion("18.6.0")
+                .setMobile(true)
+                .setModel("")
+                .build()
+            WebSettingsCompat.setUserAgentMetadata(wv.settings, md)
+        }
+    }
+
     /** Client Hints (Sec-CH-UA…) متوافقة مع الـ User-Agent، فلا تعاملنا المواقع كمتصفح مضمَّن قديم. */
     fun applyMetadata(wv: WebView, desktop: Boolean) {
         val i = info ?: return

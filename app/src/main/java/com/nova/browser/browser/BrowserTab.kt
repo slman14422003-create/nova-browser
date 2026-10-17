@@ -45,6 +45,8 @@ class BrowserTab(val id: Int, startUrl: String = "") {
     @Volatile var shieldHost: String = ""   // نطاق الصفحة الحالية (يقرؤه فحص الطلبات من خيط الشبكة)
     var popup = false
     var app = false
+    var siteCustom = false
+    var safari = false
     var appHome = ""
     var yt = false                       // هذا التبويب يعرض يوتيوب في الـ WebView المخصّص (YtWeb) لا العام
 }
