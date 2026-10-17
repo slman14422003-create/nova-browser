@@ -192,6 +192,14 @@ class AppActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        tab.webView?.let {
+            it.onResume()
+            it.resumeTimers()
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         if (Prefs.ytBg && YtMedia.owner === tab) YtWeb.background(tab.webView, true)
@@ -381,6 +389,8 @@ class AppActivity : ComponentActivity() {
                         val wv = if (YtWeb.isYtUrl(startUrl)) YtWeb.create(ctx, tab, handlers) else createWebView(ctx, tab, handlers)
                         tab.webView = wv
                         wv.visibility = View.VISIBLE
+                        wv.onResume()
+                        wv.resumeTimers()
                         if (YtWeb.isYtUrl(startUrl)) wv.loadUrl(startUrl) else wv.loadUrl(startUrl, Perf.privacyHeaders)
                         FrameLayout(ctx).apply {
                             addView(wv, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
