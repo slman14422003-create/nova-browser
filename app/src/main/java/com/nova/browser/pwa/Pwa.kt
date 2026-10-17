@@ -1,12 +1,21 @@
 package com.nova.browser
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.net.Uri
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
+import java.util.concurrent.ConcurrentHashMap
 import android.webkit.WebView
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 
 /** نوع الصفحة من منظور «وضع التطبيق». */
-enum class SiteKind { NONE, YT, YT_VIDEO, AI }
+enum class SiteKind { NONE, YT, YT_VIDEO, AI, APP }
 
 /** هوية الموقع المعروضة في الشريط العلوي. */
 class SiteInfo(val kind: SiteKind, val name: String, val host: String)
@@ -32,6 +41,75 @@ object Pwa {
         add("https://www.perplexity.ai")
     }
 
+    // ---------- تطبيقات مثبّتة (أي موقع يُثبَّت كتطبيق مستقل) ----------
+    private val apps = ConcurrentHashMap<String, String>()
+    @Volatile private var loaded = false
+
+    private fun ensure(c: Context) {
+        if (loaded) return
+        synchronized(this) {
+            if (loaded) return
+            runCatching {
+                ConfStore.open(c).getString("pwa_apps", "").split(";;").forEach { e ->
+                    val i = e.indexOf('|')
+                    if (i > 0) apps[e.substring(0, i)] = e.substring(i + 1)
+                }
+            }
+            loaded = true
+        }
+    }
+
+    private fun save(c: Context) {
+        ConfStore.open(c).putString("pwa_apps", apps.entries.joinToString(";;") { it.key + "|" + it.value })
+        lastUrl = null; lastInfo = null
+    }
+
+    fun isInstalled(host: String): Boolean = apps.containsKey(host.removePrefix("www."))
+
+    private fun installedOrigins(): Set<String> = apps.keys.map { "https://$it" }.toSet() + apps.keys.map { "https://www.$it" }.toSet()
+
+    private fun cfgJson(): String {
+        val arr = org.json.JSONArray()
+        apps.keys.forEach { arr.put(it); arr.put("www.$it") }
+        return "{\"v\":3,\"anim\":${Prefs.smoothAnim && Adaptive.level == 0},\"hap\":${Prefs.pwaHaptics},\"apps\":$arr}"
+    }
+
+    private fun letterIcon(host: String, label: String): Bitmap {
+        val b = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        val hue = ((host.hashCode().toLong().let { if (it < 0) -it else it }) % 360).toFloat()
+        p.color = android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.55f, 0.72f))
+        c.drawRoundRect(0f, 0f, 192f, 192f, 44f, 44f, p)
+        p.color = android.graphics.Color.WHITE; p.textSize = 108f; p.textAlign = Paint.Align.CENTER; p.isFakeBoldText = true
+        c.drawText(label.take(1).uppercase(), 96f, 96f + 38f, p)
+        return b
+    }
+
+    /** يثبّت الموقع كتطبيق (اختصار على الشاشة الرئيسية + وضع التطبيق) أو يزيله إن كان مثبّتاً. يعيد true إن صار مثبّتاً. */
+    fun togglePin(ctx: Context, url: String, title: String): Boolean {
+        ensure(ctx)
+        val host = hostOf(url)
+        if (!url.startsWith("https://") || host.isBlank()) return false
+        if (apps.containsKey(host)) {
+            apps.remove(host); save(ctx)
+            toast(ctx, "App removed")
+            return false
+        }
+        val name = (title.ifBlank { host }).replace("|", " ").replace(";;", " ").trim().take(30)
+        apps[host] = name; save(ctx)
+        runCatching {
+            if (ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
+                val icon = IconCompat.createWithBitmap(Favicons.get(host)?.let { Bitmap.createScaledBitmap(it, 192, 192, true) } ?: letterIcon(host, name))
+                val sc = ShortcutInfoCompat.Builder(ctx, "pwa_$host").setShortLabel(name).setLongLabel(name).setIcon(icon)
+                    .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse(url), ctx, MainActivity::class.java)).build()
+                ShortcutManagerCompat.requestPinShortcut(ctx, sc, null)
+            }
+        }
+        toast(ctx, "Installed as app — reload the page")
+        return true
+    }
+
     private val js: String? by lazy {
         runCatching { Perf.asset("pwa.js") }.getOrNull()
     }
@@ -43,8 +121,10 @@ object Pwa {
     fun install(wv: WebView) {
         val base = js ?: return
         if (!Prefs.pwaMode) return
+        ensure(wv.context)
+        val allOrigins = origins + installedOrigins()
         if (listenerOk) runCatching {
-            WebViewCompat.addWebMessageListener(wv, "NovaPwa", origins, WebViewCompat.WebMessageListener { view, message, _, isMain, _ ->
+            WebViewCompat.addWebMessageListener(wv, "NovaPwa", allOrigins, WebViewCompat.WebMessageListener { view, message, _, isMain, _ ->
                 if (!isMain) return@WebMessageListener
                 val data = message.data ?: return@WebMessageListener
                 if (data.length > 4000) return@WebMessageListener
@@ -56,8 +136,7 @@ object Pwa {
             })
         }
         if (docStart) {
-            val cfg = "{\"v\":2,\"anim\":${Prefs.smoothAnim && Adaptive.level == 0},\"hap\":${Prefs.pwaHaptics}}"
-            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, base.replace("__CFG__", cfg), origins) }
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, base.replace("__CFG__", cfgJson()), allOrigins) }
         }
     }
 
@@ -69,9 +148,9 @@ object Pwa {
         if (docStart || !Prefs.pwaMode) return
         val base = js ?: return
         val o = runCatching { Uri.parse(url) }.getOrNull() ?: return
-        if (o.scheme != "https" || "https://${o.host}" !in origins) return
-        val cfg = "{\"v\":2,\"anim\":${Prefs.smoothAnim && Adaptive.level == 0},\"hap\":${Prefs.pwaHaptics}}"
-        wv.evaluateJavascript(base.replace("__CFG__", cfg), null)
+        ensure(wv.context)
+        if (o.scheme != "https" || "https://${o.host}" !in (origins + installedOrigins())) return
+        wv.evaluateJavascript(base.replace("__CFG__", cfgJson()), null)
     }
 
     /** يمرّر الصفحة (أو أكبر حاوية تمرير فيها) إلى الأعلى بحركة ناعمة — عند الضغط على اسم الموقع في الشريط. */
@@ -101,6 +180,7 @@ object Pwa {
             return SiteInfo(if (isYtVideo(url)) SiteKind.YT_VIDEO else SiteKind.YT, if (music) "YouTube Music" else "YouTube", raw)
         }
         aiNames[h]?.let { return SiteInfo(SiteKind.AI, it, raw) }
+        apps[h]?.let { return SiteInfo(SiteKind.APP, it, raw) }
         if (h.startsWith("google.") && (p.getQueryParameter("udm") == "50" || (p.path ?: "").startsWith("/ai")))
             return SiteInfo(SiteKind.AI, "Google AI Mode", raw)
         return null

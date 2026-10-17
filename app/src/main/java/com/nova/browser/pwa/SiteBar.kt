@@ -9,6 +9,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -72,12 +75,17 @@ fun SiteBar(
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // شارة الهوية
+            val favTick = Favicons.version
+            val fav = remember(info.host, favTick) { if (info.kind == SiteKind.APP) Favicons.get(hostOf("https://" + info.host)) else null }
             Box(
-                Modifier.size(30.dp).clip(RoundedCornerShape(7.dp))
-                    .background(ios.blue),
+                Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
+                    .background(if (fav != null) Color.White else ios.blue),
                 contentAlignment = Alignment.Center
             ) {
-                if (info.kind == SiteKind.AI) SparkGlyph(cs.onTertiary, Modifier.size(18.dp))
+                if (info.kind == SiteKind.APP) {
+                    if (fav != null) Image(remember(fav) { fav.asImageBitmap() }, null, Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                    else Text(info.name.take(1).uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = cs.onTertiary)
+                } else if (info.kind == SiteKind.AI) SparkGlyph(cs.onTertiary, Modifier.size(18.dp))
                 else PlayGlyph(cs.onTertiary, cs.tertiary, Modifier.size(19.dp))
             }
             Column(

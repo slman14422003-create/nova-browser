@@ -213,6 +213,10 @@ fun PageMenu(
                     Text(L("أدوات الصفحة"), style = MaterialTheme.typography.titleSmall, color = ios.label)
                 }
                 IosDivider()
+                if (tab.url.startsWith("https://")) IosCell(
+                    if (Pwa.isInstalled(hostOf(tab.url))) "Remove app" else "Install as app",
+                    { act { Pwa.togglePin(ctx, tab.url, tab.title) } }
+                )
                 IosCell(L("الأعلى"), { act { tab.webView?.let { WebSupport.scroll(it, true) } } })
                 IosCell(L("الأسفل"), { act { tab.webView?.let { WebSupport.scroll(it, false) } } })
                 IosCell(L("تحديث تصميم الصفحة"), { act { tab.webView?.let { WebSupport.refreshDesign(it) } } })

@@ -14,8 +14,10 @@
     // نُبقي لها الحد الأدنى فقط (هوية التطبيق + المشاركة) بلا مراقبات DOM ولا حركات انتقال، وإلا سبّبت لاغاً كبيراً.
     var LIGHT = GOOGLE;
 
-    var CFG = { v: 2, anim: true, hap: true };
+    var CFG = { v: 3, anim: true, hap: true, apps: [] };
     try { CFG = Object.assign(CFG, __CFG__); } catch (e) {}
+    var APP = false;
+    try { APP = (CFG.apps || []).indexOf(H) >= 0; } catch (e) {}
 
     var root = document.documentElement;
     function def(o, k, v) { try { Object.defineProperty(o, k, { get: function () { return v; }, configurable: true }); } catch (e) {} }
@@ -90,6 +92,7 @@
       'input,textarea{-webkit-user-select:text;user-select:text}' +
       'button,[role=button],[role=tab],summary,select{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}' +
       'img,video,canvas{-webkit-user-drag:none}' +
+      (APP ? 'body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}p,article,h1,h2,h3,li,pre,code,[contenteditable],textarea,input{-webkit-user-select:text;user-select:text}html{scroll-behavior:smooth;scroll-padding-top:env(safe-area-inset-top,0px)}a,img{-webkit-touch-callout:none}' : '') +
       (CFG.anim && !LIGHT ? '@keyframes novaIn{from{opacity:.01}to{opacity:1}}html{animation:novaIn .18s ease-out backwards}' : '') +
       (YT ? 'ytm-open-app-promo-renderer,ytm-mealbar-promo-renderer,ytm-app-install-promo-renderer,ytm-promoted-sparkles-web-renderer{display:none!important}' : '');
     safe(function () {
@@ -221,7 +224,37 @@
       });
     };
 
+    // ───────────── 9) مانيفست التطبيق + واجهات PWA الناقصة ─────────────
+    safe(function () {
+      if (!APP) return;
+      function go() {
+        safe(function () {
+          var l = document.querySelector('link[rel=manifest]');
+          if (!l || !l.href) return;
+          var u = new URL(l.href, location.href);
+          if (u.origin !== location.origin) return;
+          fetch(u.href, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (m) {
+            if (m && m.theme_color && !document.querySelector('meta[name=theme-color]')) {
+              var t = document.createElement('meta');
+              t.name = 'theme-color'; t.content = String(m.theme_color).slice(0, 32);
+              document.head.appendChild(t);
+            }
+          }).catch(function () {});
+        });
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+    });
+    safe(function () {
+      window.launchQueue = window.launchQueue || { setConsumer: function () {} };
+      if (screen.orientation) {
+        screen.orientation.lock = function () { return Promise.resolve(); };
+        screen.orientation.unlock = screen.orientation.unlock || function () {};
+      }
+      if (!navigator.wakeLock) navigator.wakeLock = { request: function () { return Promise.resolve({ released: false, release: function () { return Promise.resolve(); }, addEventListener: function () {} }); } };
+      if (!navigator.vibrate) navigator.vibrate = function () { send({ t: 'hap' }); return true; };
+    });
+
     // واجهة عامة صغيرة يمكن للصفحات (أو سكربتاتك لاحقاً) استخدامها
-    window.NovaApp = { version: CFG.v, share: navigator.share, haptic: function () { send({ t: 'hap' }); } };
+    window.NovaApp = { version: CFG.v, installed: APP, share: navigator.share, haptic: function () { send({ t: 'hap' }); } };
   } catch (e) { }
 })();
