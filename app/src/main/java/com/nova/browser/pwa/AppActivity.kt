@@ -182,6 +182,21 @@ class AppActivity : ComponentActivity() {
         if (YtWeb.owns(w)) YtWeb.onPip(w, isInPictureInPictureMode, custom != null)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val w = tab.webView ?: return
+        if (inPip || isInPictureInPictureMode) return
+        if (YtWeb.owns(w)) {
+            YtWeb.afterRotate(w)
+        } else {
+            for (d in longArrayOf(120L, 450L, 1000L)) w.postDelayed({
+                w.requestLayout()
+                w.invalidate()
+                w.evaluateJavascript("window.dispatchEvent(new Event('resize'))", null)
+            }, d)
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         val w = tab.webView
@@ -243,6 +258,7 @@ class AppActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         boot()
+        window.attributes = window.attributes.apply { rotationAnimation = android.view.WindowManager.LayoutParams.ROTATION_ANIMATION_CROSSFADE }
         val data = intent?.data
         if (data == null || (data.scheme != "https" && data.scheme != "http")) {
             finishAndRemoveTask()
@@ -349,6 +365,7 @@ class AppActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             snapshotFlow { tab.topColor }.collect { c ->
                 val color = (c ?: android.graphics.Color.BLACK) or (0xFF shl 24)
+                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(color))
                 runCatching {
                     @Suppress("DEPRECATION")
                     setTaskDescription(ActivityManager.TaskDescription(appName, Favicons.get(hostOf(startUrl)), color))
