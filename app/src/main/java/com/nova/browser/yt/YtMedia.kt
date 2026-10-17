@@ -86,6 +86,14 @@ object YtMedia {
         if (pause) control("pause")
         playing = false; owner = null; vw = 0; vh = 0; MediaService.instance?.shutdown()
     }
+    fun killPlayback() {
+        val w = wvRef?.get()
+        if (w != null) runCatching {
+            w.evaluateJavascript("window.__novaYtCtl&&window.__novaYtCtl('pause')", null)
+            w.onPause()
+        }
+        playing = false; owner = null; vw = 0; vh = 0; MediaService.instance?.shutdown()
+    }
     fun pageChanged(tab: BrowserTab, url: String) { if (owner === tab && !isYtVideo(url)) stop() }
     fun tabClosed(tab: BrowserTab) { if (owner === tab) stop() }
 }

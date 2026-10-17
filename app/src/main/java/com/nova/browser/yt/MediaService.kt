@@ -83,7 +83,10 @@ class MediaService : Service() {
     }
 
     // سحب التطبيق من قائمة التطبيقات الأخيرة: لا يبقى إشعار تشغيل بلا تطبيق
-    override fun onTaskRemoved(rootIntent: Intent?) { shutdown(); super.onTaskRemoved(rootIntent) }
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (YtMedia.owner?.app != true) YtMedia.killPlayback()
+        super.onTaskRemoved(rootIntent)
+    }
 
     private fun applySession() {
         val st = if (YtMedia.playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
@@ -110,7 +113,9 @@ class MediaService : Service() {
         Notification.Action.Builder(Icon.createWithResource(this, icon), label, pi(act, code)).build()
 
     private fun build(): Notification {
-        val open = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val owner = YtMedia.owner
+        val open = if (owner?.app == true && owner.appHome.isNotBlank()) AppActivity.intentFor(this, owner.appHome)
+            else Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val b = Notification.Builder(this, "media")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(YtMedia.title.ifBlank { "YouTube" })

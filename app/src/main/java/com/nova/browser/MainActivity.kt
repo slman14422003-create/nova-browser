@@ -333,7 +333,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         // الخروج من التطبيق نهائياً: لا يبقى إشعار تشغيل لفيديو لم يعد له صفحة
-        if (isFinishing) YtMedia.stop()
+        if (isFinishing && YtMedia.owner?.app != true) YtMedia.killPlayback()
         Popups.close()
         super.onDestroy()
     }

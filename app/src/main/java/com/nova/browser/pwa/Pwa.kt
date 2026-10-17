@@ -66,6 +66,17 @@ object Pwa {
 
     fun isInstalled(host: String): Boolean = apps.containsKey(host.removePrefix("www."))
 
+    fun nameFor(host: String): String? = apps[host.removePrefix("www.")]
+
+    fun homeFor(url: String): String {
+        val h = hostOf(url)
+        return if (YtWeb.isYtHost(h)) "https://m.youtube.com/" else "https://$h/"
+    }
+
+    fun launch(ctx: Context, url: String) {
+        runCatching { ctx.startActivity(AppActivity.intentFor(ctx, homeFor(url))) }
+    }
+
     private fun installedOrigins(): Set<String> = apps.keys.map { "https://$it" }.toSet() + apps.keys.map { "https://www.$it" }.toSet()
 
     private fun cfgJson(): String {
@@ -102,11 +113,12 @@ object Pwa {
             if (ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
                 val icon = IconCompat.createWithBitmap(Favicons.get(host)?.let { Bitmap.createScaledBitmap(it, 192, 192, true) } ?: letterIcon(host, name))
                 val sc = ShortcutInfoCompat.Builder(ctx, "pwa_$host").setShortLabel(name).setLongLabel(name).setIcon(icon)
-                    .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse(url), ctx, MainActivity::class.java)).build()
+                    .setIntent(AppActivity.intentFor(ctx, homeFor(url))).build()
                 ShortcutManagerCompat.requestPinShortcut(ctx, sc, null)
             }
         }
-        toast(ctx, "Installed as app — reload the page")
+        toast(ctx, "Installed as app")
+        launch(ctx, url)
         return true
     }
 
