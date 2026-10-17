@@ -255,41 +255,35 @@ object Adaptive {
  * الخصائص getters عمداً لأن Adaptive.level يتغير أثناء التشغيل.
  */
 object NovaMotion {
-    val emphasized = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-    val emphasizedAccel = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+    val emphasized = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+    val emphasizedAccel = CubicBezierEasing(0.4f, 0f, 1f, 1f)
 
-    /** لوحات ملء الشاشة (التنزيلات، الإعدادات، كلمات المرور، المكتبة). */
     val panelEnter: EnterTransition
-        get() = slideInVertically(tween(Adaptive.ms(320), easing = emphasized)) { it / 8 } +
-            scaleIn(tween(Adaptive.ms(320), easing = emphasized), initialScale = 0.96f) +
-            fadeIn(tween(Adaptive.ms(220), easing = LinearOutSlowInEasing))
+        get() = slideInVertically(tween(Adaptive.ms(420), easing = emphasized)) { it / 4 } +
+            scaleIn(tween(Adaptive.ms(420), easing = emphasized), initialScale = 0.985f) +
+            fadeIn(tween(Adaptive.ms(240), easing = LinearOutSlowInEasing))
     val panelExit: ExitTransition
-        get() = slideOutVertically(tween(Adaptive.ms(220), easing = emphasizedAccel)) { it / 12 } +
-            scaleOut(tween(Adaptive.ms(220), easing = emphasizedAccel), targetScale = 0.97f) +
-            fadeOut(tween(Adaptive.ms(160)))
+        get() = slideOutVertically(tween(Adaptive.ms(300), easing = emphasized)) { it / 5 } +
+            scaleOut(tween(Adaptive.ms(300), easing = emphasized), targetScale = 0.99f) +
+            fadeOut(tween(Adaptive.ms(200)))
 
-    /**
-     * انتقال «المحور المشترك» بين شاشة وأخرى داخل نفس اللوحة (الإعدادات ← قسم): الجديدة تنزلق قليلاً مع ظهور تدريجي والقديمة تتراجع.
-     * الاتجاه يتبع اللغة (العربية RTL: التقدّم نحو اليسار) ولا يتجاوز مسافة قصيرة كي لا يبدو ثقيلاً.
-     */
     fun axisEnter(forward: Boolean): EnterTransition {
         val s = (if (forward) 1 else -1) * (if (I18n.isEnglish()) 1 else -1)
-        return slideInHorizontally(tween(Adaptive.ms(320), easing = emphasized)) { s * it / 7 } +
-            fadeIn(tween(Adaptive.ms(240), delayMillis = Adaptive.ms(50), easing = LinearOutSlowInEasing))
+        return slideInHorizontally(tween(Adaptive.ms(380), easing = emphasized)) { s * it / 3 } +
+            fadeIn(tween(Adaptive.ms(260), delayMillis = Adaptive.ms(40), easing = LinearOutSlowInEasing))
     }
     fun axisExit(forward: Boolean): ExitTransition {
         val s = (if (forward) -1 else 1) * (if (I18n.isEnglish()) 1 else -1)
-        return slideOutHorizontally(tween(Adaptive.ms(220), easing = emphasizedAccel)) { s * it / 10 } +
-            fadeOut(tween(Adaptive.ms(120)))
+        return slideOutHorizontally(tween(Adaptive.ms(380), easing = emphasized)) { s * it / 4 } +
+            fadeOut(tween(Adaptive.ms(200)))
     }
 
-    /** الشريط العلوي: ينزل من الأعلى. */
     val barEnter: EnterTransition
-        get() = slideInVertically(tween(Adaptive.ms(240), easing = emphasized)) { -it } +
-            fadeIn(tween(Adaptive.ms(180)))
+        get() = slideInVertically(tween(Adaptive.ms(320), easing = emphasized)) { -it } +
+            fadeIn(tween(Adaptive.ms(200)))
     val barExit: ExitTransition
-        get() = slideOutVertically(tween(Adaptive.ms(160), easing = emphasizedAccel)) { -it } +
-            fadeOut(tween(Adaptive.ms(120)))
+        get() = slideOutVertically(tween(Adaptive.ms(260), easing = emphasized)) { -it } +
+            fadeOut(tween(Adaptive.ms(140)))
 }
 
 /**

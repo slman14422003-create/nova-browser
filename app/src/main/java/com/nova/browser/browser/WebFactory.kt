@@ -56,6 +56,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
     WebSupport.installScrollGuard(this)
     WebCompat.install(this)
     Pwa.install(this)
+    Speculate.warmStart(this)
     PasswordBridge.install(this, tab, h)
     importantForAutofill = if (Prefs.pwMode == 1) View.IMPORTANT_FOR_AUTOFILL_YES else View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
     CookieManager.getInstance().setAcceptCookie(true)
@@ -67,6 +68,7 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
         val ex = r.extra ?: return@setOnLongClickListener false
         when (r.type) {
             WebView.HitTestResult.SRC_ANCHOR_TYPE -> {
+                Speculate.preconnect(this, ex)
                 choose(ctx, listOf(L("فتح في تبويب جديد") to { h.openTab(ex) }, L("نسخ الرابط") to { copyText(ctx, ex) }, L("مشاركة الرابط") to { shareText(ctx, ex) }))
                 true
             }
@@ -117,6 +119,11 @@ fun createWebView(ctx: Context, tab: BrowserTab, h: Handlers): WebView = NovaWeb
         }
         override fun onPageCommitVisible(v: WebView, u: String) {
             PageTint.sample(v, tab)
+            if (Prefs.smoothAnim && Adaptive.level == 0 && v.alpha > 0.9f) {
+                v.animate().cancel()
+                v.alpha = 0.86f
+                v.animate().alpha(1f).setDuration(240L).setInterpolator(android.view.animation.PathInterpolator(0.32f, 0.72f, 0f, 1f)).start()
+            }
         }
         override fun onReceivedHttpAuthRequest(v: WebView, handler: HttpAuthHandler, host: String?, realm: String?) {
             PageExtras.httpAuth(ctx, handler, host, realm)
