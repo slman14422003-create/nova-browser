@@ -170,6 +170,7 @@ fun PageMenu(
     onSummarize: () -> Unit = {}, onAskAi: () -> Unit = {}
 ) {
     val ios = LocalIos.current
+    val ctx = LocalContext.current
     var sub by remember { mutableStateOf(false) }
     LaunchedEffect(expanded) { if (!expanded) sub = false }
     val zoomNames = listOf(L("صغير"), L("عادي"), L("كبير"), L("كبير جداً"))
