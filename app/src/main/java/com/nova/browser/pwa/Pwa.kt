@@ -97,6 +97,23 @@ object Pwa {
         return b
     }
 
+    fun pinShortcut(ctx: Context, url: String) {
+        ensure(ctx)
+        val host = hostOf(url)
+        val name = apps[host] ?: host
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
+            toast(ctx, "Launcher does not support pinning")
+            return
+        }
+        val ok = runCatching {
+            val icon = IconCompat.createWithBitmap(Favicons.get(host)?.let { Bitmap.createScaledBitmap(it, 192, 192, true) } ?: letterIcon(host, name))
+            val sc = ShortcutInfoCompat.Builder(ctx, "app_" + host + "_" + System.currentTimeMillis()).setShortLabel(name).setLongLabel(name).setIcon(icon)
+                .setIntent(AppActivity.intentFor(ctx, homeFor(url))).build()
+            ShortcutManagerCompat.requestPinShortcut(ctx, sc, null)
+        }.getOrDefault(false)
+        if (!ok) toast(ctx, "Could not add shortcut")
+    }
+
     /** يثبّت الموقع كتطبيق (اختصار على الشاشة الرئيسية + وضع التطبيق) أو يزيله إن كان مثبّتاً. يعيد true إن صار مثبّتاً. */
     fun togglePin(ctx: Context, url: String, title: String): Boolean {
         ensure(ctx)
@@ -109,16 +126,7 @@ object Pwa {
         }
         val name = (title.ifBlank { host }).replace("|", " ").replace(";;", " ").trim().take(30)
         apps[host] = name; save(ctx)
-        runCatching {
-            if (ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
-                val icon = IconCompat.createWithBitmap(Favicons.get(host)?.let { Bitmap.createScaledBitmap(it, 192, 192, true) } ?: letterIcon(host, name))
-                val sc = ShortcutInfoCompat.Builder(ctx, "pwa_$host").setShortLabel(name).setLongLabel(name).setIcon(icon)
-                    .setIntent(AppActivity.intentFor(ctx, homeFor(url))).build()
-                ShortcutManagerCompat.requestPinShortcut(ctx, sc, null)
-            }
-        }
-        toast(ctx, "Installed as app")
-        launch(ctx, url)
+        pinShortcut(ctx, url)
         return true
     }
 

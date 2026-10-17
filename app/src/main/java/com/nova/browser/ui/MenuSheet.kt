@@ -222,6 +222,10 @@ fun PageMenu(
                     "Open as app",
                     { act { Pwa.launch(ctx, tab.url) } }
                 )
+                if (tab.url.startsWith("https://") && Pwa.isInstalled(hostOf(tab.url))) IosCell(
+                    "Add to home screen",
+                    { act { Pwa.pinShortcut(ctx, tab.url) } }
+                )
                 IosCell(L("الأعلى"), { act { tab.webView?.let { WebSupport.scroll(it, true) } } })
                 IosCell(L("الأسفل"), { act { tab.webView?.let { WebSupport.scroll(it, false) } } })
                 IosCell(L("تحديث تصميم الصفحة"), { act { tab.webView?.let { WebSupport.refreshDesign(it) } } })
