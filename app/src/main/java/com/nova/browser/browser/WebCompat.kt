@@ -44,8 +44,24 @@ object WebCompat {
         val u = runCatching { Uri.parse(url ?: "") }.getOrNull() ?: return false
         val h = (u.host ?: return false).lowercase().removePrefix("www.")
         val p = u.path ?: ""
+        if (appLike(h)) return true
         return h == "openstreetmap.org" || h == "waze.com" || h.endsWith(".waze.com") || h == "earth.google.com" ||
             h == "maps.apple.com" || h == "windy.com" || h == "wego.here.com" || (h == "bing.com" && p.startsWith("/maps"))
+    }
+
+    private val appHosts = setOf(
+        "dash.cloudflare.com", "one.dash.cloudflare.com", "workers.cloudflare.com", "playground.workers.cloudflare.com",
+        "github.dev", "vscode.dev", "stackblitz.com", "codesandbox.io", "replit.com", "codepen.io", "jsfiddle.net",
+        "colab.research.google.com", "console.cloud.google.com", "console.aws.amazon.com", "portal.azure.com",
+        "vercel.com", "app.netlify.com", "dashboard.render.com", "supabase.com", "app.supabase.com", "figma.com",
+        "docs.google.com", "sheets.google.com", "notion.so", "miro.com", "excalidraw.com", "chat.openai.com", "chatgpt.com",
+        "claude.ai", "gemini.google.com", "web.telegram.org", "web.whatsapp.com", "discord.com", "app.slack.com"
+    )
+
+    /** لوحات تحكم ومحررات أكواد وتطبيقات صفحة واحدة: التمرير فيها داخلي والسحب للتحديث يعيد تحميل العمل غير المحفوظ. */
+    fun appLike(host: String): Boolean {
+        val h = host.removePrefix("www.")
+        return h in appHosts || appHosts.any { h.endsWith(".$it") } || h.endsWith(".workers.dev") || h.endsWith(".pages.dev")
     }
 
     // ---------- كاشف حلقة إعادة التحميل ----------
@@ -159,11 +175,12 @@ object WebCompat {
     // مكتبات دعم الصفحات: polyfills لميزات الويب الحديثة على المحركات القديمة، وlangfix لضبط لغة الصفحة (نموذج الحروف الصحيح للصينية/اليابانية/الكورية وغيرها)
     private val polyfills: String? by lazy { runCatching { Perf.asset("polyfills.js") }.getOrNull() }
     private val langfix: String? by lazy { runCatching { Perf.asset("langfix.js") }.getOrNull() }
+    private val enhance: String? by lazy { runCatching { Perf.asset("enhance.js") }.getOrNull() }
 
     fun install(wv: WebView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         // polyfills أولاً كي تجدها بقية السكربتات جاهزة
-        listOfNotNull(polyfills, js, langfix).forEach { s ->
+        listOfNotNull(polyfills, js, langfix, enhance).forEach { s ->
             runCatching { WebViewCompat.addDocumentStartJavaScript(wv, s, setOf("*")) }
         }
     }

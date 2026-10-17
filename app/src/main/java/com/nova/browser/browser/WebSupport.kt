@@ -85,6 +85,18 @@ object WebSupport {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST))
             runCatching { WebSettingsCompat.setRequestedWithHeaderOriginAllowList(wv.settings, emptySet()) }
         watchRenderer(wv)
+        tuneEngine(wv)
+    }
+
+    private fun tuneEngine(wv: WebView) {
+        val st = wv.settings
+        runCatching {
+            st.useWideViewPort = true
+            st.loadWithOverviewMode = false
+            st.layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
+        }
+        wv.overScrollMode = android.view.View.OVER_SCROLL_NEVER
+        wv.isNestedScrollingEnabled = true
     }
 
     // ---------- حارس التمرير الداخلي (يمنع السحب للتحديث من خطف التمرير) ----------
@@ -199,8 +211,14 @@ object WebSupport {
 
     /** بعد ظهور الكيبورد: يُظهر خانة الإدخال المحدَّدة في منتصف الصفحة المرئية كي لا يغطيها الكيبورد. */
     fun revealFocused(wv: WebView) {
-        wv.evaluateJavascript("(function(){var e=document.activeElement;if(!e||e===document.body)return;var t=(e.tagName||'').toLowerCase();" +
-            "if(t==='input'||t==='textarea'||e.isContentEditable){e.scrollIntoView({block:'center',behavior:'smooth'})}})()", null)
+        val js = "(function(){function deep(d){var e=d.activeElement;while(e&&e.shadowRoot&&e.shadowRoot.activeElement)e=e.shadowRoot.activeElement;" +
+            "if(e&&e.tagName==='IFRAME'){try{var n=deep(e.contentDocument);if(n)return n}catch(x){}}return e}" +
+            "var e=deep(document);if(!e||e===document.body||e===document.documentElement)return;" +
+            "var t=(e.tagName||'').toLowerCase();if(!(t==='input'||t==='textarea'||t==='select'||e.isContentEditable||e.getAttribute('role')==='textbox'))return;" +
+            "var vv=window.visualViewport,r=e.getBoundingClientRect(),h=vv?vv.height:window.innerHeight;" +
+            "if(r.top<0||r.bottom>h*0.85)e.scrollIntoView({block:'center',behavior:'auto',inline:'nearest'})})()"
+        wv.evaluateJavascript(js, null)
+        wv.postDelayed({ if (wv.isAttachedToWindow) wv.evaluateJavascript(js, null) }, 260)
     }
 
     fun scroll(wv: WebView, top: Boolean) {

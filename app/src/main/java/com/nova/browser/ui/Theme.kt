@@ -117,15 +117,15 @@ private val NovaTypography = Typography().let { t ->
 }
 
 private val NovaShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp), small = RoundedCornerShape(8.dp), medium = RoundedCornerShape(10.dp),
-    large = RoundedCornerShape(14.dp), extraLarge = RoundedCornerShape(14.dp)
+    extraSmall = RoundedCornerShape(6.dp), small = RoundedCornerShape(10.dp), medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp), extraLarge = RoundedCornerShape(22.dp)
 )
 
 object IosShape {
     val pill = RoundedCornerShape(50)
-    val card = RoundedCornerShape(10.dp)
+    val card = RoundedCornerShape(14.dp)
     val field = RoundedCornerShape(12.dp)
-    val sheet = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+    val sheet = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
 }
 
 @Composable

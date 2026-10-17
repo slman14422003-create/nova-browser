@@ -14,7 +14,6 @@
 
     var css =
       'img,video{max-width:100%}' +                                   // صور/فيديو لا تتجاوز عرض الشاشة
-      'pre{white-space:pre-wrap;overflow-wrap:anywhere}' +             // الأكواد الطويلة تلتف بدل التمرير الأفقي
       'html{-webkit-text-size-adjust:100%;text-size-adjust:100%;-webkit-tap-highlight-color:transparent}' + // منع تضخيم الخط + إزالة وميض اللمس
       // لا optimizeLegibility ولا text-wrap:pretty: كلاهما يزيد كلفة تخطيط النص في كل الصفحة (تقطيع على الصفحات الطويلة والأجهزة المتوسطة)
       'a,button,summary,label,input,select,[role=button]{touch-action:manipulation}' + // إلغاء تأخير اللمس المزدوج

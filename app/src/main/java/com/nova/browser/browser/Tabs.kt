@@ -33,6 +33,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.delay
 
 private fun hostColor(host: String): Color = Color.hsv((host.hashCode().toLong().let { if (it < 0) -it else it } % 360).toFloat(), 0.55f, 0.72f)
 
@@ -77,10 +80,14 @@ fun TabSwitcher(
     val showSearch = tabs.size >= 4
     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = (current / 2) * 2 + (if (showSearch) 1 else 0))
     var filterMenu by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    var opened by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { opened = true }
+    val appear by animateFloatAsState(if (opened) 1f else 0f, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow), label = "tabsAppear")
     Column(Modifier.fillMaxSize().background(ios.tabsBg)) {
         LazyVerticalGrid(
             state = gridState, columns = GridCells.Fixed(2),
-            modifier = Modifier.weight(1f).statusBarsPadding(),
+            modifier = Modifier.weight(1f).statusBarsPadding().graphicsLayer { val k = 0.94f + 0.06f * appear; scaleX = k; scaleY = k; alpha = appear },
             horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp)
         ) {
@@ -90,26 +97,34 @@ fun TabSwitcher(
                 val host = if (blank) "nova" else hostOf(t.url)
                 val accent = remember(host) { hostColor(host) }
                 var menu by remember { mutableStateOf(false) }
-                val cardShape = RoundedCornerShape(14.dp)
+                val cardShape = RoundedCornerShape(16.dp)
+                var vis by remember { mutableStateOf(false) }
+                LaunchedEffect(t.id) { delay(minOf(i, 8) * 28L); vis = true }
+                val pop by animateFloatAsState(if (vis) 1f else 0.82f, spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessMediumLow), label = "tabPop")
                 var dx by remember { mutableFloatStateOf(0f) }
                 var dragging by remember { mutableStateOf(false) }
                 val dxShown by animateFloatAsState(dx, if (dragging) snap() else spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow), label = "swipeClose")
                 val cardSrc = remember { MutableInteractionSource() }
                 Box(
                     Modifier.fillMaxWidth().aspectRatio(0.74f).animateItem().pressScale(cardSrc, 0.96f)
-                        .graphicsLayer { translationX = dxShown; alpha = (1f - kotlin.math.abs(dxShown) / (size.width * 1.2f)).coerceIn(0f, 1f) }
+                        .graphicsLayer {
+                            translationX = dxShown; rotationZ = (dxShown / size.width) * 10f
+                            val sc = pop * (1f - 0.08f * (kotlin.math.abs(dxShown) / size.width).coerceIn(0f, 1f)); scaleX = sc; scaleY = sc
+                            alpha = ((1f - kotlin.math.abs(dxShown) / (size.width * 1.2f)) * (if (vis) 1f else 0f)).coerceIn(0f, 1f)
+                        }
                         .pointerInput(t.id) {
                             detectHorizontalDragGestures(
                                 onDragStart = { dragging = true },
-                                onDragEnd = { dragging = false; if (kotlin.math.abs(dx) > size.width * 0.35f) onClose(i) else dx = 0f },
+                                onDragEnd = { dragging = false; if (kotlin.math.abs(dx) > size.width * 0.35f) { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClose(i) } else dx = 0f },
                                 onDragCancel = { dragging = false; dx = 0f },
                                 onHorizontalDrag = { c, d -> c.consume(); dx += d }
                             )
                         }
                 ) {
                     Column(
-                        Modifier.fillMaxSize().shadow(2.dp, cardShape).clip(cardShape).background(ios.cell)
-                            .combinedClickable(interactionSource = cardSrc, indication = null, onClick = { onSelect(i) }, onLongClick = { menu = true })
+                        Modifier.fillMaxSize().shadow(if (i == current) 10.dp else 4.dp, cardShape).clip(cardShape).background(ios.cell)
+                            .border(if (i == current) 2.5.dp else 0.dp, ios.blue, cardShape)
+                            .combinedClickable(interactionSource = cardSrc, indication = null, onClick = { onSelect(i) }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); menu = true })
                     ) {
                         if (t.tag > 0) Box(Modifier.fillMaxWidth().height(3.dp).background(TabTagColors[t.tag]))
                         Row(Modifier.fillMaxWidth().height(34.dp).padding(start = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {

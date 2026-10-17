@@ -893,6 +893,8 @@ fun BrowserApp(startUrl: String, dlTrigger: Int, inPip: Boolean = false, incomin
                                                     judged
                                                 }
                                             }
+                                            setDistanceToTriggerSync((120 * ctx.resources.displayMetrics.density).toInt())
+                                            setSlingshotDistance((140 * ctx.resources.displayMetrics.density).toInt())
                                             setColorSchemeColors(primaryInt)
                                             setProgressBackgroundColorSchemeColor(bgInt)
                                             useIosSpinner(spinnerInt)

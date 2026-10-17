@@ -99,6 +99,17 @@ fun StartPage(
         Modifier.fillMaxSize().background(ios.groupedBg).graphicsLayer { alpha = appear; translationY = (1f - appear) * 36f }
             .verticalScroll(rememberScrollState()).padding(bottom = 24.dp)
     ) {
+        val searchSrc = remember { MutableInteractionSource() }
+        Row(
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp).fillMaxWidth().height(46.dp)
+                .pressScale(searchSrc, 0.98f).clip(RoundedCornerShape(14.dp)).background(ios.cell)
+                .clickable(interactionSource = searchSrc, indication = null) { onSearchClick() }.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Search, null, Modifier.size(20.dp), tint = ios.label2)
+            Spacer(Modifier.width(10.dp))
+            Text(L("ابحث أو أدخل عنوان موقع"), style = MaterialTheme.typography.bodyLarge, color = ios.label2, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         StartHeader(L("المفضلة"))
         Column(Modifier.padding(horizontal = 12.dp)) {
             (sites + userFavs).chunked(4).forEach { row ->
